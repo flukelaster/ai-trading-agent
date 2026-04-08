@@ -22,7 +22,8 @@ export default function MLPage() {
   const [predicting, setPredicting] = useState(false);
   const [collecting, setCollecting] = useState(false);
 
-  const [timeframe, setTimeframe] = useState("M15");
+  const [collectTimeframe, setCollectTimeframe] = useState("M15");
+  const [trainTimeframe, setTrainTimeframe] = useState("M15");
   const [forwardBars, setForwardBars] = useState(10);
   const [tpPips, setTpPips] = useState(5.0);
   const [slPips, setSlPips] = useState(5.0);
@@ -47,7 +48,7 @@ export default function MLPage() {
   const handleCollect = async () => {
     setCollecting(true);
     try {
-      await collectData({ timeframe, from_date: collectFrom, to_date: collectTo });
+      await collectData({ timeframe: collectTimeframe, from_date: collectFrom, to_date: collectTo });
       await fetchData();
     } catch (e) { console.error(e); }
     finally { setCollecting(false); }
@@ -57,7 +58,7 @@ export default function MLPage() {
     setTraining(true);
     setTrainResult(null);
     try {
-      const res = await trainModel({ timeframe, forward_bars: forwardBars, tp_pips: tpPips, sl_pips: slPips });
+      const res = await trainModel({ timeframe: trainTimeframe, forward_bars: forwardBars, tp_pips: tpPips, sl_pips: slPips });
       setTrainResult(res.data);
       await fetchData();
     } catch (e) { console.error(e); }
@@ -132,7 +133,7 @@ export default function MLPage() {
             </div>
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground font-medium">Timeframe</label>
-              <Select value={timeframe} onValueChange={(v) => v && setTimeframe(v)}>
+              <Select value={collectTimeframe} onValueChange={(v) => v && setCollectTimeframe(v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="M5">M5</SelectItem>
@@ -160,6 +161,17 @@ export default function MLPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground font-medium">Timeframe</label>
+                <Select value={trainTimeframe} onValueChange={(v) => v && setTrainTimeframe(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="M5">M5</SelectItem>
+                    <SelectItem value="M15">M15</SelectItem>
+                    <SelectItem value="H1">H1</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground font-medium">Forward Bars</label>
                 <Input type="number" value={forwardBars} onChange={(e) => setForwardBars(parseInt(e.target.value) || 10)} />

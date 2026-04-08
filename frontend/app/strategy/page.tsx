@@ -20,6 +20,7 @@ const strategyDescriptions: Record<string, string> = {
   ema_crossover: "Buy when fast EMA crosses above slow EMA, sell on cross below. Simple trend-following strategy.",
   rsi_filter: "EMA crossover with RSI filter gate. Avoids overbought buys and oversold sells.",
   breakout: "Buy when price breaks above N-period high channel, sell on break below. Filtered by ATR and volume.",
+  ml_signal: "LightGBM ML model predicts BUY/SELL/HOLD from 38 technical features. Requires a trained model.",
 };
 
 export default function StrategyPage() {
@@ -64,6 +65,9 @@ export default function StrategyPage() {
         atr_threshold: params.atr_threshold, volume_filter: params.volume_filter,
       };
     }
+    if (selectedStrategy === "ml_signal") {
+      return { confidence_threshold: aiSettings.confidence_threshold };
+    }
     return {
       ema_fast: params.fast_period, ema_slow: params.slow_period,
       rsi_period: params.rsi_period, rsi_overbought: params.rsi_overbought, rsi_oversold: params.rsi_oversold,
@@ -71,13 +75,18 @@ export default function StrategyPage() {
   };
 
   const handleSave = async () => {
-    await updateStrategy(selectedStrategy, getStrategyParams());
-    await updateSettings({
-      use_ai_filter: aiSettings.use_ai_filter,
-      ai_confidence_threshold: aiSettings.confidence_threshold,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await updateStrategy(selectedStrategy, getStrategyParams());
+      await updateSettings({
+        use_ai_filter: aiSettings.use_ai_filter,
+        ai_confidence_threshold: aiSettings.confidence_threshold,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      console.error("Save failed:", e);
+      alert("Failed to save strategy. Check console for details.");
+    }
   };
 
   const handleBacktest = async () => {
@@ -121,7 +130,12 @@ export default function StrategyPage() {
             </div>
 
             <div className="space-y-4">
-              {selectedStrategy !== "breakout" && (
+              {selectedStrategy === "ml_signal" && (
+                <p className="text-xs text-muted-foreground font-medium py-2">
+                  ML model uses 38 technical features automatically. Adjust confidence threshold in AI Settings.
+                </p>
+              )}
+              {selectedStrategy !== "breakout" && selectedStrategy !== "ml_signal" && (
                 <>
                   <ParamSlider label="Fast EMA" value={params.fast_period} min={5} max={50}
                     onChange={(v) => setParams({ ...params, fast_period: v })} />
