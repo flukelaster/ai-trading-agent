@@ -70,7 +70,7 @@ export default function InsightsPage() {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Skeleton className="h-80 rounded-xl" />
           <Skeleton className="h-80 rounded-xl" />
         </div>
@@ -82,7 +82,7 @@ export default function InsightsPage() {
     <div className="p-6 space-y-6">
       <PageHeader title="AI Insights" subtitle="Sentiment analysis and strategy optimization" />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Sentiment */}
         <Card className="bg-card border-border">
           <CardHeader>
@@ -190,7 +190,7 @@ export default function InsightsPage() {
       </div>
 
       {/* Optimization */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           {optimization && optimization.suggested_params ? (
             <OptimizationReport

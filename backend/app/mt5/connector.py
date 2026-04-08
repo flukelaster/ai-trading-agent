@@ -73,6 +73,14 @@ class MT5BridgeConnector:
             "magic": magic,
         })
 
+    async def modify_position(self, ticket: int, sl: float | None = None, tp: float | None = None) -> dict:
+        body = {}
+        if sl is not None:
+            body["sl"] = sl
+        if tp is not None:
+            body["tp"] = tp
+        return await self._request("put", f"/position/{ticket}", json=body)
+
     async def close_position(self, ticket: int) -> dict:
         return await self._request("delete", f"/position/{ticket}")
 

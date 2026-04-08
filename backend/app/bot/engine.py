@@ -4,6 +4,7 @@ Bot Engine — main trading loop integrating strategy, risk, AI sentiment, and o
 
 import enum
 import json
+import random
 from datetime import datetime, timezone
 
 import redis.asyncio as redis
@@ -55,9 +56,25 @@ class BotEngine:
             ai_confidence_threshold=settings.ai_confidence_threshold,
         )
         self.sentiment_analyzer: NewsSentimentAnalyzer | None = None
+        self._optimizer = None
+        self.notifier = None  # TelegramNotifier (optional)
+        self._scheduler = None  # BotScheduler ref (set in main.py)
         self.news_fetcher = NewsFetcher()
 
         self.state = BotState.STOPPED
+        self._known_tickets: set[int] = set()  # Track open tickets for close detection
+
+        # Paper trade mode
+        self.paper_trade = settings.paper_trade
+        self._paper_positions: list[dict] = []
+        self._paper_ticket_counter = 900000
+        self._paper_balance = 10000.0  # Virtual balance
+
+        # Trailing stop config
+        self.trailing_stop_enabled = True
+        self.trailing_start_atr = 1.0   # Activate trailing after profit > start_atr * ATR
+        self.trailing_step_atr = 0.5    # Trail SL at step_atr * ATR behind price
+        self._position_atr: dict[int, float] = {}  # ticket → ATR at entry time
         self.started_at: datetime | None = None
         self.last_signal_time: datetime | None = None
         self.symbol = settings.symbol
@@ -66,6 +83,18 @@ class BotEngine:
     def set_sentiment_analyzer(self, analyzer: NewsSentimentAnalyzer):
         self.sentiment_analyzer = analyzer
 
+    def set_notifier(self, notifier):
+        self.notifier = notifier
+
+    async def _notify(self, coro):
+        """Fire-and-forget notification — never crash the bot."""
+        if not self.notifier:
+            return
+        try:
+            await coro
+        except Exception as e:
+            logger.error(f"Notification failed: {e}")
+
     async def start(self):
         if self.state == BotState.RUNNING:
             return
@@ -73,11 +102,15 @@ class BotEngine:
         self.started_at = datetime.now(timezone.utc)
         await self._log_event(BotEventType.STARTED, "Bot started")
         logger.info(f"Bot started: strategy={self.strategy.name}, symbol={self.symbol}")
+        await self._notify(self.notifier._send(
+            f"▶️ <b>Bot Started</b>\nStrategy: {self.strategy.name}\nSymbol: {self.symbol}\nTimeframe: {self.timeframe}"
+        ))
 
     async def stop(self):
         self.state = BotState.STOPPED
         await self._log_event(BotEventType.STOPPED, "Bot stopped")
         logger.info("Bot stopped")
+        await self._notify(self.notifier._send("⏹ <b>Bot Stopped</b>"))
 
     async def emergency_stop(self):
         self.state = BotState.STOPPED
@@ -95,6 +128,7 @@ class BotEngine:
             "timeframe": self.timeframe,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "use_ai_filter": self.risk_manager.use_ai_filter,
+            "paper_trade": self.paper_trade,
         }
 
     async def process_candle(self):
@@ -113,6 +147,7 @@ class BotEngine:
             if await self.circuit_breaker.is_triggered(balance):
                 self.state = BotState.PAUSED
                 await self._log_event(BotEventType.CIRCUIT_BREAKER, "Circuit breaker triggered")
+                await self._notify(self.notifier.send_error_alert("⚡ Circuit breaker triggered — bot paused"))
                 return
 
             # 2. Fetch OHLCV and calculate signal
@@ -164,12 +199,32 @@ class BotEngine:
             sl_pips = abs(entry_price - sl_tp.sl)
             lot = self.risk_manager.calculate_lot_size(balance, sl_pips)
 
-            # 6. Place order
+            # 6. Place order (real or paper)
             order_type = "BUY" if signal == 1 else "SELL"
             comment = f"{self.strategy.name}"
-            result = await self.executor.place_order(
-                self.symbol, order_type, lot, sl_tp.sl, sl_tp.tp, comment
-            )
+            tag = "📝 PAPER" if self.paper_trade else ""
+
+            if self.paper_trade:
+                # Paper trade: simulate order fill
+                self._paper_ticket_counter += 1
+                ticket = self._paper_ticket_counter
+                result = {"success": True, "data": {
+                    "ticket": ticket, "price": entry_price,
+                    "lot": lot, "type": order_type,
+                }}
+                self._paper_positions.append({
+                    "ticket": ticket, "symbol": self.symbol,
+                    "type": order_type, "lot": lot,
+                    "open_price": entry_price, "current_price": entry_price,
+                    "sl": sl_tp.sl, "tp": sl_tp.tp,
+                    "profit": 0.0, "open_time": datetime.now(timezone.utc).isoformat(),
+                    "comment": comment, "magic": 234000,
+                })
+                logger.info(f"PAPER trade: {order_type} {lot} {self.symbol} @ {entry_price}")
+            else:
+                result = await self.executor.place_order(
+                    self.symbol, order_type, lot, sl_tp.sl, sl_tp.tp, comment
+                )
 
             if result.get("success"):
                 # 7. Save trade to DB
@@ -192,7 +247,7 @@ class BotEngine:
 
                 await self._log_event(
                     BotEventType.TRADE_OPENED,
-                    f"{order_type} {lot} {self.symbol} @ {entry_price} SL={sl_tp.sl} TP={sl_tp.tp}",
+                    f"{tag}{order_type} {lot} {self.symbol} @ {entry_price} SL={sl_tp.sl} TP={sl_tp.tp}",
                 )
 
                 # Push event via Redis
@@ -202,10 +257,22 @@ class BotEngine:
                     "sentiment": sentiment_data,
                 })
 
+                # Store ATR for trailing stop
+                self._position_atr[result["data"]["ticket"]] = atr
+
+                # Telegram: trade opened
+                paper_label = " [PAPER]" if self.paper_trade else ""
+                await self._notify(self.notifier.send_trade_alert(
+                    f"{order_type}{paper_label}", self.symbol, entry_price, sl_tp.sl, sl_tp.tp, lot,
+                    sentiment_data.get("label", ""),
+                ))
+
         except Exception as e:
             logger.error(f"Bot engine error: {e}")
             self.state = BotState.ERROR
             await self._log_event(BotEventType.ERROR, str(e))
+            # Telegram: error alert
+            await self._notify(self.notifier.send_error_alert(f"Bot engine error: {e}"))
 
     async def fetch_and_analyze_sentiment(self):
         """Fetch news and run sentiment analysis."""
@@ -217,6 +284,10 @@ class BotEngine:
                 result = await self.sentiment_analyzer.analyze(news)
                 logger.info(f"Sentiment: {result.label} (score={result.score}, confidence={result.confidence})")
                 await self._push_event("sentiment_update", result.to_dict())
+                # Telegram: sentiment update
+                await self._notify(self.notifier.send_sentiment_alert(
+                    result.label, result.score, result.key_factors,
+                ))
         except Exception as e:
             logger.error(f"Sentiment analysis error: {e}")
 
@@ -225,20 +296,127 @@ class BotEngine:
         if self.state != BotState.RUNNING:
             return
         try:
-            positions = await self.executor.get_open_positions(self.symbol)
+            if self.paper_trade:
+                positions = await self._sync_paper_positions()
+            else:
+                positions = await self.executor.get_open_positions(self.symbol)
+
+            current_tickets = {p["ticket"] for p in positions}
+
+            # Detect closed positions
+            closed = self._known_tickets - current_tickets
+            for ticket in closed:
+                logger.info(f"Position closed: ticket={ticket}")
+                self._position_atr.pop(ticket, None)
+                await self._notify(self.notifier.send_trade_alert(
+                    "CLOSE", self.symbol, 0, 0, 0, 0,
+                ))
+                await self._push_event("bot_event", {"type": "trade_closed", "ticket": ticket})
+
+            self._known_tickets = current_tickets
+
+            # Apply trailing stops (real mode only — paper handles SL/TP internally)
+            if self.trailing_stop_enabled and positions and not self.paper_trade:
+                await self._apply_trailing_stops(positions)
+
             await self._push_event("position_update", {"positions": positions})
         except Exception as e:
             logger.error(f"Position sync error: {e}")
+
+    async def _sync_paper_positions(self) -> list[dict]:
+        """Update paper positions with current prices, close if SL/TP hit."""
+        tick = await self.market_data.get_current_tick(self.symbol)
+        if not tick:
+            return self._paper_positions
+
+        still_open = []
+        for pos in self._paper_positions:
+            price = tick["bid"] if pos["type"] == "BUY" else tick["ask"]
+            pos["current_price"] = price
+
+            # Calculate profit (simplified: price diff * lot * 100 for gold)
+            if pos["type"] == "BUY":
+                pos["profit"] = round((price - pos["open_price"]) * pos["lot"] * 100, 2)
+            else:
+                pos["profit"] = round((pos["open_price"] - price) * pos["lot"] * 100, 2)
+
+            # Check SL/TP hit
+            hit = False
+            if pos["type"] == "BUY":
+                if pos["sl"] > 0 and price <= pos["sl"]:
+                    hit = True
+                elif pos["tp"] > 0 and price >= pos["tp"]:
+                    hit = True
+            else:
+                if pos["sl"] > 0 and price >= pos["sl"]:
+                    hit = True
+                elif pos["tp"] > 0 and price <= pos["tp"]:
+                    hit = True
+
+            if hit:
+                self._paper_balance += pos["profit"]
+                logger.info(f"PAPER position {pos['ticket']} closed: profit={pos['profit']}")
+                await self._push_event("bot_event", {"type": "trade_closed", "ticket": pos["ticket"]})
+                tag = " [PAPER]" if self.paper_trade else ""
+                await self._notify(self.notifier.send_trade_alert(
+                    f"CLOSE{tag}", self.symbol, price, 0, 0, pos["lot"],
+                ))
+            else:
+                still_open.append(pos)
+
+        self._paper_positions = still_open
+        return still_open
+
+    async def _apply_trailing_stops(self, positions: list[dict]):
+        """Move SL in profit direction when position is profitable enough."""
+        for pos in positions:
+            ticket = pos["ticket"]
+            pos_atr = self._position_atr.get(ticket)
+            if not pos_atr or pos_atr <= 0:
+                continue
+
+            current_price = pos.get("current_price", 0)
+            open_price = pos.get("open_price", 0)
+            current_sl = pos.get("sl", 0)
+            pos_type = pos.get("type", "")
+
+            if pos_type == "BUY":
+                profit_distance = current_price - open_price
+                if profit_distance < pos_atr * self.trailing_start_atr:
+                    continue
+                new_sl = current_price - pos_atr * self.trailing_step_atr
+                if new_sl > current_sl:
+                    logger.info(f"Trailing stop BUY {ticket}: SL {current_sl:.2f} → {new_sl:.2f}")
+                    await self.executor.modify_position(ticket, sl=round(new_sl, 2))
+
+            elif pos_type == "SELL":
+                profit_distance = open_price - current_price
+                if profit_distance < pos_atr * self.trailing_start_atr:
+                    continue
+                new_sl = current_price + pos_atr * self.trailing_step_atr
+                if current_sl == 0 or new_sl < current_sl:
+                    logger.info(f"Trailing stop SELL {ticket}: SL {current_sl:.2f} → {new_sl:.2f}")
+                    await self.executor.modify_position(ticket, sl=round(new_sl, 2))
 
     async def update_strategy(self, name: str, params: dict | None = None):
         self.strategy = get_strategy(name, params)
         logger.info(f"Strategy updated: {name} params={params}")
 
-    async def update_settings(self, use_ai_filter: bool | None = None, ai_confidence_threshold: float | None = None):
+    async def update_settings(self, use_ai_filter: bool | None = None, ai_confidence_threshold: float | None = None, paper_trade: bool | None = None, timeframe: str | None = None):
         if use_ai_filter is not None:
             self.risk_manager.use_ai_filter = use_ai_filter
         if ai_confidence_threshold is not None:
             self.risk_manager.ai_confidence_threshold = ai_confidence_threshold
+        if paper_trade is not None:
+            self.paper_trade = paper_trade
+            logger.info(f"Paper trade mode: {'ON' if paper_trade else 'OFF'}")
+        if timeframe is not None:
+            valid = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+            if timeframe in valid:
+                self.timeframe = timeframe
+                logger.info(f"Timeframe changed to: {timeframe}")
+                if self._scheduler:
+                    self._scheduler.reschedule_candle(timeframe)
 
     async def _log_event(self, event_type: BotEventType, message: str):
         try:

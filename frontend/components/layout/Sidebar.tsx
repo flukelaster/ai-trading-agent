@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,6 +10,8 @@ import {
   History,
   Brain,
   CircleDot,
+  Menu,
+  X,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -21,11 +24,11 @@ const navItems = [
   { href: "/insights", label: "AI Insights", icon: Brain },
 ];
 
-export function Sidebar() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 flex flex-col bg-sidebar border-r border-sidebar-border">
+    <>
       {/* Header */}
       <div className="p-5">
         <div className="flex items-center gap-3">
@@ -57,6 +60,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
                 isActive
@@ -81,6 +85,49 @@ export function Sidebar() {
         </div>
         <p className="mt-1 text-[10px] text-muted-foreground/50">v1.0.0</p>
       </div>
+    </>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <aside className="hidden lg:flex w-60 flex-col bg-sidebar border-r border-sidebar-border">
+      <SidebarContent />
     </aside>
+  );
+}
+
+export function MobileHeader() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <header className="lg:hidden flex items-center justify-between p-3 border-b border-sidebar-border bg-sidebar">
+        <div className="flex items-center gap-2">
+          <div className="size-7 rounded-md gold-gradient flex items-center justify-center">
+            <span className="text-xs font-bold text-gold-foreground">Au</span>
+          </div>
+          <span className="text-sm font-bold gold-gradient-text">GOLD BOT</span>
+        </div>
+        <button type="button" aria-label="Open menu" onClick={() => setOpen(true)} className="p-1.5 text-muted-foreground hover:text-foreground">
+          <Menu className="size-5" />
+        </button>
+      </header>
+
+      {/* Mobile drawer overlay */}
+      {open && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-60 bg-sidebar border-r border-sidebar-border flex flex-col animate-in slide-in-from-left duration-200">
+            <div className="flex justify-end p-2">
+              <button type="button" aria-label="Close menu" onClick={() => setOpen(false)} className="p-1.5 text-muted-foreground hover:text-foreground">
+                <X className="size-5" />
+              </button>
+            </div>
+            <SidebarContent onNavigate={() => setOpen(false)} />
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

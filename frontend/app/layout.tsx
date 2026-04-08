@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Noto_Sans, Noto_Sans_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { Sidebar, MobileHeader } from "@/components/layout/Sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const notoSans = Noto_Sans({
@@ -33,8 +33,9 @@ export default function RootLayout({
       lang="en"
       className={`${notoSans.variable} ${notoSansMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex bg-background text-foreground">
+      <body className="min-h-full flex flex-col lg:flex-row bg-background text-foreground">
         <TooltipProvider>
+          <MobileHeader />
           <Sidebar />
           <main className="flex-1 overflow-auto">
             <div className="max-w-[1400px] mx-auto">{children}</div>

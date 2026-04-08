@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     max_lot: float = 1.0
     use_ai_filter: bool = True
     ai_confidence_threshold: float = 0.7
+    paper_trade: bool = False
 
     # Notifications
     telegram_bot_token: str = ""

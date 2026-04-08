@@ -46,7 +46,10 @@ class OrderExecutor:
         return positions
 
     async def modify_position(self, ticket: int, sl: float | None = None, tp: float | None = None) -> dict:
-        # MT5 Bridge doesn't have a modify endpoint yet — would need to add
-        # For now, log the intent
-        logger.info(f"Modify position {ticket}: sl={sl}, tp={tp} (not implemented in bridge)")
-        return {"success": False, "error": "Position modification not yet implemented in bridge"}
+        logger.info(f"Modifying position {ticket}: sl={sl}, tp={tp}")
+        result = await self.connector.modify_position(ticket, sl, tp)
+        if result.get("success"):
+            logger.info(f"Position {ticket} modified: sl={sl}, tp={tp}")
+        else:
+            logger.error(f"Modify position {ticket} failed: {result.get('error')}")
+        return result

@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.backtest.engine import BacktestEngine
+from app.config import Settings
 from app.risk.manager import RiskManager
 from app.strategy import get_strategy
 
@@ -42,7 +43,8 @@ async def run_backtest(req: BacktestRequest):
         max_lot=req.max_lot,
     )
 
-    df = await _market_data.get_ohlcv("XAUUSD", req.timeframe, req.count)
+    symbol = Settings().symbol
+    df = await _market_data.get_ohlcv(symbol, req.timeframe, req.count)
     if df.empty:
         return {"error": "No OHLCV data available"}
 

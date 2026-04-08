@@ -71,6 +71,11 @@ class OrderRequest(BaseModel):
     magic: int = 234000
 
 
+class ModifyPositionRequest(BaseModel):
+    sl: float | None = None
+    tp: float | None = None
+
+
 # --- Startup / Shutdown ---
 @app.on_event("startup")
 async def startup():
@@ -230,6 +235,37 @@ async def place_order(req: OrderRequest):
         "lot": req.lot,
         "type": req.type.upper(),
     })
+
+
+@app.put("/position/{ticket}", dependencies=[Depends(verify_api_key)])
+async def modify_position(ticket: int, req: ModifyPositionRequest):
+    if not ensure_connected():
+        return mt5_response(False, error="MT5 not connected")
+
+    position = mt5.positions_get(ticket=ticket)
+    if not position:
+        return mt5_response(False, error=f"Position {ticket} not found")
+
+    pos = position[0]
+    new_sl = req.sl if req.sl is not None else pos.sl
+    new_tp = req.tp if req.tp is not None else pos.tp
+
+    request = {
+        "action": mt5.TRADE_ACTION_SLTP,
+        "symbol": pos.symbol,
+        "position": ticket,
+        "sl": new_sl,
+        "tp": new_tp,
+    }
+
+    result = mt5.order_send(request)
+    if result is None:
+        return mt5_response(False, error=f"Modify failed: {mt5.last_error()}")
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        return mt5_response(False, error=f"Modify rejected: {result.comment} (code: {result.retcode})")
+
+    logger.info(f"Position {ticket} modified: SL={new_sl} TP={new_tp}")
+    return mt5_response(True, data={"ticket": ticket, "sl": new_sl, "tp": new_tp})
 
 
 @app.delete("/position/{ticket}", dependencies=[Depends(verify_api_key)])

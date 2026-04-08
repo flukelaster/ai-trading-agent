@@ -30,6 +30,8 @@ class StrategyUpdate(BaseModel):
 class SettingsUpdate(BaseModel):
     use_ai_filter: bool | None = None
     ai_confidence_threshold: float | None = None
+    paper_trade: bool | None = None
+    timeframe: str | None = None
 
 
 @router.post("/start")
@@ -64,6 +66,24 @@ async def get_status():
     return status
 
 
+@router.get("/account")
+async def get_account():
+    bot = get_bot()
+    if bot.paper_trade:
+        unrealized = sum(p.get("profit", 0) for p in bot._paper_positions)
+        return {
+            "balance": bot._paper_balance,
+            "equity": bot._paper_balance + unrealized,
+            "margin": 0,
+            "free_margin": bot._paper_balance + unrealized,
+            "profit": unrealized,
+        }
+    result = await bot.connector.get_account()
+    if not result.get("success"):
+        raise HTTPException(status_code=502, detail=result.get("error", "Failed to get account"))
+    return result["data"]
+
+
 @router.put("/strategy")
 async def update_strategy(data: StrategyUpdate):
     bot = get_bot()
@@ -80,5 +100,7 @@ async def update_settings(data: SettingsUpdate):
     await bot.update_settings(
         use_ai_filter=data.use_ai_filter,
         ai_confidence_threshold=data.ai_confidence_threshold,
+        paper_trade=data.paper_trade,
+        timeframe=data.timeframe,
     )
     return {"status": "updated"}

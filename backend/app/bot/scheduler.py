@@ -7,11 +7,26 @@ from loguru import logger
 
 from app.bot.engine import BotEngine
 
+# Timeframe → cron schedule mapping
+TIMEFRAME_CRON = {
+    "M1":  {"minute": "*"},                          # every 1 min
+    "M5":  {"minute": "0,5,10,15,20,25,30,35,40,45,50,55"},  # every 5 min
+    "M15": {"minute": "0,15,30,45"},                 # every 15 min
+    "M30": {"minute": "0,30"},                       # every 30 min
+    "H1":  {"minute": "0"},                          # every hour
+    "H4":  {"minute": "0", "hour": "0,4,8,12,16,20"},  # every 4 hours
+    "D1":  {"minute": "0", "hour": "0"},             # daily
+}
+
 
 class BotScheduler:
     def __init__(self, bot: BotEngine):
         self.bot = bot
         self.scheduler = AsyncIOScheduler()
+        self._current_tf = bot.timeframe
+
+    def _get_cron_kwargs(self, timeframe: str) -> dict:
+        return TIMEFRAME_CRON.get(timeframe, {"minute": "0,15,30,45"})
 
     def start(self):
         # Update price cache every 1 second
@@ -24,15 +39,17 @@ class BotScheduler:
             coalesce=True,
         )
 
-        # Run strategy every 15 minutes (candle close)
+        # Run strategy on candle close — schedule based on timeframe
+        cron_kwargs = self._get_cron_kwargs(self.bot.timeframe)
         self.scheduler.add_job(
             self._candle_job,
             "cron",
-            minute="0,15,30,45",
+            **cron_kwargs,
             id="bot_candle",
             max_instances=1,
             coalesce=True,
         )
+        logger.info(f"Candle job scheduled for {self.bot.timeframe}: {cron_kwargs}")
 
         # Fetch sentiment every 15 minutes (offset by 2 min)
         self.scheduler.add_job(
@@ -78,6 +95,23 @@ class BotScheduler:
         self.scheduler.start()
         logger.info("Scheduler started")
 
+    def reschedule_candle(self, timeframe: str):
+        """Reschedule the candle job when timeframe changes."""
+        if timeframe == self._current_tf:
+            return
+        cron_kwargs = self._get_cron_kwargs(timeframe)
+        self.scheduler.remove_job("bot_candle")
+        self.scheduler.add_job(
+            self._candle_job,
+            "cron",
+            **cron_kwargs,
+            id="bot_candle",
+            max_instances=1,
+            coalesce=True,
+        )
+        self._current_tf = timeframe
+        logger.info(f"Candle job rescheduled for {timeframe}: {cron_kwargs}")
+
     def stop(self):
         self.scheduler.shutdown(wait=False)
         logger.info("Scheduler stopped")
@@ -105,8 +139,20 @@ class BotScheduler:
 
     async def _weekly_optimize_job(self):
         logger.info("Weekly optimization triggered")
-        # Will be wired to strategy optimizer in main.py
-        pass
+        if not self.bot._optimizer:
+            logger.warning("Optimizer not configured, skipping")
+            return
+        try:
+            result = await self.bot._optimizer.optimize(self.bot.strategy.get_params())
+            if result:
+                logger.info(f"Optimization result: {result.assessment} (confidence={result.confidence})")
+                await self.bot._notify(self.bot.notifier.send_optimization_report(
+                    result.assessment, result.confidence,
+                ))
+            else:
+                logger.warning("Optimization returned no result")
+        except Exception as e:
+            logger.error(f"Weekly optimization error: {e}")
 
     async def _daily_reset_job(self):
         logger.info("Daily reset triggered")

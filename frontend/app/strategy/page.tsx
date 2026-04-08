@@ -24,6 +24,7 @@ import {
 const strategyDescriptions: Record<string, string> = {
   ema_crossover: "Buy when fast EMA crosses above slow EMA, sell on cross below. Simple trend-following strategy.",
   rsi_filter: "EMA crossover with RSI filter gate. Avoids overbought buys and oversold sells.",
+  breakout: "Buy when price breaks above N-period high channel, sell on break below. Filtered by ATR and volume.",
 };
 
 export default function StrategyPage() {
@@ -31,6 +32,7 @@ export default function StrategyPage() {
   const [selectedStrategy, setSelectedStrategy] = useState("ema_crossover");
   const [params, setParams] = useState({
     fast_period: 20, slow_period: 50, rsi_period: 14, rsi_overbought: 70, rsi_oversold: 30,
+    lookback: 20, atr_period: 14, atr_threshold: 0.5, volume_filter: true,
   });
   const [riskParams, setRiskParams] = useState({
     risk_per_trade: 1.0, max_daily_loss: 3.0, max_concurrent: 3, max_lot: 1.0,
@@ -57,8 +59,30 @@ export default function StrategyPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const getStrategyParams = () => {
+    if (selectedStrategy === "ema_crossover") {
+      return { fast_period: params.fast_period, slow_period: params.slow_period };
+    }
+    if (selectedStrategy === "breakout") {
+      return {
+        lookback: params.lookback,
+        atr_period: params.atr_period,
+        atr_threshold: params.atr_threshold,
+        volume_filter: params.volume_filter,
+      };
+    }
+    // RSI Filter uses ema_fast/ema_slow instead of fast_period/slow_period
+    return {
+      ema_fast: params.fast_period,
+      ema_slow: params.slow_period,
+      rsi_period: params.rsi_period,
+      rsi_overbought: params.rsi_overbought,
+      rsi_oversold: params.rsi_oversold,
+    };
+  };
+
   const handleSave = async () => {
-    await updateStrategy(selectedStrategy, params);
+    await updateStrategy(selectedStrategy, getStrategyParams());
     await updateSettings({
       use_ai_filter: aiSettings.use_ai_filter,
       ai_confidence_threshold: aiSettings.confidence_threshold,
@@ -71,7 +95,7 @@ export default function StrategyPage() {
     setLoading(true);
     try {
       const res = await runBacktest({
-        strategy: selectedStrategy, params, count: 5000,
+        strategy: selectedStrategy, params: getStrategyParams(), count: 5000,
         use_ai_filter: aiSettings.use_ai_filter, initial_balance: 10000,
       });
       setBacktestResult(res.data);
@@ -84,7 +108,7 @@ export default function StrategyPage() {
     <div className="p-6 space-y-6">
       <PageHeader title="Strategy" subtitle="Configure trading strategy and risk parameters" />
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Strategy */}
         <Card className="bg-card border-border">
           <CardHeader>
@@ -110,10 +134,14 @@ export default function StrategyPage() {
             </div>
 
             <div className="space-y-4">
-              <ParamSlider label="Fast EMA" value={params.fast_period} min={5} max={50}
-                onChange={(v) => setParams({ ...params, fast_period: v })} />
-              <ParamSlider label="Slow EMA" value={params.slow_period} min={20} max={200}
-                onChange={(v) => setParams({ ...params, slow_period: v })} />
+              {selectedStrategy !== "breakout" && (
+                <>
+                  <ParamSlider label="Fast EMA" value={params.fast_period} min={5} max={50}
+                    onChange={(v) => setParams({ ...params, fast_period: v })} />
+                  <ParamSlider label="Slow EMA" value={params.slow_period} min={20} max={200}
+                    onChange={(v) => setParams({ ...params, slow_period: v })} />
+                </>
+              )}
               {selectedStrategy === "rsi_filter" && (
                 <>
                   <ParamSlider label="RSI Period" value={params.rsi_period} min={5} max={30}
@@ -122,6 +150,23 @@ export default function StrategyPage() {
                     onChange={(v) => setParams({ ...params, rsi_overbought: v })} />
                   <ParamSlider label="RSI Oversold" value={params.rsi_oversold} min={15} max={40}
                     onChange={(v) => setParams({ ...params, rsi_oversold: v })} />
+                </>
+              )}
+              {selectedStrategy === "breakout" && (
+                <>
+                  <ParamSlider label="Channel Lookback" value={params.lookback} min={10} max={50}
+                    onChange={(v) => setParams({ ...params, lookback: v })} />
+                  <ParamSlider label="ATR Period" value={params.atr_period} min={7} max={30}
+                    onChange={(v) => setParams({ ...params, atr_period: v })} />
+                  <ParamSlider label="ATR Threshold" value={params.atr_threshold} min={0.1} max={2.0} step={0.1}
+                    onChange={(v) => setParams({ ...params, atr_threshold: v })} />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Volume Filter</span>
+                    <Switch
+                      checked={params.volume_filter}
+                      onCheckedChange={(v) => setParams({ ...params, volume_filter: v })}
+                    />
+                  </div>
                 </>
               )}
             </div>
@@ -201,7 +246,7 @@ export default function StrategyPage() {
 
       {/* Backtest Results */}
       {backtestResult && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard icon={BarChart3} label="Total Trades" value={backtestResult.total_trades as number} />
           <StatCard
             icon={TrendingUp}

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -31,6 +32,8 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import SentimentBadge from "@/components/ai/SentimentBadge";
 import NewsCard from "@/components/ai/NewsCard";
+import PriceChart from "@/components/chart/PriceChart";
+import EventFeed from "@/components/dashboard/EventFeed";
 import {
   getBotStatus,
   startBot,
@@ -40,14 +43,16 @@ import {
   getLatestSentiment,
   getSentimentHistory,
   updateSettings,
+  getAccount,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { useBotStore } from "@/store/botStore";
 
 export default function DashboardPage() {
-  const { status, positions, sentiment, tick, setStatus, setPositions, setSentiment, setTick } =
+  const { status, positions, sentiment, tick, events, setStatus, setPositions, setSentiment, setTick, addEvent } =
     useBotStore();
   const [loading, setLoading] = useState(true);
+  const [account, setAccount] = useState<{ balance: number; equity: number; margin: number; free_margin: number; profit: number } | null>(null);
   const [news, setNews] = useState<
     { headline: string; source: string; sentiment_label: string; sentiment_score: number; created_at: string }[]
   >([]);
@@ -55,16 +60,18 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, posRes, sentRes, newsRes] = await Promise.all([
+      const [statusRes, posRes, sentRes, newsRes, accRes] = await Promise.all([
         getBotStatus(),
         getPositions(),
         getLatestSentiment(),
         getSentimentHistory(1),
+        getAccount().catch(() => null),
       ]);
       setStatus(statusRes.data);
       setPositions(posRes.data.positions || []);
       setSentiment(sentRes.data);
       setNews((newsRes.data.history || []).slice(0, 5));
+      if (accRes) setAccount(accRes.data);
     } catch (e) {
       console.error("Failed to fetch data:", e);
     } finally {
@@ -85,7 +92,16 @@ export default function DashboardPage() {
       if (d.positions) setPositions(d.positions);
     });
     subscribe("sentiment_update", (data) => { if (data) setSentiment(data as NonNullable<typeof sentiment>); });
-  }, [subscribe, setTick, setPositions, setSentiment]);
+    subscribe("bot_event", (data) => {
+      const d = data as { type: string; data?: Record<string, unknown>; ticket?: number };
+      const message = d.type === "trade_opened"
+        ? `${d.data?.type} ${d.data?.lot} @ ${d.data?.price}`
+        : d.type === "trade_closed"
+          ? `Position #${d.ticket} closed`
+          : d.type;
+      addEvent({ type: d.type, message, timestamp: new Date().toISOString() });
+    });
+  }, [subscribe, setTick, setPositions, setSentiment, addEvent]);
 
   const handleStart = async () => { await startBot(); fetchData(); };
   const handleStop = async () => { await stopBot(); fetchData(); };
@@ -100,6 +116,7 @@ export default function DashboardPage() {
     fetchData();
   };
 
+  const [chartTimeframe, setChartTimeframe] = useState("M15");
   const isRunning = status?.state === "RUNNING";
   const unrealizedPnL = positions.reduce((sum, p) => sum + (p.profit || 0), 0);
 
@@ -107,7 +124,7 @@ export default function DashboardPage() {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
           ))}
@@ -138,6 +155,11 @@ export default function DashboardPage() {
             </span>
           </div>
         )}
+        {status?.paper_trade && (
+          <Badge variant="outline" className="border-amber-400 text-amber-400 text-[10px]">
+            PAPER
+          </Badge>
+        )}
         <div className="flex items-center gap-1.5">
           {isConnected ? (
             <Wifi className="size-3.5 text-green-400" />
@@ -151,8 +173,8 @@ export default function DashboardPage() {
       </PageHeader>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard icon={Wallet} label="Balance" value="—" variant="gold" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={Wallet} label="Balance" value={account ? `$${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}` : "—"} variant="gold" />
         <StatCard
           icon={TrendingUp}
           label="Unrealized P&L"
@@ -169,20 +191,40 @@ export default function DashboardPage() {
       </div>
 
       {/* Price Chart + Controls */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2 bg-card border-border border-t-2 border-t-primary">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2 bg-card border-border border-t-2 border-t-primary">
           <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-3">
-              <span>XAUUSD</span>
-              {sentiment && (
-                <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
-              )}
+            <CardTitle className="text-sm flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span>{status?.symbol || "GOLD"}</span>
+                {sentiment && (
+                  <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
+                )}
+              </div>
+              <div className="flex gap-0.5 bg-muted/50 rounded-md p-0.5">
+                {["M1", "M5", "M15", "H1", "H4", "D1"].map((tf) => (
+                  <button
+                    key={tf}
+                    type="button"
+                    onClick={() => setChartTimeframe(tf)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      chartTimeframe === tf
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-center h-56">
-            <p className="text-muted-foreground text-sm">
-              Price chart — TradingView Lightweight Charts
-            </p>
+          <CardContent className="h-64">
+            <PriceChart
+              symbol={status?.symbol || "GOLD"}
+              timeframe={chartTimeframe}
+              tick={tick}
+            />
           </CardContent>
         </Card>
 
@@ -222,6 +264,19 @@ export default function DashboardPage() {
             <Separator />
 
             <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Paper Trade</span>
+              <Switch
+                checked={status?.paper_trade ?? false}
+                onCheckedChange={async (v) => { await updateSettings({ paper_trade: v }); fetchData(); }}
+              />
+            </div>
+            {status?.paper_trade && (
+              <p className="text-[10px] text-amber-400 bg-amber-400/10 rounded px-2 py-1">
+                Paper mode — no real orders sent to MT5
+              </p>
+            )}
+
+            <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">AI Filter</span>
               <Switch
                 checked={status?.use_ai_filter ?? true}
@@ -238,17 +293,29 @@ export default function DashboardPage() {
                 <span>Symbol</span>
                 <span className="text-foreground font-medium">{status?.symbol || "—"}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex items-center justify-between">
                 <span>Timeframe</span>
-                <span className="text-foreground font-medium">{status?.timeframe || "—"}</span>
+                <Select
+                  value={status?.timeframe || "M15"}
+                  onValueChange={async (v) => { if (v) { await updateSettings({ timeframe: v }); fetchData(); } }}
+                >
+                  <SelectTrigger className="w-24 h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["M1", "M5", "M15", "M30", "H1", "H4", "D1"].map((tf) => (
+                      <SelectItem key={tf} value={tf}>{tf}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* News + Positions */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* News + Positions + Events */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="bg-card border-border">
           <CardHeader>
             <CardTitle className="text-sm">News Feed</CardTitle>
@@ -327,6 +394,15 @@ export default function DashboardPage() {
                 No open positions
               </p>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-sm">Events</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EventFeed events={events} />
           </CardContent>
         </Card>
       </div>

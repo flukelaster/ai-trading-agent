@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Play, BarChart3, TrendingUp, DollarSign, Target, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
-import { runBacktest } from "@/lib/api";
+import { runBacktest, getCurrentStrategy } from "@/lib/api";
 import {
   AreaChart,
   Area,
@@ -24,15 +24,23 @@ export default function BacktestPage() {
   const [strategy, setStrategy] = useState("ema_crossover");
   const [count, setCount] = useState(5000);
   const [timeframe, setTimeframe] = useState("M15");
-  const [useAI, setUseAI] = useState(false);
+
   const [balance, setBalance] = useState(10000);
+  const [strategyParams, setStrategyParams] = useState<Record<string, unknown> | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    getCurrentStrategy().then((res) => {
+      if (res.data?.name) setStrategy(res.data.name);
+      if (res.data?.params) setStrategyParams(res.data.params);
+    }).catch(() => {});
+  }, []);
 
   const handleRun = async () => {
     setLoading(true);
     try {
-      const res = await runBacktest({ strategy, timeframe, count, use_ai_filter: useAI, initial_balance: balance });
+      const res = await runBacktest({ strategy, timeframe, count, initial_balance: balance });
       setResult(res.data);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
@@ -48,7 +56,7 @@ export default function BacktestPage() {
           <CardTitle className="text-sm">Configuration</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <div className="space-y-2">
               <label className="text-xs text-muted-foreground">Strategy</label>
               <Select value={strategy} onValueChange={(v) => v && setStrategy(v)}>
@@ -56,6 +64,7 @@ export default function BacktestPage() {
                 <SelectContent>
                   <SelectItem value="ema_crossover">EMA Crossover</SelectItem>
                   <SelectItem value="rsi_filter">RSI Filter</SelectItem>
+                  <SelectItem value="breakout">Breakout</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -87,10 +96,6 @@ export default function BacktestPage() {
                 onChange={(e) => setBalance(parseFloat(e.target.value) || 10000)}
               />
             </div>
-            <div className="flex items-center gap-3 pt-2">
-              <Switch checked={useAI} onCheckedChange={setUseAI} />
-              <span className="text-sm text-muted-foreground">Simulate AI Filter</span>
-            </div>
             <div className="pt-2">
               <Button
                 onClick={handleRun}
@@ -107,7 +112,7 @@ export default function BacktestPage() {
 
       {result && (
         <>
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <StatCard icon={BarChart3} label="Total Trades" value={result.total_trades as number} />
             <StatCard
               icon={TrendingUp}

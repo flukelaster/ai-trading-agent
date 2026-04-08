@@ -15,7 +15,10 @@ export const updateStrategy = (name: string, params?: Record<string, unknown>) =
 export const updateSettings = (data: {
   use_ai_filter?: boolean;
   ai_confidence_threshold?: number;
+  paper_trade?: boolean;
+  timeframe?: string;
 }) => api.put("/api/bot/settings", data);
+export const getAccount = () => api.get("/api/bot/account");
 
 // Positions
 export const getPositions = () => api.get("/api/positions");
@@ -54,7 +57,11 @@ export const runBacktest = (params: {
   count?: number;
   use_ai_filter?: boolean;
   initial_balance?: number;
-}) => api.post("/api/backtest/run", params);
+}) => api.post("/api/backtest/run", params, { timeout: 60000 });
+
+// Market Data
+export const getOHLCV = (timeframe: string = "M15", count: number = 200) =>
+  api.get("/api/market-data/ohlcv", { params: { timeframe, count } });
 
 // Health
 export const getHealth = () => api.get("/health");

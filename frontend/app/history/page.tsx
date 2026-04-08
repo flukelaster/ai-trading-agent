@@ -19,6 +19,16 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import SentimentBadge from "@/components/ai/SentimentBadge";
 import { getTradeHistory, getPerformance } from "@/lib/api";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+} from "recharts";
 
 type Trade = {
   id: number; ticket: number; symbol: string; type: string; lot: number;
@@ -166,7 +176,7 @@ export default function HistoryPage() {
         </TabsContent>
 
         <TabsContent value="performance" className="mt-4">
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               icon={BarChart3}
               label="Total Trades"
@@ -191,6 +201,59 @@ export default function HistoryPage() {
               variant={((performance?.avg_profit as number) ?? 0) > 0 ? "success" : "danger"}
             />
           </div>
+
+          {/* Cumulative P&L Chart */}
+          {trades.filter((t) => t.profit !== null).length > 0 && (
+            <Card className="bg-card border-border mt-4">
+              <CardHeader>
+                <CardTitle className="text-sm">Cumulative P&L</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart
+                    data={trades
+                      .filter((t) => t.profit !== null && t.close_time)
+                      .sort((a, b) => new Date(a.close_time!).getTime() - new Date(b.close_time!).getTime())
+                      .reduce<{ date: string; pnl: number }[]>((acc, t) => {
+                        const prev = acc.length > 0 ? acc[acc.length - 1].pnl : 0;
+                        acc.push({
+                          date: new Date(t.close_time!).toLocaleDateString(),
+                          pnl: prev + (t.profit ?? 0),
+                        });
+                        return acc;
+                      }, [])}
+                  >
+                    <defs>
+                      <linearGradient id="pnlGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#d4af37" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#d4af37" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis dataKey="date" stroke="#8a8fa0" fontSize={10} />
+                    <YAxis stroke="#8a8fa0" fontSize={10} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "rgba(20,20,30,0.9)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "8px",
+                      }}
+                      labelStyle={{ color: "#8a8fa0" }}
+                      formatter={(value) => [`$${Number(value).toFixed(2)}`, "P&L"]}
+                    />
+                    <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
+                    <Area
+                      type="monotone"
+                      dataKey="pnl"
+                      stroke="#d4af37"
+                      strokeWidth={2}
+                      fill="url(#pnlGradient)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
