@@ -28,7 +28,7 @@ async def check_health(bot_engine, connector, redis_client, ai_client) -> dict:
     ai_ok = ai_client.client is not None
 
     return {
-        "status": "ok" if all([mt5_ok, redis_ok]) else "degraded",
+        "status": "ok" if redis_ok else "degraded",
         "mt5_connected": mt5_ok,
         "redis_connected": redis_ok,
         "ai_available": ai_ok,
