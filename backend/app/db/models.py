@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     Float,
     Integer,
+    LargeBinary,
     String,
     Text,
     func,
@@ -134,6 +135,7 @@ class MLModelLog(Base):
     metrics: Mapped[str] = mapped_column(Text)  # JSON
     feature_importance: Mapped[str] = mapped_column(Text)  # JSON
     model_path: Mapped[str] = mapped_column(String(255))
+    model_binary: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()

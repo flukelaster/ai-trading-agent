@@ -3,9 +3,11 @@ ML Model API routes — training, prediction, and status.
 """
 
 import asyncio
+import io
 import json
 from datetime import datetime, timezone
 
+import joblib
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import desc, select
@@ -56,15 +58,19 @@ async def train_model(req: TrainRequest):
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, trainer.train, X, y, req.test_size)
 
-    # Save model
+    # Save model to file (local) and serialize to bytes (for DB)
     model_path = settings.ml_model_path
     trainer.save_model(model_path)
     result.model_path = model_path
 
+    # Serialize model to bytes for DB storage
+    buf = io.BytesIO()
+    joblib.dump({"model": trainer.model, "features": trainer.feature_columns}, buf)
+    model_bytes = buf.getvalue()
+
     # Save to DB
     try:
         from app.db.models import MLModelLog
-        # Deactivate previous active models
         from sqlalchemy import update
         await _db_session.execute(
             update(MLModelLog).where(MLModelLog.is_active == True).values(is_active=False)
@@ -81,6 +87,7 @@ async def train_model(req: TrainRequest):
             metrics=json.dumps(result.report),
             feature_importance=json.dumps(result.feature_importance),
             model_path=model_path,
+            model_binary=model_bytes,
             is_active=True,
         )
         _db_session.add(log)
@@ -122,17 +129,36 @@ async def model_status():
 @router.post("/predict")
 async def predict_now():
     """Run ML prediction on current market data."""
-    if _collector is None:
+    if _collector is None or _db_session is None:
         raise HTTPException(status_code=503, detail="Not initialized")
 
+    # Try loading model from file first, then fall back to DB
     from pathlib import Path
-    if not Path(settings.ml_model_path).exists():
+    model_data = None
+
+    if Path(settings.ml_model_path).exists():
+        model_data = joblib.load(settings.ml_model_path)
+    else:
+        # Load from DB
+        from app.db.models import MLModelLog
+        result = await _db_session.execute(
+            select(MLModelLog).where(
+                MLModelLog.is_active == True,
+                MLModelLog.model_binary.isnot(None),
+            ).limit(1)
+        )
+        log = result.scalar_one_or_none()
+        if log and log.model_binary:
+            buf = io.BytesIO(log.model_binary)
+            model_data = joblib.load(buf)
+
+    if model_data is None:
         return {"error": "No trained model found. Train one first."}
 
     from app.ml.predictor import MLPredictor
-    predictor = MLPredictor(settings.ml_model_path)
-    if not predictor.is_ready:
-        return {"error": "Failed to load model"}
+    predictor = MLPredictor.__new__(MLPredictor)
+    predictor.model = model_data["model"]
+    predictor.feature_columns = model_data.get("features", [])
 
     # Get recent OHLCV from DB
     df = await _collector.load_from_db(settings.symbol, settings.timeframe)
