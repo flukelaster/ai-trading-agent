@@ -121,9 +121,9 @@ class ModelTrainer:
         self.model = lgb.train(
             params,
             train_data,
-            num_boost_round=500,
+            num_boost_round=200,
             valid_sets=[valid_data],
-            callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)],
+            callbacks=[lgb.early_stopping(20), lgb.log_evaluation(0)],
         )
 
         # Evaluate
