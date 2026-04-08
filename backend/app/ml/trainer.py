@@ -103,16 +103,17 @@ class ModelTrainer:
             "objective": "multiclass",
             "num_class": 3,
             "metric": "multi_logloss",
-            "learning_rate": 0.05,
-            "num_leaves": 31,
-            "max_depth": 6,
-            "min_child_samples": 20,
-            "feature_fraction": 0.8,
-            "bagging_fraction": 0.8,
+            "learning_rate": 0.1,
+            "num_leaves": 15,
+            "max_depth": 4,
+            "min_child_samples": 50,
+            "feature_fraction": 0.7,
+            "bagging_fraction": 0.7,
             "bagging_freq": 5,
             "reg_alpha": 0.1,
             "reg_lambda": 0.1,
             "verbose": -1,
+            "num_threads": 1,
         }
 
         train_data = lgb.Dataset(X_train, label=y_train_mapped, weight=sample_weights)
@@ -121,9 +122,9 @@ class ModelTrainer:
         self.model = lgb.train(
             params,
             train_data,
-            num_boost_round=200,
+            num_boost_round=100,
             valid_sets=[valid_data],
-            callbacks=[lgb.early_stopping(20), lgb.log_evaluation(0)],
+            callbacks=[lgb.early_stopping(10), lgb.log_evaluation(0)],
         )
 
         # Evaluate
