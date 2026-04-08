@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
 
     # Bot Config
-    symbol: str = "XAUUSD"
+    symbol: str = "GOLD"
     timeframe: str = "M15"
     max_risk_per_trade: float = 0.01
     max_daily_loss: float = 0.03

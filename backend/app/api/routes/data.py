@@ -22,7 +22,7 @@ def get_collector():
 
 
 class CollectRequest(BaseModel):
-    symbol: str = "XAUUSD"
+    symbol: str = "GOLD"
     timeframe: str = "M15"
     from_date: str  # ISO format: YYYY-MM-DD
     to_date: str
