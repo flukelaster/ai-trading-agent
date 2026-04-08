@@ -164,7 +164,10 @@ class BotEngine:
                 return
 
             self.last_signal_time = datetime.now(timezone.utc)
-            logger.info(f"Signal detected: {'BUY' if signal == 1 else 'SELL'}")
+            signal_label = "BUY" if signal == 1 else "SELL"
+            logger.info(f"Signal detected: {signal_label}")
+            await self._log_event(BotEventType.SIGNAL_DETECTED, f"{signal_label} signal on {self.symbol}")
+            await self._push_event("bot_event", {"type": "signal_detected", "signal": signal_label, "symbol": self.symbol})
 
             # 3. Get AI sentiment (optional)
             ai_sentiment = None
@@ -186,6 +189,8 @@ class BotEngine:
             )
             if not can_trade:
                 logger.info(f"Trade blocked: {reason}")
+                await self._log_event(BotEventType.TRADE_BLOCKED, f"{signal_label} blocked: {reason}")
+                await self._push_event("bot_event", {"type": "trade_blocked", "signal": signal_label, "reason": reason})
                 return
 
             # 5. Calculate lot size and SL/TP
@@ -225,6 +230,13 @@ class BotEngine:
                 result = await self.executor.place_order(
                     self.symbol, order_type, lot, sl_tp.sl, sl_tp.tp, comment
                 )
+
+            if not result.get("success"):
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"Order failed: {order_type} {lot} {self.symbol} — {error_msg}")
+                await self._log_event(BotEventType.ORDER_FAILED, f"{order_type} {lot} {self.symbol}: {error_msg}")
+                await self._push_event("bot_event", {"type": "order_failed", "order": order_type, "symbol": self.symbol, "lot": lot, "error": error_msg})
+                return
 
             if result.get("success"):
                 # 7. Save trade to DB
