@@ -91,7 +91,7 @@ class MacroDataService:
             rows = [{
                 "series_id": series_id,
                 "series_name": series_name,
-                "date": obs["date"],
+                "date": datetime.fromisoformat(obs["date"]),
                 "value": obs["value"],
             } for obs in observations]
 
