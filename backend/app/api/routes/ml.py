@@ -20,6 +20,28 @@ _collector = None
 _db_session = None
 
 
+async def _load_macro_from_db(db_session) -> "pd.DataFrame | None":
+    """Load latest macro data from DB and return as wide DataFrame indexed by date."""
+    try:
+        import pandas as pd
+        from app.db.models import MacroData
+        from sqlalchemy import select
+
+        result = await db_session.execute(select(MacroData).order_by(MacroData.date))
+        rows = result.scalars().all()
+        if not rows:
+            return None
+
+        records = [{"date": r.date, "series_id": r.series_id, "value": r.value} for r in rows]
+        df = pd.DataFrame(records)
+        # Pivot: rows=date, columns=series_id
+        macro_wide = df.pivot_table(index="date", columns="series_id", values="value", aggfunc="last")
+        macro_wide.index = pd.to_datetime(macro_wide.index)
+        return macro_wide.reset_index().rename(columns={"index": "date"}).set_index("date")
+    except Exception:
+        return None
+
+
 def set_ml_deps(collector, db_session):
     global _collector, _db_session
     _collector = collector
@@ -34,6 +56,7 @@ class TrainRequest(BaseModel):
     tp_pips: float = 5.0
     sl_pips: float = 5.0
     test_size: float = 0.2
+    use_walk_forward: bool = False
 
 
 @router.post("/train")
@@ -46,17 +69,23 @@ async def train_model(req: TrainRequest):
     if df.empty or len(df) < 500:
         return {"error": f"Insufficient data: {len(df)} bars (need 500+)"}
 
+    # Load macro data from DB
+    macro_df = await _load_macro_from_db(_db_session)
+
     from app.ml.trainer import ModelTrainer
     trainer = ModelTrainer()
 
-    # Prepare dataset
-    X, y = trainer.prepare_dataset(df, req.forward_bars, req.tp_pips, req.sl_pips)
+    # Prepare dataset (with macro features if available)
+    X, y = trainer.prepare_dataset(df, req.forward_bars, req.tp_pips, req.sl_pips, macro_df=macro_df)
     if len(X) < 200:
         return {"error": f"Insufficient labeled samples: {len(X)} (need 200+)"}
 
     # Train in thread pool to avoid blocking event loop
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, trainer.train, X, y, req.test_size)
+    if req.use_walk_forward:
+        result = await loop.run_in_executor(None, trainer.train_walk_forward, X, y)
+    else:
+        result = await loop.run_in_executor(None, trainer.train, X, y, req.test_size)
 
     # Save model to file (local) and serialize to bytes (for DB)
     model_path = settings.ml_model_path

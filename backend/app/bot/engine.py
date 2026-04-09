@@ -12,6 +12,28 @@ def _naive_utc() -> datetime:
     """Return current UTC time without timezone info (for DB columns without tz)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+
+def _get_h1_trend(df) -> int:
+    """
+    Determine H1 trend direction using EMA(21) slope.
+    Returns +1 (uptrend), -1 (downtrend), or 0 (neutral/insufficient data).
+    """
+    if df is None or df.empty or len(df) < 22:
+        return 0
+    try:
+        from app.strategy.indicators import ema as _ema
+        closes = df["close"]
+        ema21 = _ema(closes, 21)
+        current_price = closes.iloc[-1]
+        ema_val = ema21.iloc[-1]
+        if current_price > ema_val * 1.0005:   # price clearly above EMA
+            return 1
+        elif current_price < ema_val * 0.9995:  # price clearly below EMA
+            return -1
+        return 0
+    except Exception:
+        return 0
+
 import redis.asyncio as redis
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,6 +206,21 @@ class BotEngine:
             signal = int(df.iloc[-2]["signal"])  # Previous bar's signal (confirmed candle)
             if signal == 0:
                 return
+
+            # Phase G: Multi-timeframe H1 trend confirmation
+            from app.config import settings as _settings
+            if _settings.use_mtf_filter:
+                h1_df = await self.market_data.get_ohlcv(self.symbol, "H1", 50)
+                h1_trend = _get_h1_trend(h1_df)
+                if h1_trend != 0 and h1_trend != signal:
+                    h1_label = "uptrend" if h1_trend == 1 else "downtrend"
+                    signal_label_tmp = "BUY" if signal == 1 else "SELL"
+                    logger.info(f"MTF filter blocked: M15={signal_label_tmp}, H1={h1_label}")
+                    await self._log_event(
+                        BotEventType.TRADE_BLOCKED,
+                        f"{signal_label_tmp} blocked: H1 {h1_label} disagrees"
+                    )
+                    return
 
             self.last_signal_time = datetime.now(timezone.utc)
             signal_label = "BUY" if signal == 1 else "SELL"

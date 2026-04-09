@@ -35,6 +35,8 @@ FEATURE_COLUMNS = [
     "is_london", "is_ny", "is_overlap",
     # Volume
     "volume_sma_ratio",
+    # ADX regime
+    "adx_14", "adx_di_plus", "adx_di_minus",
 ]
 
 
@@ -127,6 +129,13 @@ def build_features(df: pd.DataFrame, macro_df: pd.DataFrame | None = None) -> pd
     vol_sma = v.rolling(20).mean()
     out["volume_sma_ratio"] = v / vol_sma.replace(0, np.nan)
 
+    # ADX (Average Directional Index) — regime detection
+    from app.strategy.indicators import adx as _adx
+    adx_result = _adx(h, l, c, 14)
+    out["adx_14"] = adx_result["adx"]
+    out["adx_di_plus"] = adx_result["di_plus"]
+    out["adx_di_minus"] = adx_result["di_minus"]
+
     # Merge macro data if available
     if macro_df is not None and not macro_df.empty:
         out = _merge_macro_features(out, macro_df)
@@ -141,31 +150,50 @@ def build_labels(
     sl_pips: float = 5.0,
 ) -> pd.Series:
     """
-    Label each bar based on forward-looking price action.
-    1 = TP hit first (long would win) → BUY signal
-    -1 = SL hit first (short would win) → SELL signal
-    0 = neither hit → no trade
+    Triple Barrier Labeling:
+    - Barrier 1 (UP):   highest high in next forward_bars >= entry + tp_pips → BUY (1)
+    - Barrier 2 (DOWN): lowest low in next forward_bars <= entry - sl_pips   → SELL (-1)
+    - Barrier 3 (TIME): neither hit within forward_bars                       → HOLD (0)
+
+    When both barriers could be hit, whichever is hit FIRST wins.
+    Last forward_bars rows are dropped (NaN) since they can't be labeled.
+    tp_pips is the long TP; sl_pips is the long SL. For short signals the barriers swap.
     """
-    labels = pd.Series(0, index=df.index, dtype=int)
+    labels = pd.Series(np.nan, index=df.index, dtype=float)
     closes = df["close"].values
     highs = df["high"].values
     lows = df["low"].values
+    n = len(df)
 
-    for i in range(len(df) - forward_bars):
+    for i in range(n - forward_bars):
         entry = closes[i]
-        tp_long = entry + tp_pips
-        sl_long = entry - sl_pips
+        tp_long = entry + tp_pips   # long TP
+        sl_long = entry - sl_pips   # long SL (= short TP)
+        tp_short = entry - tp_pips  # short TP
+        sl_short = entry + sl_pips  # short SL (= long SL for short)
 
-        for j in range(i + 1, min(i + forward_bars + 1, len(df))):
-            if lows[j] <= sl_long:
-                labels.iloc[i] = -1  # SL hit → bearish
-                break
-            if highs[j] >= tp_long:
-                labels.iloc[i] = 1  # TP hit → bullish
+        long_hit = None
+        short_hit = None
+
+        for j in range(i + 1, min(i + forward_bars + 1, n)):
+            if long_hit is None and highs[j] >= tp_long:
+                long_hit = j
+            if short_hit is None and lows[j] <= tp_short:
+                short_hit = j
+
+            # Once both hit or first one hit, no need to continue
+            if long_hit is not None and short_hit is not None:
                 break
 
-    # Mark last forward_bars as NaN (can't label)
-    labels.iloc[-forward_bars:] = 0
+        if long_hit is None and short_hit is None:
+            labels.iloc[i] = 0   # timeout — no conviction
+        elif long_hit is not None and short_hit is None:
+            labels.iloc[i] = 1   # BUY
+        elif short_hit is not None and long_hit is None:
+            labels.iloc[i] = -1  # SELL
+        else:
+            # Both hit — whichever came first wins
+            labels.iloc[i] = 1 if long_hit <= short_hit else -1
 
     return labels
 

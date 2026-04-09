@@ -13,7 +13,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Wallet, TrendingUp, Layers, Activity, Play, Square, ShieldAlert, Wifi, WifiOff,
+  Wallet, TrendingUp, Layers, Activity, Play, Square, ShieldAlert, Wifi, WifiOff, DollarSign,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
@@ -24,6 +24,7 @@ import EventFeed from "@/components/dashboard/EventFeed";
 import {
   getBotStatus, startBot, stopBot, emergencyStop, getPositions,
   getLatestSentiment, getSentimentHistory, updateSettings, getAccount,
+  getDailyPnl,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { useBotStore } from "@/store/botStore";
@@ -33,6 +34,7 @@ export default function DashboardPage() {
     useBotStore();
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<{ balance: number; equity: number; margin: number; free_margin: number; profit: number } | null>(null);
+  const [dailyPnl, setDailyPnl] = useState<{ daily_pnl: number; trade_count: number; wins: number; losses: number } | null>(null);
   const [news, setNews] = useState<
     { headline: string; source: string; sentiment_label: string; sentiment_score: number; created_at: string }[]
   >([]);
@@ -40,18 +42,20 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, posRes, sentRes, newsRes, accRes] = await Promise.all([
+      const [statusRes, posRes, sentRes, newsRes, accRes, pnlRes] = await Promise.all([
         getBotStatus().catch(() => null),
         getPositions().catch(() => null),
         getLatestSentiment().catch(() => null),
         getSentimentHistory(1).catch(() => null),
         getAccount().catch(() => null),
+        getDailyPnl().catch(() => null),
       ]);
       if (statusRes) setStatus(statusRes.data);
       if (posRes) setPositions(posRes.data.positions || []);
       if (sentRes) setSentiment(sentRes.data);
       if (newsRes) setNews((newsRes.data.history || []).slice(0, 5));
       if (accRes) setAccount(accRes.data);
+      if (pnlRes) setDailyPnl(pnlRes.data);
     } catch (e) {
       console.error("Failed to fetch data:", e);
     } finally {
@@ -169,13 +173,24 @@ export default function DashboardPage() {
       </PageHeader>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <StatCard icon={Wallet} label="Balance" value={account ? `$${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}` : "—"} variant="gold" />
         <StatCard
           icon={TrendingUp}
           label="Unrealized P&L"
           value={`${unrealizedPnL >= 0 ? "+" : ""}$${unrealizedPnL.toFixed(2)}`}
           variant={unrealizedPnL >= 0 ? "success" : "danger"}
+        />
+        <StatCard
+          icon={DollarSign}
+          label="Daily P&L"
+          value={
+            dailyPnl
+              ? `${dailyPnl.daily_pnl >= 0 ? "+" : ""}$${dailyPnl.daily_pnl.toFixed(2)}`
+              : "—"
+          }
+          subtitle={dailyPnl ? `${dailyPnl.wins}W / ${dailyPnl.losses}L (${dailyPnl.trade_count} trades)` : undefined}
+          variant={!dailyPnl ? "default" : dailyPnl.daily_pnl >= 0 ? "success" : "danger"}
         />
         <StatCard icon={Layers} label="Open Positions" value={positions.length} variant="default" />
         <StatCard

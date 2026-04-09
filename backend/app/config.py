@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # ML Model
     ml_model_path: str = "models/xauusd_signal.pkl"
     ml_confidence_threshold: float = 0.5
+    ml_confidence_dynamic: bool = True   # Phase E: ATR-based dynamic threshold
+    ml_adx_regime_filter: bool = True    # Phase D: suppress trades in low-ADX market
+    use_mtf_filter: bool = True          # Phase G: H1 trend confirmation
 
     # API
     secret_key: str = "changeme"

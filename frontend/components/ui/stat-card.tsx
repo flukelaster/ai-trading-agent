@@ -7,6 +7,7 @@ interface StatCardProps {
   icon: LucideIcon;
   label: string;
   value: string | number;
+  subtitle?: string;
   trend?: { direction: "up" | "down" | "flat"; label: string };
   variant?: "default" | "success" | "danger" | "warning" | "gold";
   className?: string;
@@ -32,6 +33,7 @@ export function StatCard({
   icon: Icon,
   label,
   value,
+  subtitle,
   trend,
   variant = "default",
   className,
@@ -77,6 +79,9 @@ export function StatCard({
         >
           {value}
         </p>
+        {subtitle && (
+          <p className="mt-0.5 text-[10px] text-muted-foreground font-medium truncate">{subtitle}</p>
+        )}
       </div>
     </div>
   );

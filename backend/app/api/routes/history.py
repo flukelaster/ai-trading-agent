@@ -60,6 +60,30 @@ async def get_trades(
     }
 
 
+@router.get("/daily-pnl")
+async def get_daily_pnl(db: AsyncSession = Depends(get_db)):
+    """Today's closed trade P&L (UTC day boundary)."""
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    result = await db.execute(
+        select(Trade).where(
+            Trade.close_time >= today,
+            Trade.profit.isnot(None),
+        )
+    )
+    trades = result.scalars().all()
+
+    total = round(sum(t.profit for t in trades), 2)
+    wins = sum(1 for t in trades if t.profit > 0)
+    losses = sum(1 for t in trades if t.profit <= 0)
+
+    return {
+        "daily_pnl": total,
+        "trade_count": len(trades),
+        "wins": wins,
+        "losses": losses,
+    }
+
+
 @router.get("/performance")
 async def get_performance(
     days: int = Query(30, ge=1, le=365),

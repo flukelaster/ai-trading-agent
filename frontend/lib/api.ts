@@ -26,6 +26,7 @@ export const closePosition = (ticket: number) =>
   api.delete(`/api/positions/${ticket}`);
 
 // History
+export const getDailyPnl = () => api.get("/api/history/daily-pnl");
 export const getTradeHistory = (params?: {
   days?: number;
   strategy?: string;

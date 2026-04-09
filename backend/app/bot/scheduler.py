@@ -102,6 +102,17 @@ class BotScheduler:
             max_instances=1,
         )
 
+        # Weekly ML retrain: Sunday 01:00 UTC
+        self.scheduler.add_job(
+            self._ml_retrain_job,
+            "cron",
+            day_of_week="sun",
+            hour=1,
+            minute=0,
+            id="ml_retrain",
+            max_instances=1,
+        )
+
         self.scheduler.start()
         logger.info("Scheduler started")
 
@@ -177,3 +188,105 @@ class BotScheduler:
     async def _daily_reset_job(self):
         logger.info("Daily reset triggered")
         await self.bot.circuit_breaker.reset()
+
+    async def _ml_retrain_job(self):
+        """Weekly ML retrain — trains on last 6 months of data, replaces model only if accuracy improves."""
+        logger.info("Weekly ML retrain triggered")
+        try:
+            import asyncio
+            import io
+            import json
+            from datetime import datetime, timedelta
+
+            import joblib
+            from sqlalchemy import select, update
+
+            from app.config import settings
+            from app.data.collector import DataCollector
+            from app.db.models import MLModelLog
+            from app.db.session import async_session
+            from app.ml.trainer import ModelTrainer
+
+            async with async_session() as session:
+                # Get current model accuracy for comparison
+                result = await session.execute(
+                    select(MLModelLog).where(MLModelLog.is_active == True).limit(1)
+                )
+                current_log = result.scalar_one_or_none()
+                current_accuracy = 0.0
+                if current_log and current_log.metrics:
+                    metrics = json.loads(current_log.metrics)
+                    current_accuracy = metrics.get("accuracy", 0.0)
+
+                # Load last 6 months of data
+                from_date = (datetime.utcnow() - timedelta(days=180)).strftime("%Y-%m-%d")
+                collector = DataCollector(session)
+                df = await collector.load_from_db(settings.symbol, settings.timeframe, from_date=from_date)
+
+                if df.empty or len(df) < 500:
+                    logger.warning(f"ML retrain skipped: insufficient data ({len(df)} bars)")
+                    return
+
+                trainer = ModelTrainer()
+                X, y = trainer.prepare_dataset(df)
+                if len(X) < 200:
+                    logger.warning(f"ML retrain skipped: insufficient labeled samples ({len(X)})")
+                    return
+
+                # Train in executor to avoid blocking
+                loop = asyncio.get_event_loop()
+                new_result = await loop.run_in_executor(None, trainer.train_walk_forward, X, y)
+
+                new_accuracy = new_result.accuracy
+                logger.info(f"ML retrain complete: new_accuracy={new_accuracy:.4f}, current_accuracy={current_accuracy:.4f}")
+
+                # Only replace if new model is better
+                if new_accuracy <= current_accuracy:
+                    logger.info("New model not better than current — keeping existing model")
+                    msg = (f"ML Retrain (weekly): new accuracy {new_accuracy:.1%} did NOT beat "
+                           f"current {current_accuracy:.1%} — keeping existing model")
+                else:
+                    # Save to file and DB
+                    trainer.save_model(settings.ml_model_path)
+
+                    buf = io.BytesIO()
+                    joblib.dump({"model": trainer.model, "features": trainer.feature_columns}, buf)
+                    model_bytes = buf.getvalue()
+
+                    await session.execute(
+                        update(MLModelLog).where(MLModelLog.is_active == True).values(is_active=False)
+                    )
+                    log = MLModelLog(
+                        model_name="lightgbm_xauusd_auto",
+                        timeframe=settings.timeframe,
+                        train_start=df.index[0].to_pydatetime(),
+                        train_end=df.index[int(len(df) * 0.8)].to_pydatetime(),
+                        test_start=df.index[int(len(df) * 0.8)].to_pydatetime(),
+                        test_end=df.index[-1].to_pydatetime(),
+                        metrics=json.dumps(new_result.report),
+                        feature_importance=json.dumps(new_result.feature_importance),
+                        model_path=settings.ml_model_path,
+                        model_binary=model_bytes,
+                        is_active=True,
+                    )
+                    session.add(log)
+                    await session.commit()
+
+                    # Reload model in strategy
+                    if hasattr(self.bot, 'strategy') and hasattr(self.bot.strategy, '_model_loaded'):
+                        self.bot.strategy._model_loaded = False
+                        await self.bot.strategy._ensure_model()
+
+                    msg = (f"ML Retrain (weekly): accuracy improved {current_accuracy:.1%} → "
+                           f"{new_accuracy:.1%} — new model deployed!")
+                    logger.info(msg)
+
+                # Send Telegram notification
+                if hasattr(self.bot, 'notifier') and self.bot.notifier:
+                    try:
+                        await self.bot.notifier.send_message(msg)
+                    except Exception:
+                        pass
+
+        except Exception as e:
+            logger.error(f"ML retrain job error: {e}")
