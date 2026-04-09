@@ -23,6 +23,8 @@ export const updateSettings = (data: {
   max_lot?: number;
 }) => api.put("/api/bot/settings", data);
 export const getAccount = () => api.get("/api/bot/account");
+export const getBotEvents = (params?: { days?: number; event_type?: string; limit?: number }) =>
+  api.get("/api/bot/events", { params });
 
 // Positions
 export const getPositions = () => api.get("/api/positions");

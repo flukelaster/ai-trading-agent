@@ -25,6 +25,7 @@ import {
   getBotStatus, startBot, stopBot, emergencyStop, getPositions,
   getLatestSentiment, getSentimentHistory, updateSettings, getAccount,
   getDailyPnl,
+  getBotEvents,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { useBotStore } from "@/store/botStore";
@@ -56,6 +57,22 @@ export default function DashboardPage() {
       if (newsRes) setNews((newsRes.data.history || []).slice(0, 5));
       if (accRes) setAccount(accRes.data);
       if (pnlRes) setDailyPnl(pnlRes.data);
+
+      // Load persisted events from DB (survives page refresh)
+      const eventsRes = await getBotEvents({ days: 1, limit: 50 }).catch(() => null);
+      if (eventsRes?.data?.events) {
+        const dbEvents = eventsRes.data.events.map((e: { type: string; message: string; created_at: string }) => ({
+          type: e.type,
+          message: e.message,
+          timestamp: e.created_at,
+        }));
+        // Only seed if store is empty (don't overwrite live WS events)
+        if (events.length === 0 && dbEvents.length > 0) {
+          for (const ev of dbEvents.reverse()) {
+            addEvent(ev);
+          }
+        }
+      }
     } catch (e) {
       console.error("Failed to fetch data:", e);
     } finally {

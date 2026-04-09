@@ -2,8 +2,15 @@
 Bot control API routes.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models import BotEvent
+from app.db.session import get_db
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 
@@ -112,3 +119,34 @@ async def update_settings(data: SettingsUpdate):
         max_lot=data.max_lot,
     )
     return {"status": "updated"}
+
+
+@router.get("/events")
+async def get_events(
+    days: int = Query(1, ge=1, le=30),
+    event_type: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get bot events — signals, blocks, trades, errors."""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    query = select(BotEvent).where(BotEvent.created_at >= cutoff)
+    if event_type:
+        query = query.where(BotEvent.event_type == event_type)
+    query = query.order_by(desc(BotEvent.created_at)).limit(limit)
+
+    result = await db.execute(query)
+    events = result.scalars().all()
+
+    return {
+        "events": [
+            {
+                "id": e.id,
+                "type": e.event_type.value,
+                "message": e.message,
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in events
+        ],
+        "total": len(events),
+    }
