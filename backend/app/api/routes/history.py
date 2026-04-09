@@ -62,25 +62,54 @@ async def get_trades(
 
 @router.get("/daily-pnl")
 async def get_daily_pnl(db: AsyncSession = Depends(get_db)):
-    """Today's closed trade P&L (UTC day boundary)."""
+    """Today's closed trade P&L — merges MT5 live history + DB records."""
+    from app.api.routes.bot import _bot
+
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    result = await db.execute(
+
+    # 1. Try MT5 live history first (catches all trades — bot + manual)
+    mt5_deals: list[dict] = []
+    if _bot is not None:
+        try:
+            result = await _bot.connector.get_history(days=1)
+            if result.get("success"):
+                for deal in result.get("data", []):
+                    try:
+                        deal_time = datetime.fromisoformat(deal["time"].replace("Z", ""))
+                    except Exception:
+                        continue
+                    if deal_time >= today and deal.get("profit") is not None:
+                        mt5_deals.append(deal)
+        except Exception:
+            pass
+
+    # 2. Also pull from DB (covers paper trades and offline history)
+    db_result = await db.execute(
         select(Trade).where(
             Trade.close_time >= today,
             Trade.profit.isnot(None),
         )
     )
-    trades = result.scalars().all()
+    db_trades = db_result.scalars().all()
 
-    total = round(sum(t.profit for t in trades), 2)
-    wins = sum(1 for t in trades if t.profit > 0)
-    losses = sum(1 for t in trades if t.profit <= 0)
+    # 3. Merge: prefer MT5 data; fallback to DB-only records not in MT5
+    if mt5_deals:
+        mt5_tickets = {d.get("ticket") for d in mt5_deals}
+        extra_db = [t for t in db_trades if t.ticket not in mt5_tickets]
+        profits = [d["profit"] for d in mt5_deals] + [t.profit for t in extra_db]
+    else:
+        profits = [t.profit for t in db_trades]
+
+    total = round(sum(profits), 2)
+    wins = sum(1 for p in profits if p > 0)
+    losses = sum(1 for p in profits if p <= 0)
 
     return {
         "daily_pnl": total,
-        "trade_count": len(trades),
+        "trade_count": len(profits),
         "wins": wins,
         "losses": losses,
+        "source": "mt5" if mt5_deals else "db",
     }
 
 

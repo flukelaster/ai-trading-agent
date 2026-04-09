@@ -392,6 +392,9 @@ class BotEngine:
 
             current_tickets = {p["ticket"] for p in positions}
 
+            # Always track ALL open positions (including manually opened ones)
+            self._known_tickets = self._known_tickets | current_tickets
+
             # Detect closed positions
             closed = self._known_tickets - current_tickets
             if closed and not self.paper_trade:
