@@ -168,6 +168,10 @@ class BotEngine:
             if df.empty:
                 return
 
+            # Lazy-load ML model from DB if strategy supports it
+            if hasattr(self.strategy, "_ensure_model"):
+                await self.strategy._ensure_model()
+
             df = self.strategy.calculate(df)
             if len(df) < 2:
                 return
