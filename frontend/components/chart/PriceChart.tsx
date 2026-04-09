@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { createChart, IChartApi, ISeriesApi, CandlestickData, ColorType, CandlestickSeries, LineSeries } from "lightweight-charts";
-import { getOHLCV } from "@/lib/api";
+import { createChart, IChartApi, ISeriesApi, CandlestickData, ColorType, CandlestickSeries, LineSeries, SeriesMarker, Time, createSeriesMarkers, ISeriesMarkersPluginApi } from "lightweight-charts";
+import { getOHLCV, getTradeHistory, getPositions } from "@/lib/api";
 
 type Props = {
   symbol: string;
@@ -35,6 +35,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const emaFastRef = useRef<ISeriesApi<"Line"> | null>(null);
   const emaSlowRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const [loading, setLoading] = useState(true);
   const lastCandleRef = useRef<{ time: number; open: number; high: number; low: number; close: number } | null>(null);
   const initialLoadRef = useRef(true);
@@ -95,6 +96,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
     seriesRef.current = series;
     emaFastRef.current = emaFastSeries;
     emaSlowRef.current = emaSlowSeries;
+    markersRef.current = createSeriesMarkers(series);
 
     const handleResize = () => {
       if (containerRef.current) {
@@ -112,6 +114,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
       seriesRef.current = null;
       emaFastRef.current = null;
       emaSlowRef.current = null;
+      markersRef.current = null;
     };
   }, [isDark]);
 
@@ -137,6 +140,70 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
           if (emaSlowRef.current) {
             const slowData = calcEMA(closeData, emaSlow);
             emaSlowRef.current.setData(slowData.map((d) => ({ time: d.time as CandlestickData["time"], value: d.value })));
+          }
+
+          // Fetch trades and overlay markers
+          try {
+            const [tradeRes, posRes] = await Promise.all([
+              getTradeHistory({ days: 7, limit: 100 }).catch(() => null),
+              getPositions().catch(() => null),
+            ]);
+
+            const markers: SeriesMarker<Time>[] = [];
+            const firstTime = candles[0]?.time as number;
+            const lastTime = candles[candles.length - 1]?.time as number;
+
+            // Closed trades — entry + exit arrows
+            if (tradeRes?.data?.trades) {
+              for (const t of tradeRes.data.trades) {
+                const openTs = Math.floor(new Date(t.open_time).getTime() / 1000);
+                if (openTs >= firstTime && openTs <= lastTime) {
+                  markers.push({
+                    time: openTs as Time,
+                    position: t.type === "BUY" ? "belowBar" : "aboveBar",
+                    color: t.type === "BUY" ? "#4ade80" : "#d03238",
+                    shape: t.type === "BUY" ? "arrowUp" : "arrowDown",
+                    text: `${t.type} ${t.lot}`,
+                  });
+                }
+                if (t.close_time) {
+                  const closeTs = Math.floor(new Date(t.close_time).getTime() / 1000);
+                  if (closeTs >= firstTime && closeTs <= lastTime) {
+                    const pnl = t.profit != null ? (t.profit >= 0 ? `+$${t.profit.toFixed(0)}` : `-$${Math.abs(t.profit).toFixed(0)}`) : "";
+                    markers.push({
+                      time: closeTs as Time,
+                      position: t.type === "BUY" ? "aboveBar" : "belowBar",
+                      color: (t.profit ?? 0) >= 0 ? "#4ade80" : "#d03238",
+                      shape: "circle",
+                      text: pnl,
+                    });
+                  }
+                }
+              }
+            }
+
+            // Open positions — entry arrow only
+            if (posRes?.data?.positions) {
+              for (const p of posRes.data.positions) {
+                const openTs = p.open_time ? Math.floor(new Date(p.open_time).getTime() / 1000) : 0;
+                if (openTs >= firstTime && openTs <= lastTime) {
+                  markers.push({
+                    time: openTs as Time,
+                    position: p.type === "BUY" ? "belowBar" : "aboveBar",
+                    color: p.type === "BUY" ? "#3b82f6" : "#f59e0b",
+                    shape: p.type === "BUY" ? "arrowUp" : "arrowDown",
+                    text: `${p.type} ${p.lot} (open)`,
+                  });
+                }
+              }
+            }
+
+            if (markers.length > 0 && markersRef.current) {
+              markers.sort((a, b) => (a.time as number) - (b.time as number));
+              markersRef.current.setMarkers(markers);
+            }
+          } catch {
+            // marker overlay is best-effort
           }
 
           if (initialLoadRef.current) {
