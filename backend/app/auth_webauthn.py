@@ -4,7 +4,6 @@ Single-owner model: only 1 user, multiple passkeys (devices).
 """
 
 import secrets
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
@@ -13,8 +12,9 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import log_audit as _log_audit
 from app.config import settings
-from app.db.models import AuditLog, AuthSession, Owner, WebAuthnCredential
+from app.db.models import AuthSession, Owner, WebAuthnCredential
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -45,21 +45,6 @@ def _verify_jwt(token: str) -> dict | None:
     except Exception:
         return None
 
-
-async def _log_audit(db: AsyncSession, action: str, actor: str = "owner",
-                     resource: str | None = None, detail: dict | None = None,
-                     ip: str | None = None, success: bool = True):
-    """Log an audit event."""
-    try:
-        log = AuditLog(action=action, actor=actor, resource=resource,
-                       detail=detail, ip_address=ip, success=success)
-        db.add(log)
-        await db.commit()
-    except Exception:
-        try:
-            await db.rollback()
-        except Exception:
-            pass
 
 
 # ─── Setup Check ──────────────────────────────────────────────────────────────
@@ -174,6 +159,10 @@ async def register_verify(req: RegisterVerifyRequest, db: AsyncSession = Depends
         update(Owner).where(Owner.id == req.owner_id).values(is_setup_complete=True)
     )
     await db.commit()
+
+    # Reset middleware cache so it starts enforcing auth
+    from app.middleware.auth import AuthMiddleware
+    AuthMiddleware.reset_cache()
 
     await _log_audit(db, "passkey_registered", resource=f"device:{req.device_name}")
     logger.info(f"Passkey registered: {req.device_name} for owner {req.owner_id}")

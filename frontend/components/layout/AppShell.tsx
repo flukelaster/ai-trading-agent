@@ -6,41 +6,43 @@ import { Sidebar, MobileHeader } from "@/components/layout/Sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import api from "@/lib/api";
 
+const AUTH_BYPASS_PAGES = ["/login", "/setup"];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isLoginPage = pathname === "/login";
+  const isAuthPage = AUTH_BYPASS_PAGES.includes(pathname);
   const [authChecked, setAuthChecked] = useState(false);
-  const [authEnabled, setAuthEnabled] = useState(false);
 
   useEffect(() => {
-    if (isLoginPage) {
+    if (isAuthPage) {
       setAuthChecked(true);
       return;
     }
 
-    // Check if auth is enabled and user is authenticated
+    // Check auth status via cookie-based session
     api.get("/api/auth/me")
       .then((res) => {
-        setAuthEnabled(res.data?.auth_enabled ?? false);
-        setAuthChecked(true);
+        if (res.data?.setup_required) {
+          router.replace("/setup");
+        } else {
+          setAuthChecked(true);
+        }
       })
       .catch((err: unknown) => {
         const status = (err && typeof err === "object" && "response" in err)
           ? (err as { response?: { status?: number } }).response?.status
           : undefined;
         if (status === 401) {
-          // Auth enabled but no valid token → redirect to login
-          setAuthEnabled(true);
           router.replace("/login");
         } else {
-          // Server error or network issue — allow access (auth might be disabled)
+          // Server error or network issue — allow access (auth might not be set up)
           setAuthChecked(true);
         }
       });
-  }, [isLoginPage, router]);
+  }, [isAuthPage, router]);
 
-  if (isLoginPage) {
+  if (isAuthPage) {
     return <>{children}</>;
   }
 

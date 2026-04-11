@@ -25,16 +25,8 @@ export function useWebSocket(): UseWebSocketReturn {
   const maxReconnectAttempts = 10;
 
   const connect = useCallback(() => {
-    let wsUrl =
+    const wsUrl =
       process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
-
-    // Append auth token if available
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        wsUrl += `${wsUrl.includes("?") ? "&" : "?"}token=${token}`;
-      }
-    }
 
     try {
       const ws = new WebSocket(wsUrl);

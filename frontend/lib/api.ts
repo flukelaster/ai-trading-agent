@@ -3,17 +3,7 @@ import axios from "axios";
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
   timeout: 10000,
-});
-
-// Auth interceptor: inject JWT token from localStorage
-api.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
+  withCredentials: true, // Send httpOnly cookies automatically
 });
 
 // Auth interceptor: redirect to login on 401
@@ -21,8 +11,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("access_token");
-      if (window.location.pathname !== "/login") {
+      if (window.location.pathname !== "/login" && window.location.pathname !== "/setup") {
         window.location.href = "/login";
       }
     }
@@ -163,5 +152,16 @@ export const getSymbols = () => api.get("/api/market-data/symbols");
 
 // Health
 export const getHealth = () => api.get("/health");
+
+// Secrets Vault
+export const getVaultStatus = () => api.get("/api/secrets/vault-status");
+export const getSecrets = () => api.get("/api/secrets");
+export const getSecret = (key: string) => api.get(`/api/secrets/${key}`);
+export const upsertSecret = (key: string, data: {
+  value: string; category?: string; description?: string; is_required?: boolean;
+}) => api.put(`/api/secrets/${key}`, data);
+export const deleteSecret = (key: string) => api.delete(`/api/secrets/${key}`);
+export const testSecret = (key: string) => api.post(`/api/secrets/${key}/test`, null, { timeout: 15000 });
+export const getSecretHistory = (key: string) => api.get(`/api/secrets/${key}/history`);
 
 export default api;

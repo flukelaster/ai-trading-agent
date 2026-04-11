@@ -243,3 +243,22 @@ class OrderAudit(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
+
+
+# ─── Secrets Vault ────────────────────────────────────────────────────────────
+
+class Secret(Base):
+    """Encrypted secrets store — managed via UI, injected into runners."""
+    __tablename__ = "secrets"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    encrypted_value: Mapped[bytes] = mapped_column(LargeBinary)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary)  # 12 bytes for AES-GCM
+    category: Mapped[str] = mapped_column(String(50), default="general")
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_rotated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

@@ -158,6 +158,16 @@ class BotScheduler:
             coalesce=True,
         )
 
+        # Vault: OAuth token health check every 5 minutes
+        self.scheduler.add_job(
+            self._vault_health_job,
+            "interval",
+            minutes=5,
+            id="vault_health_check",
+            max_instances=1,
+            coalesce=True,
+        )
+
         self.scheduler.start()
         logger.info("Scheduler started")
 
@@ -295,6 +305,18 @@ class BotScheduler:
         ]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _vault_health_job(self):
+        """Check OAuth token health via vault."""
+        try:
+            from app.db.session import async_session
+            from app.vault_health import check_oauth_health
+
+            notifier = getattr(self.manager, "_notifier", None) if self.manager else None
+            async with async_session() as db:
+                await check_oauth_health(db, notifier=notifier)
+        except Exception as e:
+            logger.warning(f"Vault health check failed: {e}")
 
     async def _ml_retrain_symbol(self, symbol: str, engine):
         """Train ML model for a single symbol."""

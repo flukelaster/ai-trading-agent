@@ -173,6 +173,9 @@ class Settings(BaseSettings):
     webauthn_rp_id: str = "localhost"     # e.g. "gold-trader-01.up.railway.app" for prod
     webauthn_origin: str = "http://localhost:3000"  # frontend origin for WebAuthn verification
 
+    # Secrets Vault
+    vault_master_key: str = ""  # AES-256 master key for encrypting secrets; empty = vault disabled
+
     # API
     secret_key: str = ""
     cors_origins: str = "http://localhost:3000"

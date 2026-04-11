@@ -18,6 +18,7 @@ import {
   Moon,
   TrendingUp,
   Bell,
+  KeyRound,
   LogOut,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/ml", label: "ML Model", icon: Cpu },
   { href: "/macro", label: "Macro Data", icon: Globe },
   { href: "/notifications", label: "Notifications", icon: Bell },
+  { href: "/secrets", label: "Secrets", icon: KeyRound },
 ];
 
 function ThemeToggle() {
@@ -52,8 +54,13 @@ function ThemeToggle() {
 
 function LogoutButton() {
   const router = useRouter();
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
+  const handleLogout = async () => {
+    try {
+      const { default: api } = await import("@/lib/api");
+      await api.post("/api/auth/logout");
+    } catch {
+      // ignore logout errors
+    }
     router.push("/login");
   };
   return (

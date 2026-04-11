@@ -8,24 +8,41 @@ import redis.asyncio as redis_lib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from app.ai.client import AIClient
 from app.ai.news_sentiment import NewsSentimentAnalyzer
 from app.ai.strategy_optimizer import StrategyOptimizer
-from app.notifications.telegram import TelegramNotifier
-from app.api.routes import ai_insights, analytics, backtest, bot, data, history, market_data, metrics as metrics_routes, ml, macro, positions, strategy
+from app.api.routes import (
+    ai_insights,
+    analytics,
+    backtest,
+    bot,
+    data,
+    history,
+    macro,
+    market_data,
+    ml,
+    positions,
+    secrets,
+    strategy,
+)
+from app.api.routes import metrics as metrics_routes
+from app.api.websocket import router as ws_router
 from app.auth import router as auth_router
 from app.auth_webauthn import router as webauthn_router
-from app.data.collector import HistoricalDataCollector
-from app.data.macro import MacroDataService
-from app.data.macro_events import MacroEventCalendar
-from app.api.websocket import router as ws_router
 from app.bot.manager import BotManager
 from app.bot.scheduler import BotScheduler
 from app.config import settings
+from app.data.collector import HistoricalDataCollector
+from app.data.macro import MacroDataService
+from app.data.macro_events import MacroEventCalendar
 from app.db.session import async_session
 from app.health import check_health
+from app.middleware.auth import AuthMiddleware
 from app.mt5.connector import MT5BridgeConnector
+from app.notifications.telegram import TelegramNotifier
 
 
 @asynccontextmanager
@@ -137,13 +154,28 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Auth middleware (must be added before CORS so it runs after CORS in the chain)
+app.add_middleware(AuthMiddleware)
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 # Routes
@@ -161,6 +193,7 @@ app.include_router(ml.router)
 app.include_router(macro.router)
 app.include_router(analytics.router)
 app.include_router(metrics_routes.router)
+app.include_router(secrets.router)
 app.include_router(ws_router)
 
 

@@ -2,36 +2,65 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import api from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [supported, setSupported] = useState(true);
 
-  // Check if already logged in or auth is disabled
   useEffect(() => {
-    api.get("/api/auth/me")
-      .then(() => router.replace("/dashboard"))
+    setSupported(browserSupportsWebAuthn());
+
+    api.get("/api/auth/setup-status")
+      .then((res) => {
+        if (!res.data.is_setup_complete) {
+          router.replace("/setup");
+          return;
+        }
+        // Check if already authenticated
+        return api.get("/api/auth/me").then((meRes) => {
+          if (meRes.data.authenticated) {
+            router.replace("/dashboard");
+          } else {
+            setChecking(false);
+          }
+        });
+      })
       .catch(() => setChecking(false));
   }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async () => {
     setError("");
     setLoading(true);
 
     try {
-      const res = await api.post("/api/auth/login", { username, password });
-      localStorage.setItem("access_token", res.data.access_token);
+      // 1. Get login options
+      const optionsRes = await api.post("/api/auth/login/options");
+      const options = JSON.parse(optionsRes.data.options);
+
+      // 2. Authenticate via browser WebAuthn API
+      const credential = await startAuthentication({ optionsJSON: options });
+
+      // 3. Verify with backend (sets httpOnly cookie)
+      await api.post("/api/auth/login/verify", { credential });
+
+      // Success — redirect to dashboard
       router.push("/dashboard");
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
+      if (err && typeof err === "object" && "name" in err) {
+        const webauthnErr = err as { name: string; message?: string };
+        if (webauthnErr.name === "NotAllowedError") {
+          setError("Authentication was cancelled or timed out.");
+        } else {
+          setError(webauthnErr.message || "Authentication failed");
+        }
+      } else if (err && typeof err === "object" && "response" in err) {
         const response = (err as { response: { data?: { detail?: string } } }).response;
-        setError(response?.data?.detail || "Login failed");
+        setError(response?.data?.detail || "Authentication failed");
       } else {
         setError("Connection error");
       }
@@ -56,49 +85,26 @@ export default function LoginPage() {
           <p className="text-sm text-muted-foreground mt-1">Sign in to your dashboard</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="username" className="block text-sm font-medium mb-1">
-              Username
-            </label>
-            <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              required
-            />
+        {error && (
+          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
           </div>
+        )}
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              required
-            />
+        {!supported ? (
+          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            Your browser does not support passkeys. Please use a modern browser (Chrome, Firefox, Safari, or Edge).
           </div>
-
+        ) : (
           <button
-            type="submit"
+            type="button"
+            onClick={handleLogin}
             disabled={loading}
             className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Authenticating..." : "Sign in with Passkey"}
           </button>
-        </form>
+        )}
       </div>
     </div>
   );
