@@ -153,9 +153,10 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
             const firstTime = candles[0]?.time as number;
             const lastTime = candles[candles.length - 1]?.time as number;
 
-            // Closed trades — entry + exit arrows
+            // Closed trades — entry + exit arrows (filter by symbol client-side as safety)
             if (tradeRes?.data?.trades) {
               for (const t of tradeRes.data.trades) {
+                if (t.symbol && t.symbol !== symbol) continue;
                 const openTs = Math.floor(new Date(t.open_time).getTime() / 1000);
                 if (openTs >= firstTime && openTs <= lastTime) {
                   markers.push({
@@ -182,9 +183,10 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
               }
             }
 
-            // Open positions — entry arrow only
+            // Open positions — entry arrow only (filter by symbol client-side)
             if (posRes?.data?.positions) {
               for (const p of posRes.data.positions) {
+                if (p.symbol && p.symbol !== symbol) continue;
                 const openTs = p.open_time ? Math.floor(new Date(p.open_time).getTime() / 1000) : 0;
                 if (openTs >= firstTime && openTs <= lastTime) {
                   markers.push({
