@@ -34,6 +34,16 @@ type BotStatus = {
   sentiment?: Sentiment;
 };
 
+type SymbolInfo = {
+  symbol: string;
+  display_name: string;
+  timeframe: string;
+  state: string;
+  price_decimals: number;
+  max_lot: number;
+  default_lot: number;
+};
+
 type AccountInfo = {
   balance: number;
   equity: number;
@@ -42,6 +52,8 @@ type AccountInfo = {
   profit: number;
 };
 
+type Tick = { bid: number; ask: number; spread: number; time: string; symbol?: string };
+
 export type BotEvent = {
   type: string;
   message: string;
@@ -49,31 +61,53 @@ export type BotEvent = {
 };
 
 type BotStore = {
+  activeSymbol: string;
+  symbols: SymbolInfo[];
   status: BotStatus | null;
+  symbolStatuses: Record<string, BotStatus>;
   positions: Position[];
   account: AccountInfo | null;
   sentiment: Sentiment | null;
-  tick: { bid: number; ask: number; spread: number; time: string } | null;
+  ticks: Record<string, Tick>;
+  tick: Tick | null; // active symbol's tick (convenience)
   events: BotEvent[];
+  setActiveSymbol: (symbol: string) => void;
+  setSymbols: (symbols: SymbolInfo[]) => void;
   setStatus: (status: BotStatus) => void;
+  setSymbolStatuses: (statuses: Record<string, BotStatus>) => void;
   setPositions: (positions: Position[]) => void;
   setAccount: (account: AccountInfo) => void;
   setSentiment: (sentiment: Sentiment) => void;
-  setTick: (tick: { bid: number; ask: number; spread: number; time: string }) => void;
+  setTick: (tick: Tick) => void;
   addEvent: (event: BotEvent) => void;
 };
 
-export const useBotStore = create<BotStore>((set) => ({
+export const useBotStore = create<BotStore>((set, get) => ({
+  activeSymbol: "GOLD",
+  symbols: [],
   status: null,
+  symbolStatuses: {},
   positions: [],
   account: null,
   sentiment: null,
+  ticks: {},
   tick: null,
   events: [],
+  setActiveSymbol: (symbol) => {
+    const ticks = get().ticks;
+    set({ activeSymbol: symbol, tick: ticks[symbol] || null });
+  },
+  setSymbols: (symbols) => set({ symbols }),
   setStatus: (status) => set({ status }),
+  setSymbolStatuses: (statuses) => set({ symbolStatuses: statuses }),
   setPositions: (positions) => set({ positions }),
   setAccount: (account) => set({ account }),
   setSentiment: (sentiment) => set({ sentiment }),
-  setTick: (tick) => set({ tick }),
+  setTick: (tick) => {
+    const symbol = tick.symbol || get().activeSymbol;
+    const ticks = { ...get().ticks, [symbol]: tick };
+    const isActive = symbol === get().activeSymbol;
+    set({ ticks, ...(isActive ? { tick } : {}) });
+  },
   addEvent: (event) => set((state) => ({ events: [event, ...state.events].slice(0, 50) })),
 }));

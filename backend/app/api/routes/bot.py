@@ -1,5 +1,5 @@
 """
-Bot control API routes.
+Bot control API routes (multi-symbol).
 """
 
 from datetime import datetime, timedelta
@@ -14,27 +14,41 @@ from app.db.session import get_db
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 
-# Bot engine will be injected via app.state
-_bot = None
+# BotManager will be injected via app.state
+_manager = None
 
 
-def set_bot(bot):
-    global _bot
-    _bot = bot
+def set_manager(manager):
+    global _manager
+    _manager = manager
 
 
-def get_bot():
-    if _bot is None:
+def get_manager():
+    if _manager is None:
         raise HTTPException(status_code=503, detail="Bot not initialized")
-    return _bot
+    return _manager
+
+
+def _get_engine(symbol: str | None = None):
+    """Get a specific engine or the first one as default."""
+    mgr = get_manager()
+    if symbol:
+        engine = mgr.get_engine(symbol)
+        if not engine:
+            raise HTTPException(status_code=404, detail=f"Symbol {symbol} not configured")
+        return engine
+    # Default: first engine (backward compat)
+    return next(iter(mgr.engines.values()))
 
 
 class StrategyUpdate(BaseModel):
     name: str
     params: dict | None = None
+    symbol: str | None = None
 
 
 class SettingsUpdate(BaseModel):
+    symbol: str | None = None
     use_ai_filter: bool | None = None
     ai_confidence_threshold: float | None = None
     paper_trade: bool | None = None
@@ -46,50 +60,60 @@ class SettingsUpdate(BaseModel):
 
 
 @router.post("/start")
-async def start_bot():
-    bot = get_bot()
-    await bot.start()
-    return {"status": "started"}
+async def start_bot(symbol: str | None = Query(None)):
+    mgr = get_manager()
+    await mgr.start(symbol)
+    return {"status": "started", "symbol": symbol or "all"}
 
 
 @router.post("/stop")
-async def stop_bot():
-    bot = get_bot()
-    await bot.stop()
-    return {"status": "stopped"}
+async def stop_bot(symbol: str | None = Query(None)):
+    mgr = get_manager()
+    await mgr.stop(symbol)
+    return {"status": "stopped", "symbol": symbol or "all"}
 
 
 @router.post("/emergency-stop")
-async def emergency_stop():
-    bot = get_bot()
-    result = await bot.emergency_stop()
+async def emergency_stop(symbol: str | None = Query(None)):
+    mgr = get_manager()
+    result = await mgr.emergency_stop(symbol)
     return {"status": "emergency_stopped", "result": result}
 
 
 @router.get("/status")
-async def get_status():
-    bot = get_bot()
-    status = bot.get_status()
-    # Add sentiment if available
-    if bot.sentiment_analyzer:
-        sentiment = await bot.sentiment_analyzer.get_latest_sentiment()
-        status["sentiment"] = sentiment.to_dict()
-    return status
+async def get_status(symbol: str | None = Query(None)):
+    mgr = get_manager()
+    if symbol:
+        engine = _get_engine(symbol)
+        status = engine.get_status()
+        if engine.sentiment_analyzer:
+            sentiment = await engine.sentiment_analyzer.get_latest_sentiment()
+            status["sentiment"] = sentiment.to_dict()
+        return status
+    # Aggregate status
+    return mgr.get_status()
 
 
 @router.get("/account")
 async def get_account():
-    bot = get_bot()
-    if bot.paper_trade:
-        unrealized = sum(p.get("profit", 0) for p in bot._paper_positions)
+    mgr = get_manager()
+    # Account is shared across all symbols (same MT5 account)
+    first_engine = next(iter(mgr.engines.values()))
+    if first_engine.paper_trade:
+        unrealized = sum(
+            p.get("profit", 0)
+            for engine in mgr.engines.values()
+            for p in engine._paper_positions
+        )
+        balance = first_engine._paper_balance
         return {
-            "balance": bot._paper_balance,
-            "equity": bot._paper_balance + unrealized,
+            "balance": balance,
+            "equity": balance + unrealized,
             "margin": 0,
-            "free_margin": bot._paper_balance + unrealized,
+            "free_margin": balance + unrealized,
             "profit": unrealized,
         }
-    result = await bot.connector.get_account()
+    result = await first_engine.connector.get_account()
     if not result.get("success"):
         return {"balance": 0, "equity": 0, "margin": 0, "free_margin": 0, "profit": 0, "currency": "USD", "error": result.get("error")}
     return result["data"]
@@ -97,27 +121,41 @@ async def get_account():
 
 @router.put("/strategy")
 async def update_strategy(data: StrategyUpdate):
-    bot = get_bot()
+    engine = _get_engine(data.symbol)
     try:
-        await bot.update_strategy(data.name, data.params)
-        return {"status": "updated", "strategy": data.name}
+        await engine.update_strategy(data.name, data.params)
+        return {"status": "updated", "strategy": data.name, "symbol": engine.symbol}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/settings")
 async def update_settings(data: SettingsUpdate):
-    bot = get_bot()
-    await bot.update_settings(
-        use_ai_filter=data.use_ai_filter,
-        ai_confidence_threshold=data.ai_confidence_threshold,
-        paper_trade=data.paper_trade,
-        timeframe=data.timeframe,
-        max_risk_per_trade=data.max_risk_per_trade,
-        max_daily_loss=data.max_daily_loss,
-        max_concurrent_trades=data.max_concurrent_trades,
-        max_lot=data.max_lot,
-    )
+    if data.symbol:
+        engine = _get_engine(data.symbol)
+        await engine.update_settings(
+            use_ai_filter=data.use_ai_filter,
+            ai_confidence_threshold=data.ai_confidence_threshold,
+            paper_trade=data.paper_trade,
+            timeframe=data.timeframe,
+            max_risk_per_trade=data.max_risk_per_trade,
+            max_daily_loss=data.max_daily_loss,
+            max_concurrent_trades=data.max_concurrent_trades,
+            max_lot=data.max_lot,
+        )
+    else:
+        mgr = get_manager()
+        for engine in mgr.engines.values():
+            await engine.update_settings(
+                use_ai_filter=data.use_ai_filter,
+                ai_confidence_threshold=data.ai_confidence_threshold,
+                paper_trade=data.paper_trade,
+                timeframe=data.timeframe,
+                max_risk_per_trade=data.max_risk_per_trade,
+                max_daily_loss=data.max_daily_loss,
+                max_concurrent_trades=data.max_concurrent_trades,
+                max_lot=data.max_lot,
+            )
     return {"status": "updated"}
 
 

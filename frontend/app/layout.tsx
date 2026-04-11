@@ -13,8 +13,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Gold Trading Bot",
-  description: "XAUUSD Auto-Trading Platform",
+  title: "Trading Bot",
+  description: "Multi-Symbol Auto-Trading Platform",
 };
 
 export default function RootLayout({

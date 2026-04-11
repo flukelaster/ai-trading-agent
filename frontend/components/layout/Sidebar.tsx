@@ -16,6 +16,7 @@ import {
   X,
   Sun,
   Moon,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -54,14 +55,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="p-5">
         <div className="flex items-center gap-3">
           <div className="size-9 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-sm font-black text-primary-foreground">Au</span>
+            <TrendingUp className="size-4 text-primary-foreground" />
           </div>
           <div>
             <h1 className="text-base font-black tracking-tight text-foreground">
-              GOLD BOT
+              TRADE BOT
             </h1>
             <p className="text-[11px] text-muted-foreground font-medium">
-              XAUUSD Auto-Trading
+              Multi-Symbol Trading
             </p>
           </div>
         </div>
@@ -123,9 +124,9 @@ export function MobileHeader() {
       <header className="lg:hidden flex items-center justify-between p-3 border-b border-sidebar-border bg-sidebar">
         <div className="flex items-center gap-2">
           <div className="size-7 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-xs font-black text-primary-foreground">Au</span>
+            <TrendingUp className="size-3.5 text-primary-foreground" />
           </div>
-          <span className="text-sm font-black text-foreground">GOLD BOT</span>
+          <span className="text-sm font-black text-foreground">TRADE BOT</span>
         </div>
         <button type="button" aria-label="Open menu" onClick={() => setOpen(true)} className="p-1.5 text-muted-foreground hover:text-foreground">
           <Menu className="size-5" />

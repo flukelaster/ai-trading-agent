@@ -12,32 +12,32 @@ from app.config import settings
 
 
 class CircuitBreaker:
-    PNL_KEY = "circuit:daily_pnl"
-    TRADE_COUNT_KEY = "circuit:trade_count"
-
-    def __init__(self, redis_client: redis.Redis):
+    def __init__(self, redis_client: redis.Redis, symbol: str = "GOLD"):
         self.redis = redis_client
+        self.symbol = symbol
+        self.pnl_key = f"circuit:daily_pnl:{symbol}"
+        self.trade_count_key = f"circuit:trade_count:{symbol}"
 
     async def record_trade_result(self, profit: float) -> None:
-        current = await self.redis.get(self.PNL_KEY)
+        current = await self.redis.get(self.pnl_key)
         current_pnl = float(current) if current else 0.0
         new_pnl = current_pnl + profit
         # TTL: seconds until next midnight UTC
         ttl = self._seconds_until_midnight()
-        await self.redis.set(self.PNL_KEY, str(new_pnl), ex=ttl)
+        await self.redis.set(self.pnl_key, str(new_pnl), ex=ttl)
 
-        count = await self.redis.get(self.TRADE_COUNT_KEY)
+        count = await self.redis.get(self.trade_count_key)
         new_count = int(count) + 1 if count else 1
-        await self.redis.set(self.TRADE_COUNT_KEY, str(new_count), ex=ttl)
+        await self.redis.set(self.trade_count_key, str(new_count), ex=ttl)
 
-        logger.info(f"Circuit breaker: recorded profit={profit:.2f}, daily_pnl={new_pnl:.2f}, trades={new_count}")
+        logger.info(f"Circuit breaker [{self.symbol}]: recorded profit={profit:.2f}, daily_pnl={new_pnl:.2f}, trades={new_count}")
 
     async def get_daily_pnl(self) -> float:
-        val = await self.redis.get(self.PNL_KEY)
+        val = await self.redis.get(self.pnl_key)
         return float(val) if val else 0.0
 
     async def get_trade_count(self) -> int:
-        val = await self.redis.get(self.TRADE_COUNT_KEY)
+        val = await self.redis.get(self.trade_count_key)
         return int(val) if val else 0
 
     async def is_triggered(self, balance: float) -> bool:
@@ -45,12 +45,12 @@ class CircuitBreaker:
         max_loss = balance * settings.max_daily_loss
         triggered = daily_pnl <= -max_loss
         if triggered:
-            logger.warning(f"Circuit breaker TRIGGERED: daily_pnl={daily_pnl:.2f}, limit=-{max_loss:.2f}")
+            logger.warning(f"Circuit breaker [{self.symbol}] TRIGGERED: daily_pnl={daily_pnl:.2f}, limit=-{max_loss:.2f}")
         return triggered
 
     async def reset(self) -> None:
-        await self.redis.delete(self.PNL_KEY, self.TRADE_COUNT_KEY)
-        logger.info("Circuit breaker reset")
+        await self.redis.delete(self.pnl_key, self.trade_count_key)
+        logger.info(f"Circuit breaker [{self.symbol}] reset")
 
     @staticmethod
     def _seconds_until_midnight() -> int:

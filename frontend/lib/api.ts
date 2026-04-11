@@ -6,13 +6,18 @@ const api = axios.create({
 });
 
 // Bot
-export const getBotStatus = () => api.get("/api/bot/status");
-export const startBot = () => api.post("/api/bot/start");
-export const stopBot = () => api.post("/api/bot/stop");
-export const emergencyStop = () => api.post("/api/bot/emergency-stop");
+export const getBotStatus = (symbol?: string) =>
+  api.get("/api/bot/status", { params: symbol ? { symbol } : {} });
+export const startBot = (symbol?: string) =>
+  api.post("/api/bot/start", null, { params: symbol ? { symbol } : {} });
+export const stopBot = (symbol?: string) =>
+  api.post("/api/bot/stop", null, { params: symbol ? { symbol } : {} });
+export const emergencyStop = (symbol?: string) =>
+  api.post("/api/bot/emergency-stop", null, { params: symbol ? { symbol } : {} });
 export const updateStrategy = (name: string, params?: Record<string, unknown>) =>
   api.put("/api/bot/strategy", { name, params });
 export const updateSettings = (data: {
+  symbol?: string;
   use_ai_filter?: boolean;
   ai_confidence_threshold?: number;
   paper_trade?: boolean;
@@ -27,20 +32,23 @@ export const getBotEvents = (params?: { days?: number; event_type?: string; limi
   api.get("/api/bot/events", { params });
 
 // Positions
-export const getPositions = () => api.get("/api/positions");
+export const getPositions = (symbol?: string) =>
+  api.get("/api/positions", { params: symbol ? { symbol } : {} });
 export const closePosition = (ticket: number) =>
   api.delete(`/api/positions/${ticket}`);
 
 // History
-export const getDailyPnl = () => api.get("/api/history/daily-pnl");
+export const getDailyPnl = (symbol?: string) =>
+  api.get("/api/history/daily-pnl", { params: symbol ? { symbol } : {} });
 export const getTradeHistory = (params?: {
   days?: number;
   strategy?: string;
+  symbol?: string;
   limit?: number;
   offset?: number;
 }) => api.get("/api/history/trades", { params });
-export const getPerformance = (days?: number) =>
-  api.get("/api/history/performance", { params: { days } });
+export const getPerformance = (days?: number, symbol?: string) =>
+  api.get("/api/history/performance", { params: { days, symbol } });
 
 // Strategy
 export const getAvailableStrategies = () => api.get("/api/strategy/available");
@@ -115,8 +123,9 @@ export const collectMacro = (from_date?: string, to_date?: string) =>
   api.post("/api/macro/collect", null, { params: { from_date, to_date }, timeout: 60000 });
 
 // Market Data
-export const getOHLCV = (timeframe: string = "M15", count: number = 200) =>
-  api.get("/api/market-data/ohlcv", { params: { timeframe, count } });
+export const getOHLCV = (symbol: string = "GOLD", timeframe: string = "M15", count: number = 200) =>
+  api.get("/api/market-data/ohlcv", { params: { symbol, timeframe, count } });
+export const getSymbols = () => api.get("/api/market-data/symbols");
 
 // Health
 export const getHealth = () => api.get("/health");

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.bot import get_bot
+from app.api.routes.bot import _get_engine, get_manager
 from app.db.models import AIOptimizationLog, NewsSentiment
 from app.db.session import get_db
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 @router.get("/sentiment")
 async def get_latest_sentiment():
-    bot = get_bot()
+    bot = _get_engine()
     if not bot.sentiment_analyzer:
         return {"label": "neutral", "score": 0, "confidence": 0, "key_factors": [], "source_count": 0}
     sentiment = await bot.sentiment_analyzer.get_latest_sentiment()
@@ -78,14 +78,14 @@ async def get_latest_optimization(db: AsyncSession = Depends(get_db)):
 @router.get("/context")
 async def get_ai_context():
     """Return the current AI context enrichment data."""
-    bot = get_bot()
+    bot = _get_engine()
     context = await bot.context_builder.build_full_context(bot.symbol, bot.timeframe)
     return context
 
 
 @router.post("/optimization/run")
 async def run_optimization():
-    bot = get_bot()
+    bot = _get_engine()
     if not hasattr(bot, "_optimizer") or bot._optimizer is None:
         raise HTTPException(status_code=503, detail="Optimizer not configured")
     result = await bot._optimizer.optimize(bot.strategy.get_params())
@@ -96,7 +96,7 @@ async def run_optimization():
 
 @router.post("/optimization/{log_id}/apply")
 async def apply_optimization(log_id: int, db: AsyncSession = Depends(get_db)):
-    bot = get_bot()
+    bot = _get_engine()
     if bot.state.value == "RUNNING":
         raise HTTPException(status_code=400, detail="Stop the bot before applying optimization")
 

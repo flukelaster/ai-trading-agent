@@ -123,7 +123,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
 
     const fetchCandles = async () => {
       try {
-        const res = await getOHLCV(timeframe, 200);
+        const res = await getOHLCV(symbol, timeframe, 200);
         if (cancelled || !seriesRef.current) return;
         const candles = res.data.candles as CandlestickData[];
         if (candles.length > 0) {
@@ -229,7 +229,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
     fetchCandles();
     const interval = setInterval(fetchCandles, 60000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [timeframe, emaFast, emaSlow]);
+  }, [symbol, timeframe, emaFast, emaSlow]);
 
   useEffect(() => {
     if (!tick || !seriesRef.current || !lastCandleRef.current) return;

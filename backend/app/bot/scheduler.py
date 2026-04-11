@@ -1,6 +1,9 @@
 """
-Scheduler — APScheduler jobs for bot operations.
+Scheduler — APScheduler jobs for bot operations (multi-symbol).
 """
+
+import asyncio
+from collections import defaultdict
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
@@ -20,10 +23,26 @@ TIMEFRAME_CRON = {
 
 
 class BotScheduler:
-    def __init__(self, bot: BotEngine):
-        self.bot = bot
+    def __init__(self, manager):
+        """Accept a BotManager (or legacy BotEngine for backward compat)."""
+        from app.bot.manager import BotManager
+
+        if isinstance(manager, BotManager):
+            self.manager = manager
+            self._legacy_bot: BotEngine | None = None
+        else:
+            # Backward compat: wrap single engine
+            self.manager = None
+            self._legacy_bot = manager
+
         self.scheduler = AsyncIOScheduler()
-        self._current_tf = bot.timeframe
+        self._candle_job_ids: dict[str, str] = {}  # timeframe → job_id
+
+    @property
+    def _engines(self) -> dict[str, BotEngine]:
+        if self.manager:
+            return self.manager.engines
+        return {self._legacy_bot.symbol: self._legacy_bot}
 
     def _get_cron_kwargs(self, timeframe: str) -> dict:
         return TIMEFRAME_CRON.get(timeframe, {"minute": "0,15,30,45"})
@@ -39,17 +58,8 @@ class BotScheduler:
             coalesce=True,
         )
 
-        # Run strategy on candle close — schedule based on timeframe
-        cron_kwargs = self._get_cron_kwargs(self.bot.timeframe)
-        self.scheduler.add_job(
-            self._candle_job,
-            "cron",
-            **cron_kwargs,
-            id="bot_candle",
-            max_instances=1,
-            coalesce=True,
-        )
-        logger.info(f"Candle job scheduled for {self.bot.timeframe}: {cron_kwargs}")
+        # Schedule candle jobs — one per unique timeframe
+        self._schedule_candle_jobs()
 
         # Fetch sentiment every 15 minutes (offset by 2 min)
         self.scheduler.add_job(
@@ -116,78 +126,116 @@ class BotScheduler:
         self.scheduler.start()
         logger.info("Scheduler started")
 
-    def reschedule_candle(self, timeframe: str):
-        """Reschedule the candle job when timeframe changes."""
-        if timeframe == self._current_tf:
-            return
-        cron_kwargs = self._get_cron_kwargs(timeframe)
-        self.scheduler.remove_job("bot_candle")
-        self.scheduler.add_job(
-            self._candle_job,
-            "cron",
-            **cron_kwargs,
-            id="bot_candle",
-            max_instances=1,
-            coalesce=True,
-        )
-        self._current_tf = timeframe
-        logger.info(f"Candle job rescheduled for {timeframe}: {cron_kwargs}")
+    def _schedule_candle_jobs(self):
+        """Create one cron job per unique timeframe across all engines."""
+        # Remove existing candle jobs
+        for job_id in self._candle_job_ids.values():
+            try:
+                self.scheduler.remove_job(job_id)
+            except Exception:
+                pass
+        self._candle_job_ids.clear()
+
+        # Group engines by timeframe
+        tf_groups: dict[str, list[str]] = defaultdict(list)
+        for symbol, engine in self._engines.items():
+            tf_groups[engine.timeframe].append(symbol)
+
+        for tf, symbols in tf_groups.items():
+            cron_kwargs = self._get_cron_kwargs(tf)
+            job_id = f"bot_candle_{tf}"
+            self.scheduler.add_job(
+                self._candle_job,
+                "cron",
+                **cron_kwargs,
+                id=job_id,
+                max_instances=1,
+                coalesce=True,
+                args=[symbols],
+            )
+            self._candle_job_ids[tf] = job_id
+            logger.info(f"Candle job scheduled for {tf} ({symbols}): {cron_kwargs}")
+
+    def reschedule_candle(self, symbol: str, timeframe: str):
+        """Reschedule when a symbol's timeframe changes."""
+        engine = self._engines.get(symbol)
+        if engine:
+            engine.timeframe = timeframe
+        self._schedule_candle_jobs()
+        logger.info(f"Candle jobs rescheduled after {symbol} changed to {timeframe}")
 
     def stop(self):
         self.scheduler.shutdown(wait=False)
         logger.info("Scheduler stopped")
 
     async def _tick_job(self):
-        if self.bot.state.value != "RUNNING":
-            return
-        try:
-            tick = await self.bot.market_data.get_current_tick(self.bot.symbol)
-            if tick:
-                await self.bot._push_event("price_update", tick)
-        except Exception as e:
-            logger.error(f"Tick job error: {e}")
+        tasks = []
+        for symbol, engine in self._engines.items():
+            if engine.state.value == "RUNNING":
+                tasks.append(self._fetch_tick(symbol, engine))
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _candle_job(self):
-        logger.debug("Candle job triggered")
-        await self.bot.process_candle()
+    async def _fetch_tick(self, symbol: str, engine: BotEngine):
+        try:
+            tick = await engine.market_data.get_current_tick(symbol)
+            if tick:
+                tick["symbol"] = symbol
+                await engine._push_event("price_update", tick)
+        except Exception as e:
+            logger.error(f"Tick job error [{symbol}]: {e}")
+
+    async def _candle_job(self, symbols: list[str]):
+        logger.debug(f"Candle job triggered for {symbols}")
+        tasks = []
+        for sym in symbols:
+            engine = self._engines.get(sym)
+            if engine:
+                tasks.append(engine.process_candle())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _sentiment_job(self):
         logger.debug("Sentiment job triggered")
-        await self.bot.fetch_and_analyze_sentiment()
+        tasks = [e.fetch_and_analyze_sentiment() for e in self._engines.values()]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _sync_job(self):
-        await self.bot.sync_positions()
+        tasks = [e.sync_positions() for e in self._engines.values()]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _weekly_optimize_job(self):
         logger.info("Weekly optimization triggered")
-        if not self.bot._optimizer:
-            logger.warning("Optimizer not configured, skipping")
-            return
-        try:
-            result = await self.bot._optimizer.optimize(self.bot.strategy.get_params())
-            if result:
-                logger.info(f"Optimization result: {result.assessment} (confidence={result.confidence})")
-                await self.bot._notify(self.bot.notifier.send_optimization_report(
-                    result.assessment, result.confidence,
-                ))
-            else:
-                logger.warning("Optimization returned no result")
-        except Exception as e:
-            logger.error(f"Weekly optimization error: {e}")
+        # Run optimization on first engine that has an optimizer
+        for engine in self._engines.values():
+            if not engine._optimizer:
+                continue
+            try:
+                result = await engine._optimizer.optimize(engine.strategy.get_params())
+                if result:
+                    logger.info(f"Optimization result [{engine.symbol}]: {result.assessment} (confidence={result.confidence})")
+                    await engine._notify(engine.notifier.send_optimization_report(
+                        result.assessment, result.confidence,
+                    ))
+            except Exception as e:
+                logger.error(f"Weekly optimization error [{engine.symbol}]: {e}")
 
     async def _macro_collect_job(self):
         logger.info("Daily macro collection triggered")
-        if not hasattr(self.bot, '_macro_service') or not self.bot._macro_service:
-            return
-        try:
-            stats = await self.bot._macro_service.collect_all()
-            logger.info(f"Macro data collected: {stats}")
-        except Exception as e:
-            logger.error(f"Macro collection error: {e}")
+        # Macro data is global, just use first engine
+        for engine in self._engines.values():
+            if hasattr(engine, '_macro_service') and engine._macro_service:
+                try:
+                    stats = await engine._macro_service.collect_all()
+                    logger.info(f"Macro data collected: {stats}")
+                except Exception as e:
+                    logger.error(f"Macro collection error: {e}")
+                break
 
     async def _daily_reset_job(self):
         logger.info("Daily reset triggered")
-        await self.bot.circuit_breaker.reset()
+        tasks = [e.circuit_breaker.reset() for e in self._engines.values()]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _ml_retrain_job(self):
         """Weekly ML retrain — trains on last 6 months of data, replaces model only if accuracy improves."""
@@ -205,7 +253,9 @@ class BotScheduler:
             from app.data.collector import DataCollector
             from app.db.models import MLModelLog
             from app.db.session import async_session
-            from app.ml.trainer import ModelTrainer
+
+            # Use first engine's symbol for ML retrain (primary symbol)
+            first_engine = next(iter(self._engines.values()))
 
             async with async_session() as session:
                 # Get current model accuracy for comparison
@@ -221,12 +271,13 @@ class BotScheduler:
                 # Load last 6 months of data
                 from_date = (datetime.utcnow() - timedelta(days=180)).strftime("%Y-%m-%d")
                 collector = DataCollector(session)
-                df = await collector.load_from_db(settings.symbol, settings.timeframe, from_date=from_date)
+                df = await collector.load_from_db(first_engine.symbol, first_engine.timeframe, from_date=from_date)
 
                 if df.empty or len(df) < 500:
                     logger.warning(f"ML retrain skipped: insufficient data ({len(df)} bars)")
                     return
 
+                from app.ml.trainer import ModelTrainer
                 trainer = ModelTrainer()
                 X, y = trainer.prepare_dataset(df)
                 if len(X) < 200:
@@ -257,8 +308,8 @@ class BotScheduler:
                         update(MLModelLog).where(MLModelLog.is_active == True).values(is_active=False)
                     )
                     log = MLModelLog(
-                        model_name="lightgbm_xauusd_auto",
-                        timeframe=settings.timeframe,
+                        model_name=f"lightgbm_{first_engine.symbol.lower()}_auto",
+                        timeframe=first_engine.timeframe,
                         train_start=df.index[0].to_pydatetime(),
                         train_end=df.index[int(len(df) * 0.8)].to_pydatetime(),
                         test_start=df.index[int(len(df) * 0.8)].to_pydatetime(),
@@ -273,18 +324,18 @@ class BotScheduler:
                     await session.commit()
 
                     # Reload model in strategy
-                    if hasattr(self.bot, 'strategy') and hasattr(self.bot.strategy, '_model_loaded'):
-                        self.bot.strategy._model_loaded = False
-                        await self.bot.strategy._ensure_model()
+                    if hasattr(first_engine, 'strategy') and hasattr(first_engine.strategy, '_model_loaded'):
+                        first_engine.strategy._model_loaded = False
+                        await first_engine.strategy._ensure_model()
 
                     msg = (f"ML Retrain (weekly): accuracy improved {current_accuracy:.1%} → "
                            f"{new_accuracy:.1%} — new model deployed!")
                     logger.info(msg)
 
                 # Send Telegram notification
-                if hasattr(self.bot, 'notifier') and self.bot.notifier:
+                if hasattr(first_engine, 'notifier') and first_engine.notifier:
                     try:
-                        await self.bot.notifier.send_message(msg)
+                        await first_engine.notifier.send_message(msg)
                     except Exception:
                         pass
 

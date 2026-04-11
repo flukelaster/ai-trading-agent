@@ -307,11 +307,14 @@ async def close_position(ticket: int):
 
 
 @app.delete("/positions", dependencies=[Depends(verify_api_key)])
-async def close_all_positions():
+async def close_all_positions(symbol: str | None = None):
     if not ensure_connected():
         return mt5_response(False, error="MT5 not connected")
 
-    positions = mt5.positions_get()
+    if symbol:
+        positions = mt5.positions_get(symbol=symbol)
+    else:
+        positions = mt5.positions_get()
     if not positions:
         return mt5_response(True, data={"closed": 0})
 

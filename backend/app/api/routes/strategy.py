@@ -4,7 +4,7 @@ Strategy API routes.
 
 from fastapi import APIRouter
 
-from app.api.routes.bot import get_bot
+from app.api.routes.bot import _get_engine
 from app.strategy import STRATEGIES
 
 router = APIRouter(prefix="/api/strategy", tags=["strategy"])
@@ -22,7 +22,7 @@ async def get_available_strategies():
 
 @router.get("/current")
 async def get_current_strategy():
-    bot = get_bot()
+    bot = _get_engine()
     return {
         "name": bot.strategy.name,
         "params": bot.strategy.get_params(),

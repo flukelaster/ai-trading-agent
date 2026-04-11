@@ -26,13 +26,16 @@ import {
   getLatestSentiment, getSentimentHistory, updateSettings, getAccount,
   getDailyPnl,
   getBotEvents,
+  getSymbols,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { useBotStore } from "@/store/botStore";
 
 export default function DashboardPage() {
-  const { status, positions, sentiment, tick, events, setStatus, setPositions, setSentiment, setTick, addEvent } =
-    useBotStore();
+  const {
+    activeSymbol, symbols, status, symbolStatuses, positions, sentiment, tick, ticks, events,
+    setActiveSymbol, setSymbols, setStatus, setSymbolStatuses, setPositions, setSentiment, setTick, addEvent,
+  } = useBotStore();
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<{ balance: number; equity: number; margin: number; free_margin: number; profit: number } | null>(null);
   const [dailyPnl, setDailyPnl] = useState<{ daily_pnl: number; trade_count: number; wins: number; losses: number } | null>(null);
@@ -43,15 +46,31 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, posRes, sentRes, newsRes, accRes, pnlRes] = await Promise.all([
+      const [statusRes, symbolsRes, posRes, sentRes, newsRes, accRes, pnlRes] = await Promise.all([
         getBotStatus().catch(() => null),
+        getSymbols().catch(() => null),
         getPositions().catch(() => null),
         getLatestSentiment().catch(() => null),
         getSentimentHistory(1).catch(() => null),
         getAccount().catch(() => null),
         getDailyPnl().catch(() => null),
       ]);
-      if (statusRes) setStatus(statusRes.data);
+
+      // Aggregate status response has { symbols: { XAUUSD: {...}, ... }, active_count, total_count }
+      if (statusRes?.data?.symbols) {
+        setSymbolStatuses(statusRes.data.symbols);
+        // Set active symbol's status for backward compat
+        const activeStatus = statusRes.data.symbols[activeSymbol];
+        if (activeStatus) setStatus(activeStatus);
+      } else if (statusRes) {
+        // Single-symbol fallback
+        setStatus(statusRes.data);
+      }
+
+      if (symbolsRes?.data?.symbols) {
+        setSymbols(symbolsRes.data.symbols);
+      }
+
       if (posRes) setPositions(posRes.data.positions || []);
       if (sentRes) setSentiment(sentRes.data);
       if (newsRes) setNews((newsRes.data.history || []).slice(0, 5));
@@ -78,7 +97,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [setStatus, setPositions, setSentiment]);
+  }, [activeSymbol, setStatus, setSymbolStatuses, setSymbols, setPositions, setSentiment]);
 
   useEffect(() => {
     fetchData();
@@ -113,16 +132,16 @@ export default function DashboardPage() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleStart = async () => { await startBot(); fetchData(); };
-  const handleStop = async () => { await stopBot(); fetchData(); };
+  const handleStart = async () => { await startBot(activeSymbol); fetchData(); };
+  const handleStop = async () => { await stopBot(activeSymbol); fetchData(); };
   const handleEmergencyStop = async () => {
-    if (confirm("Are you sure? This will close ALL positions immediately.")) {
-      await emergencyStop();
+    if (confirm("Are you sure? This will close ALL positions for " + activeSymbol + " immediately.")) {
+      await emergencyStop(activeSymbol);
       fetchData();
     }
   };
   const handleAIFilterToggle = async (enabled: boolean) => {
-    await updateSettings({ use_ai_filter: enabled });
+    await updateSettings({ symbol: activeSymbol, use_ai_filter: enabled });
     fetchData();
   };
 
@@ -134,8 +153,19 @@ export default function DashboardPage() {
       chartTfSynced.current = true;
     }
   }, [status?.timeframe]);
+
+  // Update status when active symbol changes
+  useEffect(() => {
+    const s = symbolStatuses[activeSymbol];
+    if (s) setStatus(s);
+    chartTfSynced.current = false;
+  }, [activeSymbol, symbolStatuses]);
+
   const isRunning = status?.state === "RUNNING";
   const unrealizedPnL = positions.reduce((sum, p) => sum + (p.profit || 0), 0);
+  const activeTick = ticks[activeSymbol] || tick;
+  const activeSymbolInfo = symbols.find((s) => s.symbol === activeSymbol);
+  const priceDecimals = activeSymbolInfo?.price_decimals ?? 2;
 
   if (loading) {
     return (
@@ -157,18 +187,18 @@ export default function DashboardPage() {
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader title="Dashboard" subtitle="Real-time trading overview">
-        {tick && (
+        {activeTick && (
           <div className="border border-border rounded-full px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-2 sm:gap-3 bg-card">
-            <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">XAUUSD</span>
+            <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">{activeSymbol}</span>
             <span className="text-xs sm:text-sm font-mono font-bold text-foreground">
-              {tick.bid.toFixed(2)}
+              {activeTick.bid.toFixed(priceDecimals)}
             </span>
             <span className="text-[10px] text-muted-foreground">/</span>
             <span className="text-xs sm:text-sm font-mono text-muted-foreground">
-              {tick.ask.toFixed(2)}
+              {activeTick.ask.toFixed(priceDecimals)}
             </span>
             <span className="hidden sm:inline text-[10px] text-muted-foreground font-medium">
-              spd: {tick.spread.toFixed(1)}
+              spd: {activeTick.spread.toFixed(1)}
             </span>
           </div>
         )}
@@ -188,6 +218,39 @@ export default function DashboardPage() {
           </span>
         </div>
       </PageHeader>
+
+      {/* Symbol Selector Tabs */}
+      {symbols.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {symbols.map((s) => {
+            const isActive = s.symbol === activeSymbol;
+            const symTick = ticks[s.symbol];
+            const symStatus = symbolStatuses[s.symbol];
+            return (
+              <button
+                key={s.symbol}
+                type="button"
+                onClick={() => setActiveSymbol(s.symbol)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
+                  isActive
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-foreground border-border hover:border-primary/50"
+                }`}
+              >
+                <span>{s.display_name}</span>
+                <span className="font-mono text-[10px] opacity-75">
+                  {symTick ? symTick.bid.toFixed(s.price_decimals) : "---"}
+                </span>
+                <span
+                  className={`size-1.5 rounded-full ${
+                    symStatus?.state === "RUNNING" ? "bg-green-400" : "bg-muted-foreground/30"
+                  }`}
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
@@ -260,7 +323,7 @@ export default function DashboardPage() {
                 <span className="text-sm text-muted-foreground font-medium">Paper Trade</span>
                 <Switch
                   checked={status?.paper_trade ?? false}
-                  onCheckedChange={async (v) => { await updateSettings({ paper_trade: v }); fetchData(); }}
+                  onCheckedChange={async (v) => { await updateSettings({ symbol: activeSymbol, paper_trade: v }); fetchData(); }}
                 />
               </div>
 
@@ -286,13 +349,13 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between">
                 <span className="font-medium">Symbol</span>
-                <span className="text-foreground font-semibold">{status?.symbol || "—"}</span>
+                <span className="text-foreground font-semibold">{activeSymbol}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-medium">Timeframe</span>
                 <Select
                   value={status?.timeframe || "M15"}
-                  onValueChange={async (v) => { if (v) { await updateSettings({ timeframe: v }); fetchData(); } }}
+                  onValueChange={async (v) => { if (v) { await updateSettings({ symbol: activeSymbol, timeframe: v }); fetchData(); } }}
                 >
                   <SelectTrigger className="w-24 h-7 text-xs">
                     <SelectValue />
@@ -312,7 +375,7 @@ export default function DashboardPage() {
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3">
-                <span>{status?.symbol || "GOLD"}</span>
+                <span>{activeSymbolInfo?.display_name || activeSymbol}</span>
                 {sentiment && (
                   <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
                 )}
@@ -337,9 +400,9 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="h-48 sm:h-64 p-3 pt-0 sm:p-6 sm:pt-0">
             <PriceChart
-              symbol={status?.symbol || "GOLD"}
+              symbol={activeSymbol}
               timeframe={chartTimeframe}
-              tick={tick}
+              tick={activeTick}
             />
           </CardContent>
         </Card>
@@ -386,6 +449,7 @@ export default function DashboardPage() {
                   <Table className="min-w-[480px]">
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Symbol</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead className="text-right">Lots</TableHead>
                         <TableHead className="text-right">Entry</TableHead>
@@ -397,6 +461,7 @@ export default function DashboardPage() {
                     <TableBody>
                       {positions.map((p) => (
                         <TableRow key={p.ticket}>
+                          <TableCell className="font-medium text-xs">{p.symbol}</TableCell>
                           <TableCell
                             className={`font-semibold ${p.type === "BUY" ? "text-success dark:text-green-400" : "text-destructive"}`}
                           >

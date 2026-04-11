@@ -65,13 +65,22 @@ class BotEngine:
         connector: MT5BridgeConnector,
         db_session: AsyncSession,
         redis_client: redis.Redis,
+        symbol: str | None = None,
+        symbol_profile: dict | None = None,
     ):
         self.connector = connector
         self.market_data = MarketDataService(connector)
         self.executor = OrderExecutor(connector)
         self.db = db_session
         self.redis = redis_client
-        self.circuit_breaker = CircuitBreaker(redis_client)
+
+        # Symbol profile (per-symbol config)
+        profile = symbol_profile or {}
+        self.symbol = symbol or settings.symbol
+        self.timeframe = profile.get("default_timeframe", settings.timeframe)
+        self.contract_size = profile.get("contract_size", 100)
+
+        self.circuit_breaker = CircuitBreaker(redis_client, self.symbol)
 
         # Initialize with defaults — can be updated via API
         self.strategy: BaseStrategy = get_strategy("ema_crossover")
@@ -79,9 +88,13 @@ class BotEngine:
             max_risk_per_trade=settings.max_risk_per_trade,
             max_daily_loss=settings.max_daily_loss,
             max_concurrent_trades=settings.max_concurrent_trades,
-            max_lot=settings.max_lot,
+            max_lot=profile.get("max_lot", settings.max_lot),
             use_ai_filter=settings.use_ai_filter,
             ai_confidence_threshold=settings.ai_confidence_threshold,
+            pip_value=profile.get("pip_value", 1.0),
+            price_decimals=profile.get("price_decimals", 2),
+            sl_atr_mult=profile.get("sl_atr_mult", 1.5),
+            tp_atr_mult=profile.get("tp_atr_mult", 2.0),
         )
         self.sentiment_analyzer: NewsSentimentAnalyzer | None = None
         self.context_builder = AIContextBuilder(db_session)
@@ -107,8 +120,6 @@ class BotEngine:
         self._position_atr: dict[int, float] = {}  # ticket → ATR at entry time
         self.started_at: datetime | None = None
         self.last_signal_time: datetime | None = None
-        self.symbol = settings.symbol
-        self.timeframe = settings.timeframe
 
     def set_sentiment_analyzer(self, analyzer: NewsSentimentAnalyzer):
         self.sentiment_analyzer = analyzer
@@ -484,11 +495,11 @@ class BotEngine:
             price = tick["bid"] if pos["type"] == "BUY" else tick["ask"]
             pos["current_price"] = price
 
-            # Calculate profit (simplified: price diff * lot * 100 for gold)
+            # Calculate profit: price diff * lot * contract_size
             if pos["type"] == "BUY":
-                pos["profit"] = round((price - pos["open_price"]) * pos["lot"] * 100, 2)
+                pos["profit"] = round((price - pos["open_price"]) * pos["lot"] * self.contract_size, 2)
             else:
-                pos["profit"] = round((pos["open_price"] - price) * pos["lot"] * 100, 2)
+                pos["profit"] = round((pos["open_price"] - price) * pos["lot"] * self.contract_size, 2)
 
             # Check SL/TP hit
             hit = False
@@ -567,7 +578,7 @@ class BotEngine:
                 self.timeframe = timeframe
                 logger.info(f"Timeframe changed to: {timeframe}")
                 if self._scheduler:
-                    self._scheduler.reschedule_candle(timeframe)
+                    self._scheduler.reschedule_candle(self.symbol, timeframe)
         if max_risk_per_trade is not None:
             self.risk_manager.max_risk_per_trade = max_risk_per_trade
             logger.info(f"Max risk per trade: {max_risk_per_trade:.1%}")

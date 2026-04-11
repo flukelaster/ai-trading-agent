@@ -33,7 +33,7 @@ class OrderExecutor:
 
     async def close_all_positions(self, symbol: str | None = None) -> dict:
         logger.warning(f"Closing ALL positions (symbol={symbol})")
-        result = await self.connector.close_all_positions()
+        result = await self.connector.close_all_positions(symbol=symbol)
         return result
 
     async def get_open_positions(self, symbol: str | None = None) -> list[dict]:

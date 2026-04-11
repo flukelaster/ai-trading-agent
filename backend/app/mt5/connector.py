@@ -100,8 +100,9 @@ class MT5BridgeConnector:
     async def close_position(self, ticket: int) -> dict:
         return await self._request("delete", f"/position/{ticket}")
 
-    async def close_all_positions(self) -> dict:
-        return await self._request("delete", "/positions")
+    async def close_all_positions(self, symbol: str | None = None) -> dict:
+        params = {"symbol": symbol} if symbol else {}
+        return await self._request("delete", "/positions", params=params)
 
     async def get_ohlcv_range(self, symbol: str, timeframe: str, from_date: str, to_date: str) -> dict:
         """Fetch historical OHLCV data by date range. Uses longer timeout for large datasets."""

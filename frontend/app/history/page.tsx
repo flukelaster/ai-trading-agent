@@ -13,7 +13,7 @@ import { Download, BarChart3, TrendingUp, DollarSign, Target } from "lucide-reac
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import SentimentBadge from "@/components/ai/SentimentBadge";
-import { getTradeHistory, getPerformance } from "@/lib/api";
+import { getTradeHistory, getPerformance, getSymbols } from "@/lib/api";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
 } from "recharts";
@@ -29,26 +29,37 @@ export default function HistoryPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [performance, setPerformance] = useState<Record<string, unknown> | null>(null);
   const [days, setDays] = useState(30);
+  const [symbolFilter, setSymbolFilter] = useState<string>("all");
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getSymbols().then((res) => {
+      if (res.data?.symbols) {
+        setAvailableSymbols(res.data.symbols.map((s: { symbol: string }) => s.symbol));
+      }
+    }).catch(() => {});
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    const sym = symbolFilter === "all" ? undefined : symbolFilter;
     try {
       const [tradeRes, perfRes] = await Promise.all([
-        getTradeHistory({ days, limit: 200 }), getPerformance(days),
+        getTradeHistory({ days, symbol: sym, limit: 200 }), getPerformance(days, sym),
       ]);
       setTrades(tradeRes.data.trades || []);
       setPerformance(perfRes.data);
     } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, [days]);
+  }, [days, symbolFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleExportCSV = () => {
-    const headers = "Ticket,Type,Lot,Open Price,Close Price,SL,TP,Profit,Strategy,Sentiment\n";
+    const headers = "Ticket,Symbol,Type,Lot,Open Price,Close Price,SL,TP,Profit,Strategy,Sentiment\n";
     const rows = trades
       .map((t) =>
-        `${t.ticket},${t.type},${t.lot},${t.open_price},${t.close_price ?? ""},${t.sl},${t.tp},${t.profit ?? ""},${t.strategy_name},${t.ai_sentiment_label ?? ""}`
+        `${t.ticket},${t.symbol},${t.type},${t.lot},${t.open_price},${t.close_price ?? ""},${t.sl},${t.tp},${t.profit ?? ""},${t.strategy_name},${t.ai_sentiment_label ?? ""}`
       )
       .join("\n");
     const blob = new Blob([headers + rows], { type: "text/csv" });
@@ -61,6 +72,29 @@ export default function HistoryPage() {
   return (
     <div className="p-6 space-y-6">
       <PageHeader title="Trade History" subtitle="Review past trades and performance">
+        {availableSymbols.length > 1 && (
+          <div className="flex gap-1 border border-border rounded-2xl p-1 bg-card">
+            <Button
+              variant={symbolFilter === "all" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setSymbolFilter("all")}
+              className={`rounded-xl text-xs ${symbolFilter === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              All
+            </Button>
+            {availableSymbols.map((sym) => (
+              <Button
+                key={sym}
+                variant={symbolFilter === sym ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setSymbolFilter(sym)}
+                className={`rounded-xl text-xs ${symbolFilter === sym ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              >
+                {sym}
+              </Button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-1 border border-border rounded-2xl p-1 bg-card">
           {[7, 30, 90].map((d) => (
             <Button
@@ -106,6 +140,7 @@ export default function HistoryPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Time</TableHead>
+                        <TableHead>Symbol</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead className="text-right">Lot</TableHead>
                         <TableHead className="text-right">Open</TableHead>
@@ -121,7 +156,7 @@ export default function HistoryPage() {
                         const wins = trades.filter((t) => (t.profit ?? 0) > 0).length;
                         return trades.length > 0 ? (
                           <TableRow className="border-t-2 border-border bg-muted/30 font-semibold">
-                            <TableCell colSpan={4} className="text-xs font-bold text-muted-foreground">
+                            <TableCell colSpan={5} className="text-xs font-bold text-muted-foreground">
                               Total ({trades.length} trades · {wins}W / {trades.length - wins}L)
                             </TableCell>
                             <TableCell
@@ -138,6 +173,7 @@ export default function HistoryPage() {
                           <TableCell className="text-muted-foreground text-xs font-medium">
                             {new Date(t.open_time).toLocaleDateString()}
                           </TableCell>
+                          <TableCell className="font-medium text-xs">{t.symbol}</TableCell>
                           <TableCell
                             className={`font-semibold ${t.type === "BUY" ? "text-success dark:text-green-400" : "text-destructive"}`}
                           >
