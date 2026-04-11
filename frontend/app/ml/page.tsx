@@ -237,9 +237,13 @@ export default function MLPage() {
                 <Select value={trainTimeframe} onValueChange={(v) => v && setTrainTimeframe(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="M1">M1</SelectItem>
                     <SelectItem value="M5">M5</SelectItem>
                     <SelectItem value="M15">M15</SelectItem>
+                    <SelectItem value="M30">M30</SelectItem>
                     <SelectItem value="H1">H1</SelectItem>
+                    <SelectItem value="H4">H4</SelectItem>
+                    <SelectItem value="D1">D1</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
