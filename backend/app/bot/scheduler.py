@@ -197,12 +197,14 @@ class BotScheduler:
 
     async def _sentiment_job(self):
         logger.debug("Sentiment job triggered")
-        tasks = [e.fetch_and_analyze_sentiment() for e in self._engines.values()]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [e.fetch_and_analyze_sentiment() for e in self._engines.values() if e.state.value == "RUNNING"]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _sync_job(self):
-        tasks = [e.sync_positions() for e in self._engines.values()]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [e.sync_positions() for e in self._engines.values() if e.state.value == "RUNNING"]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _weekly_optimize_job(self):
         logger.info("Weekly optimization triggered")

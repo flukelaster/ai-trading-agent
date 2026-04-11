@@ -3,7 +3,7 @@ Circuit Breaker — tracks daily P&L via Redis, halts trading when limit is reac
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import redis.asyncio as redis
 from loguru import logger
@@ -55,13 +55,9 @@ class CircuitBreaker:
     @staticmethod
     async def get_global_daily_pnl(redis_client, symbols: list[str]) -> float:
         """Sum daily PnL across all symbols for portfolio-level risk check."""
-        total = 0.0
-        for symbol in symbols:
-            key = f"circuit:daily_pnl:{symbol}"
-            val = await redis_client.get(key)
-            if val:
-                total += float(val)
-        return total
+        keys = [f"circuit:daily_pnl:{symbol}" for symbol in symbols]
+        values = await redis_client.mget(keys)
+        return sum(float(v) for v in values if v)
 
     @staticmethod
     async def is_global_triggered(redis_client, symbols: list[str], balance: float, max_daily_loss: float) -> bool:
@@ -70,7 +66,6 @@ class CircuitBreaker:
         max_loss = balance * max_daily_loss
         triggered = total_pnl <= -max_loss
         if triggered:
-            from loguru import logger
             logger.warning(f"GLOBAL circuit breaker TRIGGERED: total_pnl={total_pnl:.2f}, limit=-{max_loss:.2f}")
         return triggered
 
@@ -79,6 +74,5 @@ class CircuitBreaker:
         now = datetime.now(timezone.utc)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
         if now >= midnight:
-            from datetime import timedelta
             midnight += timedelta(days=1)
         return max(int((midnight - now).total_seconds()), 60)

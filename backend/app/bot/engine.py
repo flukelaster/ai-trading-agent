@@ -210,8 +210,6 @@ class BotEngine:
                 return
 
             # Check global portfolio daily loss (across all symbols)
-            from app.risk.circuit_breaker import CircuitBreaker
-            from app.config import settings
             all_symbols = settings.symbol_list
             if await CircuitBreaker.is_global_triggered(self.redis, all_symbols, balance, settings.max_daily_loss * 1.5):
                 self.state = BotState.PAUSED
@@ -238,8 +236,7 @@ class BotEngine:
                 return
 
             # Phase G: Multi-timeframe H1 trend confirmation
-            from app.config import settings as _settings
-            if _settings.use_mtf_filter:
+            if settings.use_mtf_filter:
                 h1_df = await self.market_data.get_ohlcv(self.symbol, "H1", 50)
                 h1_trend = _get_h1_trend(h1_df)
                 if h1_trend != 0 and h1_trend != signal:
@@ -257,7 +254,8 @@ class BotEngine:
             logger.info(f"Signal detected: {signal_label}")
             await self._log_event(BotEventType.SIGNAL_DETECTED, f"{signal_label} signal on {self.symbol}")
             await self._push_event("bot_event", {"type": "signal_detected", "signal": signal_label, "symbol": self.symbol})
-            await self._notify(self.notifier._send(f"📊 <b>Signal: {signal_label}</b> on {self.symbol}"))
+            if self.notifier:
+                await self._notify(self.notifier._send(f"📊 <b>Signal: {signal_label}</b> on {self.symbol}"))
 
             # 3. Get AI sentiment (optional)
             ai_sentiment = None

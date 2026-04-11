@@ -104,6 +104,7 @@ export const getDataStatus = (symbol?: string) =>
 
 // ML Model
 export const trainModel = (params: {
+  symbol?: string;
   timeframe?: string;
   from_date?: string;
   to_date?: string;
@@ -112,8 +113,10 @@ export const trainModel = (params: {
   sl_pips?: number;
   test_size?: number;
 }) => api.post("/api/ml/train", params, { timeout: 300000 });
-export const getModelStatus = () => api.get("/api/ml/status");
-export const mlPredict = () => api.post("/api/ml/predict");
+export const getModelStatus = (symbol?: string) =>
+  api.get("/api/ml/status", { params: symbol ? { symbol } : {} });
+export const mlPredict = (symbol?: string) =>
+  api.post("/api/ml/predict", null, { params: symbol ? { symbol } : {} });
 
 // Macro Data
 export const getMacroLatest = () => api.get("/api/macro/latest");

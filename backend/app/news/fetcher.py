@@ -52,6 +52,23 @@ class NewsFetcher:
             logger.error(f"RSS fetch failed for {url}: {e}")
             return []
 
+    def _dedup_and_limit(self, items: list[dict]) -> list[dict]:
+        unique = []
+        seen_words = []
+        for item in items:
+            words = set(item["title"].lower().split())
+            is_dup = False
+            for sw in seen_words:
+                overlap = len(words & sw) / max(len(words | sw), 1)
+                if overlap > 0.8:
+                    is_dup = True
+                    break
+            if not is_dup:
+                unique.append(item)
+                seen_words.append(words)
+        unique.sort(key=lambda x: x.get("published") or "", reverse=True)
+        return unique[:self.max_headlines]
+
     async def fetch_all_sources(self) -> list[dict]:
         tasks = []
         for source in NEWS_SOURCES:
@@ -65,24 +82,7 @@ class NewsFetcher:
             if isinstance(result, list):
                 all_items.extend(result)
 
-        # Deduplicate by title similarity
-        unique = []
-        seen_words = []
-        for item in all_items:
-            words = set(item["title"].lower().split())
-            is_dup = False
-            for sw in seen_words:
-                overlap = len(words & sw) / max(len(words | sw), 1)
-                if overlap > 0.8:
-                    is_dup = True
-                    break
-            if not is_dup:
-                unique.append(item)
-                seen_words.append(words)
-
-        # Sort by published date (newest first), limit
-        unique.sort(key=lambda x: x.get("published") or "", reverse=True)
-        return unique[: self.max_headlines]
+        return self._dedup_and_limit(all_items)
 
     async def fetch_for_symbol(self, symbol: str) -> list[dict]:
         from app.news.sources import NEWS_SOURCES_BY_SYMBOL
@@ -96,19 +96,4 @@ class NewsFetcher:
         for result in results:
             if isinstance(result, list):
                 all_items.extend(result)
-        # Same dedup logic as fetch_all_sources
-        unique = []
-        seen_words = []
-        for item in all_items:
-            words = set(item["title"].lower().split())
-            is_dup = False
-            for sw in seen_words:
-                overlap = len(words & sw) / max(len(words | sw), 1)
-                if overlap > 0.8:
-                    is_dup = True
-                    break
-            if not is_dup:
-                unique.append(item)
-                seen_words.append(words)
-        unique.sort(key=lambda x: x.get("published") or "", reverse=True)
-        return unique[:self.max_headlines]
+        return self._dedup_and_limit(all_items)

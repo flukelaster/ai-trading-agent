@@ -10,9 +10,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
-import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData } from "@/lib/api";
+import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData, getSymbols } from "@/lib/api";
+
+type SymbolInfo = { symbol: string; display_name: string; state: string };
 
 export default function MLPage() {
+  const [symbols, setSymbols] = useState<SymbolInfo[]>([]);
+  const [activeSymbol, setActiveSymbol] = useState("GOLD");
   const [modelStatus, setModelStatus] = useState<Record<string, unknown> | null>(null);
   const [dataStatus, setDataStatus] = useState<Record<string, unknown>[]>([]);
   const [prediction, setPrediction] = useState<Record<string, unknown> | null>(null);
@@ -37,24 +41,34 @@ export default function MLPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, dataRes] = await Promise.all([
-        getModelStatus().catch(() => null),
-        getDataStatus().catch(() => null),
+      const [statusRes, dataRes, symbolsRes] = await Promise.all([
+        getModelStatus(activeSymbol).catch(() => null),
+        getDataStatus(activeSymbol).catch(() => null),
+        getSymbols().catch(() => null),
       ]);
       if (statusRes) setModelStatus(statusRes.data);
       if (dataRes) setDataStatus(Array.isArray(dataRes.data) ? dataRes.data : []);
+      if (symbolsRes?.data?.symbols) setSymbols(symbolsRes.data.symbols);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, []);
+  }, [activeSymbol]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Reset results when symbol changes
+  useEffect(() => {
+    setTrainResult(null);
+    setPrediction(null);
+    setCollectResult(null);
+    setCollectError(null);
+  }, [activeSymbol]);
 
   const handleCollect = async () => {
     setCollecting(true);
     setCollectResult(null);
     setCollectError(null);
     try {
-      const res = await collectData({ timeframe: collectTimeframe, from_date: collectFrom, to_date: collectTo });
+      const res = await collectData({ symbol: activeSymbol, timeframe: collectTimeframe, from_date: collectFrom, to_date: collectTo });
       setCollectResult(res.data);
       await fetchData();
     } catch (e) {
@@ -68,7 +82,7 @@ export default function MLPage() {
     setTraining(true);
     setTrainResult(null);
     try {
-      const res = await trainModel({ timeframe: trainTimeframe, from_date: trainFrom, to_date: trainTo, forward_bars: forwardBars, tp_pips: tpPips, sl_pips: slPips });
+      const res = await trainModel({ symbol: activeSymbol, timeframe: trainTimeframe, from_date: trainFrom, to_date: trainTo, forward_bars: forwardBars, tp_pips: tpPips, sl_pips: slPips });
       setTrainResult(res.data);
       await fetchData();
     } catch (e) { console.error(e); }
@@ -78,7 +92,7 @@ export default function MLPage() {
   const handlePredict = async () => {
     setPredicting(true);
     try {
-      const res = await mlPredict();
+      const res = await mlPredict(activeSymbol);
       setPrediction(res.data);
     } catch (e) { console.error(e); }
     finally { setPredicting(false); }
@@ -100,17 +114,38 @@ export default function MLPage() {
   const fi = (modelStatus?.feature_importance_top10 || {}) as Record<string, number>;
   const fiEntries = Object.entries(fi).sort(([, a], [, b]) => b - a);
   const fiMax = fiEntries.length > 0 ? fiEntries[0][1] : 1;
+  const activeSymbolInfo = symbols.find((s) => s.symbol === activeSymbol);
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader title="ML Model" subtitle="Train and manage LightGBM signal model" />
+      <PageHeader title="ML Model" subtitle="Train and manage LightGBM signal model per symbol" />
+
+      {/* Symbol Tabs */}
+      {symbols.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {symbols.map((s) => (
+            <button
+              key={s.symbol}
+              type="button"
+              onClick={() => setActiveSymbol(s.symbol)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
+                s.symbol === activeSymbol
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-foreground border-border hover:border-primary/50"
+              }`}
+            >
+              <span>{s.display_name}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Data Status */}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <Database className="size-4 text-primary-foreground dark:text-primary" />
-            Historical Data
+            Historical Data — {activeSymbolInfo?.display_name || activeSymbol}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -129,7 +164,7 @@ export default function MLPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground font-medium">No historical data collected yet.</p>
+            <p className="text-sm text-muted-foreground font-medium">No historical data for {activeSymbol}. Collect data first.</p>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
@@ -154,7 +189,7 @@ export default function MLPage() {
             </div>
             <Button onClick={handleCollect} disabled={collecting} className="rounded-full bg-primary text-primary-foreground font-semibold hover-scale">
               <Database className="size-4 mr-1.5" />
-              {collecting ? "Collecting..." : "Collect Data"}
+              {collecting ? "Collecting..." : `Collect ${activeSymbol}`}
             </Button>
           </div>
           {collectResult && (
@@ -176,7 +211,7 @@ export default function MLPage() {
           <CardHeader>
             <CardTitle className="text-sm font-bold flex items-center gap-2">
               <Brain className="size-4 text-primary-foreground dark:text-primary" />
-              Train Model
+              Train Model — {activeSymbol}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -215,10 +250,10 @@ export default function MLPage() {
             </div>
             <Button onClick={handleTrain} disabled={training || dataStatus.length === 0} className="w-full rounded-full bg-primary text-primary-foreground font-semibold hover-scale">
               <Play className="size-4 mr-1.5" />
-              {training ? "Training..." : "Train Model"}
+              {training ? "Training..." : `Train ${activeSymbol} Model`}
             </Button>
             {dataStatus.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center font-medium">Collect historical data first</p>
+              <p className="text-xs text-muted-foreground text-center font-medium">Collect historical data for {activeSymbol} first</p>
             )}
           </CardContent>
         </Card>
@@ -228,7 +263,7 @@ export default function MLPage() {
           <CardHeader>
             <CardTitle className="text-sm font-bold flex items-center gap-2">
               <Zap className="size-4 text-primary-foreground dark:text-primary" />
-              Model Status
+              Model Status — {activeSymbol}
               {hasModel && <Badge className="ml-auto bg-success/10 text-success dark:bg-green-400/10 dark:text-green-400 text-[10px] rounded-full">Ready</Badge>}
               {!hasModel && <Badge className="ml-auto rounded-full" variant="outline">No Model</Badge>}
             </CardTitle>
@@ -259,7 +294,7 @@ export default function MLPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8 font-medium">Train a model to see status</p>
+              <p className="text-sm text-muted-foreground text-center py-8 font-medium">No model for {activeSymbol}. Train one first.</p>
             )}
           </CardContent>
         </Card>
@@ -288,7 +323,7 @@ export default function MLPage() {
           <CardHeader>
             <CardTitle className="text-sm font-bold flex items-center gap-2">
               <Zap className="size-4 text-primary-foreground dark:text-primary" />
-              Live Prediction
+              Live Prediction — {activeSymbol}
             </CardTitle>
           </CardHeader>
           <CardContent>

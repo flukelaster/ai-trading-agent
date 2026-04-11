@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Play, BarChart3, TrendingUp, DollarSign, Target, AlertTriangle, Search, Database } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
-import { runBacktest, runOptimize, getCurrentStrategy, getDataStatus } from "@/lib/api";
+import { runBacktest, runOptimize, getCurrentStrategy, getDataStatus, getSymbols } from "@/lib/api";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -27,6 +27,7 @@ export default function BacktestPage() {
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasDbData, setHasDbData] = useState(false);
+  const [availableSymbols, setAvailableSymbols] = useState<{symbol: string; display_name: string}[]>([]);
 
   const [optResult, setOptResult] = useState<Record<string, unknown> | null>(null);
   const [optimizing, setOptimizing] = useState(false);
@@ -39,6 +40,9 @@ export default function BacktestPage() {
     }).catch(() => {});
     getDataStatus().then((res) => {
       if (Array.isArray(res.data) && res.data.length > 0) setHasDbData(true);
+    }).catch(() => {});
+    getSymbols().then((res) => {
+      if (Array.isArray(res.data) && res.data.length > 0) setAvailableSymbols(res.data);
     }).catch(() => {});
   }, []);
 
@@ -108,10 +112,13 @@ export default function BacktestPage() {
                 <Select value={symbol} onValueChange={(v) => v && setSymbol(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="GOLD">Gold (XAUUSD)</SelectItem>
-                    <SelectItem value="OILCash">WTI Oil</SelectItem>
-                    <SelectItem value="BTCUSD">Bitcoin</SelectItem>
-                    <SelectItem value="USDJPY">USD/JPY</SelectItem>
+                    {availableSymbols.length > 0 ? (
+                      availableSymbols.map((s) => (
+                        <SelectItem key={s.symbol} value={s.symbol}>{s.display_name}</SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="GOLD">Gold (XAUUSD)</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

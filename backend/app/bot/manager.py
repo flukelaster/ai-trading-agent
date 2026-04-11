@@ -3,6 +3,7 @@ BotManager — coordinates multiple BotEngine instances, one per symbol.
 """
 
 import asyncio
+import time
 
 import redis.asyncio as redis
 from loguru import logger
@@ -26,6 +27,8 @@ class BotManager:
         self.db = db_session
         self.redis = redis_client
         self.engines: dict[str, BotEngine] = {}
+        self._positions_cache: dict[str, list[dict]] = {}
+        self._positions_cache_time: float = 0
 
         # Create an engine for each configured symbol
         for symbol in settings.symbol_list:
@@ -100,7 +103,10 @@ class BotManager:
         }
 
     async def get_active_positions(self) -> dict[str, list[dict]]:
-        """Get open positions grouped by symbol."""
+        """Get open positions grouped by symbol (cached 30s)."""
+        now = time.time()
+        if now - self._positions_cache_time < 30 and self._positions_cache:
+            return self._positions_cache
         result = {}
         for symbol, engine in self.engines.items():
             try:
@@ -109,6 +115,8 @@ class BotManager:
                     result[symbol] = positions
             except Exception:
                 pass
+        self._positions_cache = result
+        self._positions_cache_time = now
         return result
 
     def set_sentiment_analyzer(self, analyzer, symbol: str | None = None):

@@ -11,12 +11,10 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import AIClient
-from app.ai.prompts import ENHANCED_SENTIMENT_SYSTEM_PROMPT, SENTIMENT_SYSTEM_PROMPT
 from app.ai.prompts import get_enhanced_sentiment_prompt, get_sentiment_prompt
 from app.db.models import NewsSentiment
 
 
-SENTIMENT_CACHE_KEY = "sentiment:latest"
 SENTIMENT_CACHE_TTL = 900  # 15 minutes
 
 
