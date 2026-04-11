@@ -17,85 +17,48 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
-import { AnimatedCounter } from "@/components/ui/animated-counter";
 import SentimentBadge from "@/components/ai/SentimentBadge";
 import NewsCard from "@/components/ai/NewsCard";
 import PriceChart from "@/components/chart/PriceChart";
 import EventFeed from "@/components/dashboard/EventFeed";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from "recharts";
-import {
   getBotStatus, startBot, stopBot, emergencyStop, getPositions,
-  getLatestSentiment, getSentimentHistory, updateSettings, updateStrategy, getAccount,
+  getLatestSentiment, getSentimentHistory, updateSettings, getAccount,
   getDailyPnl,
   getBotEvents,
-  getSymbols,
-  getAnalytics,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { useBotStore } from "@/store/botStore";
-import { SymbolTabs } from "@/components/ui/symbol-tabs";
-import { TimeframeSelector } from "@/components/ui/timeframe-selector";
 
 export default function DashboardPage() {
-  const {
-    activeSymbol, symbols, status, symbolStatuses, positions, sentiment, tick, ticks, events,
-    setActiveSymbol, setSymbols, setStatus, setSymbolStatuses, setPositions, setSentiment, setTick, addEvent,
-  } = useBotStore();
+  const { status, positions, sentiment, tick, events, setStatus, setPositions, setSentiment, setTick, addEvent } =
+    useBotStore();
   const [loading, setLoading] = useState(true);
-  const [account, setAccount] = useState<{ balance: number; equity: number; margin: number; free_margin: number; profit: number; accounts?: { connector: string; balance: number; equity: number; currency: string }[] } | null>(null);
+  const [account, setAccount] = useState<{ balance: number; equity: number; margin: number; free_margin: number; profit: number } | null>(null);
   const [dailyPnl, setDailyPnl] = useState<{ daily_pnl: number; trade_count: number; wins: number; losses: number } | null>(null);
   const [news, setNews] = useState<
     { headline: string; source: string; sentiment_label: string; sentiment_score: number; created_at: string }[]
   >([]);
-  const [analytics, setAnalytics] = useState<Record<string, unknown> | null>(null);
   const { isConnected, subscribe } = useWebSocket();
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, symbolsRes, posRes, sentRes, newsRes, accRes, pnlRes, analyticsRes] = await Promise.all([
+      // Fast calls — no MT5 dependency, resolve immediately
+      const [statusRes, sentRes, newsRes, eventsRes] = await Promise.all([
         getBotStatus().catch(() => null),
-        getSymbols().catch(() => null),
-        getPositions().catch(() => null),
         getLatestSentiment().catch(() => null),
         getSentimentHistory(1).catch(() => null),
-        getAccount().catch(() => null),
-        getDailyPnl().catch(() => null),
-        getAnalytics(undefined, 30).catch(() => null),
+        getBotEvents({ days: 1, limit: 50 }).catch(() => null),
       ]);
-
-      // Aggregate status response has { symbols: { XAUUSD: {...}, ... }, active_count, total_count }
-      if (statusRes?.data?.symbols) {
-        setSymbolStatuses(statusRes.data.symbols);
-        // Set active symbol's status for backward compat
-        const activeStatus = statusRes.data.symbols[activeSymbol];
-        if (activeStatus) setStatus(activeStatus);
-      } else if (statusRes) {
-        // Single-symbol fallback
-        setStatus(statusRes.data);
-      }
-
-      if (symbolsRes?.data?.symbols) {
-        setSymbols(symbolsRes.data.symbols);
-      }
-
-      if (posRes) setPositions(posRes.data.positions || []);
+      if (statusRes) setStatus(statusRes.data);
       if (sentRes) setSentiment(sentRes.data);
       if (newsRes) setNews((newsRes.data.history || []).slice(0, 5));
-      if (accRes) setAccount(accRes.data);
-      if (pnlRes) setDailyPnl(pnlRes.data);
-      if (analyticsRes) setAnalytics(analyticsRes.data);
-
-      // Load persisted events from DB (survives page refresh)
-      const eventsRes = await getBotEvents({ days: 1, limit: 50 }).catch(() => null);
       if (eventsRes?.data?.events) {
         const dbEvents = eventsRes.data.events.map((e: { type: string; message: string; created_at: string }) => ({
           type: e.type,
           message: e.message,
           timestamp: e.created_at,
         }));
-        // Only seed if store is empty (don't overwrite live WS events)
         if (events.length === 0 && dbEvents.length > 0) {
           for (const ev of dbEvents.reverse()) {
             addEvent(ev);
@@ -105,9 +68,24 @@ export default function DashboardPage() {
     } catch (e) {
       console.error("Failed to fetch data:", e);
     } finally {
+      // Show page after fast calls — don't block on MT5
       setLoading(false);
     }
-  }, [activeSymbol, setStatus, setSymbolStatuses, setSymbols, setPositions, setSentiment]);
+
+    // Slow calls — may need MT5 Bridge, load in background
+    try {
+      const [posRes, accRes, pnlRes] = await Promise.all([
+        getPositions().catch(() => null),
+        getAccount().catch(() => null),
+        getDailyPnl().catch(() => null),
+      ]);
+      if (posRes) setPositions(posRes.data.positions || []);
+      if (accRes) setAccount(accRes.data);
+      if (pnlRes) setDailyPnl(pnlRes.data);
+    } catch (e) {
+      console.error("Failed to fetch MT5 data:", e);
+    }
+  }, [setStatus, setPositions, setSentiment]);
 
   useEffect(() => {
     fetchData();
@@ -142,21 +120,20 @@ export default function DashboardPage() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleStart = async () => { await startBot(activeSymbol); fetchData(); };
-  const handleStop = async () => { await stopBot(activeSymbol); fetchData(); };
+  const handleStart = async () => { await startBot(); fetchData(); };
+  const handleStop = async () => { await stopBot(); fetchData(); };
   const handleEmergencyStop = async () => {
-    if (confirm("Are you sure? This will close ALL positions for " + activeSymbol + " immediately.")) {
-      await emergencyStop(activeSymbol);
+    if (confirm("Are you sure? This will close ALL positions immediately.")) {
+      await emergencyStop();
       fetchData();
     }
   };
   const handleAIFilterToggle = async (enabled: boolean) => {
-    await updateSettings({ symbol: activeSymbol, use_ai_filter: enabled });
+    await updateSettings({ use_ai_filter: enabled });
     fetchData();
   };
 
   const [chartTimeframe, setChartTimeframe] = useState("M5");
-  const [viewMode, setViewMode] = useState<"single" | "multi">("single");
   const chartTfSynced = useRef(false);
   useEffect(() => {
     if (status?.timeframe && !chartTfSynced.current) {
@@ -164,23 +141,12 @@ export default function DashboardPage() {
       chartTfSynced.current = true;
     }
   }, [status?.timeframe]);
-
-  // Update status when active symbol changes
-  useEffect(() => {
-    const s = symbolStatuses[activeSymbol];
-    if (s) setStatus(s);
-    chartTfSynced.current = false;
-  }, [activeSymbol, symbolStatuses]);
-
   const isRunning = status?.state === "RUNNING";
   const unrealizedPnL = positions.reduce((sum, p) => sum + (p.profit || 0), 0);
-  const activeTick = ticks[activeSymbol] || tick;
-  const activeSymbolInfo = symbols.find((s) => s.symbol === activeSymbol);
-  const priceDecimals = activeSymbolInfo?.price_decimals ?? 2;
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -188,7 +154,7 @@ export default function DashboardPage() {
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-          <Skeleton className="h-60 sm:h-80 rounded-2xl lg:col-span-3" />
+          <Skeleton className="h-60 sm:h-80 rounded-2xl lg:col-span-2" />
           <Skeleton className="h-60 sm:h-80 rounded-2xl" />
         </div>
       </div>
@@ -196,25 +162,25 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader title="Dashboard" subtitle="Real-time trading overview">
-        {activeTick && (
+        {tick && (
           <div className="border border-border rounded-full px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-2 sm:gap-3 bg-card">
-            <span className="text-xs text-muted-foreground font-medium">{activeSymbol}</span>
+            <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">XAUUSD</span>
             <span className="text-xs sm:text-sm font-mono font-bold text-foreground">
-              {activeTick.bid.toFixed(priceDecimals)}
+              {tick.bid.toFixed(2)}
             </span>
-            <span className="text-xs text-muted-foreground">/</span>
+            <span className="text-[10px] text-muted-foreground">/</span>
             <span className="text-xs sm:text-sm font-mono text-muted-foreground">
-              {activeTick.ask.toFixed(priceDecimals)}
+              {tick.ask.toFixed(2)}
             </span>
-            <span className="hidden sm:inline text-xs text-muted-foreground font-medium">
-              spd: {activeTick.spread.toFixed(1)}
+            <span className="hidden sm:inline text-[10px] text-muted-foreground font-medium">
+              spd: {tick.spread.toFixed(1)}
             </span>
           </div>
         )}
         {status?.paper_trade && (
-          <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 text-xs font-semibold">
+          <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 text-[10px] font-semibold">
             PAPER
           </Badge>
         )}
@@ -230,62 +196,9 @@ export default function DashboardPage() {
         </div>
       </PageHeader>
 
-      {/* Symbol Selector Tabs */}
-      <SymbolTabs
-        symbols={symbols.map(s => ({ ...s, state: symbolStatuses[s.symbol]?.state }))}
-        active={activeSymbol}
-        onSelect={setActiveSymbol}
-      >
-        <button
-          type="button"
-          onClick={() => setViewMode(viewMode === "single" ? "multi" : "single")}
-          className="min-h-[44px] px-4 py-2.5 rounded-xl border border-border bg-card text-xs font-semibold hover:border-primary/50 transition-all"
-        >
-          {viewMode === "single" ? "4-Grid" : "Single"}
-        </button>
-      </SymbolTabs>
-
-      {/* Account Balances Bar */}
-      {account && (
-        <div className="flex flex-wrap gap-4 items-center px-4 py-3 rounded-2xl border border-border bg-card animate-fade-in">
-          {account.accounts && account.accounts.length > 1 ? (
-            account.accounts.map((acc, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                  {acc.connector === "binance" ? (
-                    <svg viewBox="0 0 511.97 511.97" className="size-5">
-                      <path fill="#f3ba2f" d="M156.56,215.14,256,115.71l99.47,99.47,57.86-57.85L256,0,98.71,157.28l57.85,57.85M0,256l57.86-57.87L115.71,256,57.85,313.83Zm156.56,40.85L256,396.27l99.47-99.47,57.89,57.82,0,0L256,512,98.71,354.7l-.08-.09,57.93-57.77M396.27,256l57.85-57.85L512,256l-57.85,57.85Z"/>
-                      <path fill="#f3ba2f" d="M314.66,256h0L256,197.25,212.6,240.63h0l-5,5L197.33,255.9l-.08.08.08.08L256,314.72l58.7-58.7,0,0-.05,0"/>
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 122.88 122.88" className="size-5">
-                      <path fill="#fecb00" d="M61.44,0A61.46,61.46,0,1,1,18,18,61.21,61.21,0,0,1,61.44,0Z"/>
-                      <path fill="#db9300" d="M63.28,12.41A50.87,50.87,0,1,1,12.41,63.28,50.87,50.87,0,0,1,63.28,12.41Z"/>
-                      <path fill="#fecb00" d="M81.19,45,67.1,47.22a14.53,14.53,0,0,0-1.91-3.68,9.19,9.19,0,0,0-2.81-2.08V52.38q11.48,3.07,15.34,6.47a14.92,14.92,0,0,1,5.09,11.61A15.77,15.77,0,0,1,81,78a18.66,18.66,0,0,1-4.68,5.75,18.87,18.87,0,0,1-6.07,3.35,30,30,0,0,1-7.85,1.22v7.12h-5.5V88.32a34.54,34.54,0,0,1-9-1.78,18.16,18.16,0,0,1-6-3.6A17.75,17.75,0,0,1,38,78a23.24,23.24,0,0,1-2-6.41l15.24-1.77a13.92,13.92,0,0,0,1.85,5.37,9.55,9.55,0,0,0,3.8,2.93V64.75A69.82,69.82,0,0,1,46,61.09a14.48,14.48,0,0,1-7.89-13.31,15,15,0,0,1,4.71-11.25q4.72-4.53,14-5V27.8h5.5v3.71q8.48.52,13,4A16.06,16.06,0,0,1,81.19,45ZM56.88,41.26a7.19,7.19,0,0,0-3.38,2,4.24,4.24,0,0,0-1,2.76,4.47,4.47,0,0,0,1,2.87,7.1,7.1,0,0,0,3.36,2.07V41.26Zm5.5,37.23a8.76,8.76,0,0,0,4.69-2.37,5.37,5.37,0,0,0,1.5-3.69,5.08,5.08,0,0,0-1.26-3.29,11.58,11.58,0,0,0-4.93-2.77V78.49Z"/>
-                    </svg>
-                  )}
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase">{acc.connector}</p>
-                  <p className="text-sm font-bold font-mono"><AnimatedCounter value={acc.balance} prefix="$" />{acc.currency === "USDT" ? " USDT" : ""}</p>
-                </div>
-                {i < (account.accounts?.length ?? 0) - 1 && <div className="h-8 w-px bg-border ml-2" />}
-              </div>
-            ))
-          ) : (
-            <div className="flex items-center gap-3">
-              <Wallet className="size-4 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground font-medium">Balance</p>
-                <p className="text-sm font-bold font-mono"><AnimatedCounter value={account.balance} prefix="$" /></p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in" style={{ animationDelay: "0.05s" }}>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        <StatCard icon={Wallet} label="Balance" value={account ? `$${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}` : "—"} variant="gold" />
         <StatCard
           icon={TrendingUp}
           label="Unrealized P&L"
@@ -313,7 +226,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Controls + Price Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 xl:gap-6 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="order-1 lg:order-2">
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold">Controls</CardTitle>
@@ -354,7 +267,7 @@ export default function DashboardPage() {
                 <span className="text-sm text-muted-foreground font-medium">Paper Trade</span>
                 <Switch
                   checked={status?.paper_trade ?? false}
-                  onCheckedChange={async (v) => { await updateSettings({ symbol: activeSymbol, paper_trade: v }); fetchData(); }}
+                  onCheckedChange={async (v) => { await updateSettings({ paper_trade: v }); fetchData(); }}
                 />
               </div>
 
@@ -368,42 +281,25 @@ export default function DashboardPage() {
             </div>
 
             {status?.paper_trade && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 rounded-xl px-3 py-1.5 font-medium">
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 rounded-xl px-3 py-1.5 font-medium">
                 Paper mode — no real orders sent to MT5
               </p>
             )}
 
             <div className="space-y-2 text-xs text-muted-foreground">
-              <div className="flex items-center justify-between">
+              <div className="flex justify-between">
                 <span className="font-medium">Strategy</span>
-                <Select
-                  value={status?.strategy || "ema_crossover"}
-                  onValueChange={async (v) => {
-                    if (v) {
-                      await updateStrategy(v, undefined, activeSymbol);
-                      fetchData();
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-32 h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["ema_crossover", "rsi_filter", "breakout", "ml_signal"].map((s) => (
-                      <SelectItem key={s} value={s}>{s.replace("_", " ")}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="text-foreground font-semibold">{status?.strategy || "—"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-medium">Symbol</span>
-                <span className="text-foreground font-semibold">{activeSymbol}</span>
+                <span className="text-foreground font-semibold">{status?.symbol || "—"}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-medium">Timeframe</span>
                 <Select
                   value={status?.timeframe || "M15"}
-                  onValueChange={async (v) => { if (v) { await updateSettings({ symbol: activeSymbol, timeframe: v }); fetchData(); } }}
+                  onValueChange={async (v) => { if (v) { await updateSettings({ timeframe: v }); fetchData(); } }}
                 >
                   <SelectTrigger className="w-24 h-7 text-xs">
                     <SelectValue />
@@ -419,72 +315,51 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {viewMode === "multi" ? (
-          <Card className="order-2 lg:order-1 lg:col-span-3">
-            <CardHeader className="p-3 sm:p-6">
-              <CardTitle className="text-sm font-bold flex items-center justify-between">
-                <span>All Symbols</span>
-                <TimeframeSelector value={chartTimeframe} onChange={setChartTimeframe} />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-              <div className="grid grid-cols-2 gap-2">
-                {symbols.map((s) => (
-                  <div
-                    key={s.symbol}
-                    className="border border-border rounded-xl p-2 cursor-pointer hover:border-primary/50 glow-hover transition-colors"
-                    onClick={() => { setActiveSymbol(s.symbol); setViewMode("single"); }}
+        <Card className="order-2 lg:order-1 lg:col-span-2">
+          <CardHeader className="p-3 sm:p-6">
+            <CardTitle className="text-sm font-bold flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span>{status?.symbol || "GOLD"}</span>
+                {sentiment && (
+                  <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
+                )}
+              </div>
+              <div className="flex gap-0.5 bg-muted rounded-xl p-0.5">
+                {["M1", "M5", "M15", "H1", "H4", "D1"].map((tf) => (
+                  <button
+                    key={tf}
+                    type="button"
+                    onClick={() => setChartTimeframe(tf)}
+                    className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors ${
+                      chartTimeframe === tf
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold">{s.display_name}</span>
-                      <span className="text-xs font-mono text-muted-foreground">
-                        {ticks[s.symbol]?.bid.toFixed(s.price_decimals) || "---"}
-                      </span>
-                    </div>
-                    <div className="h-40">
-                      <PriceChart
-                        symbol={s.symbol}
-                        timeframe={chartTimeframe}
-                        tick={ticks[s.symbol] || null}
-                      />
-                    </div>
-                  </div>
+                    {tf}
+                  </button>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="order-2 lg:order-1 lg:col-span-3">
-            <CardHeader className="p-3 sm:p-6">
-              <CardTitle className="text-sm font-bold flex items-center justify-between">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <span>{activeSymbolInfo?.display_name || activeSymbol}</span>
-                  {sentiment && (
-                    <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
-                  )}
-                </div>
-                <TimeframeSelector value={chartTimeframe} onChange={setChartTimeframe} />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-56 sm:h-72 xl:h-80 p-3 pt-0 sm:p-6 sm:pt-0">
-              <PriceChart
-                symbol={activeSymbol}
-                timeframe={chartTimeframe}
-                tick={activeTick}
-              />
-            </CardContent>
-          </Card>
-        )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="h-48 sm:h-64 p-3 pt-0 sm:p-6 sm:pt-0">
+            <PriceChart
+              symbol={status?.symbol || "GOLD"}
+              timeframe={chartTimeframe}
+              tick={tick}
+            />
+          </CardContent>
+        </Card>
       </div>
 
       {/* News + Positions + Events */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold">News Feed</CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <ScrollArea className="h-56 sm:h-72">
+            <ScrollArea className="h-48 sm:h-64">
               <div className="space-y-2 pr-3">
                 {news.length > 0 ? (
                   news.map((n, i) => (
@@ -514,11 +389,10 @@ export default function DashboardPage() {
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
             {positions.length > 0 ? (
               <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-                <ScrollArea className="h-56 sm:h-72">
+                <ScrollArea className="h-48 sm:h-64">
                   <Table className="min-w-[480px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Symbol</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead className="text-right">Lots</TableHead>
                         <TableHead className="text-right">Entry</TableHead>
@@ -529,8 +403,7 @@ export default function DashboardPage() {
                     </TableHeader>
                     <TableBody>
                       {positions.map((p) => (
-                        <TableRow key={p.ticket} className="hover:bg-muted/30 transition-colors">
-                          <TableCell className="font-medium text-xs">{p.symbol}</TableCell>
+                        <TableRow key={p.ticket}>
                           <TableCell
                             className={`font-semibold ${p.type === "BUY" ? "text-success dark:text-green-400" : "text-destructive"}`}
                           >
@@ -573,82 +446,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Performance Analytics */}
-      {analytics && (analytics.total_trades as number) > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-sm font-bold text-foreground">Performance Analytics (30d)</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-xs text-muted-foreground font-medium">Sharpe</p>
-              <p className={`text-lg font-bold ${(analytics.sharpe_ratio as number) > 1 ? "text-success dark:text-green-400" : "text-foreground"}`}>
-                {(analytics.sharpe_ratio as number).toFixed(2)}
-              </p>
-            </div>
-            <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-xs text-muted-foreground font-medium">Sortino</p>
-              <p className={`text-lg font-bold ${(analytics.sortino_ratio as number) > 1.5 ? "text-success dark:text-green-400" : "text-foreground"}`}>
-                {(analytics.sortino_ratio as number).toFixed(2)}
-              </p>
-            </div>
-            <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-xs text-muted-foreground font-medium">Profit Factor</p>
-              <p className={`text-lg font-bold ${(analytics.profit_factor as number) > 1.5 ? "text-success dark:text-green-400" : "text-foreground"}`}>
-                {(analytics.profit_factor as number).toFixed(2)}
-              </p>
-            </div>
-            <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-xs text-muted-foreground font-medium">Max Drawdown</p>
-              <p className="text-lg font-bold text-destructive">
-                {(analytics.max_drawdown_pct as number).toFixed(1)}%
-              </p>
-            </div>
-            <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-xs text-muted-foreground font-medium">Win Streak</p>
-              <p className="text-lg font-bold text-foreground">{analytics.consecutive_wins as number}</p>
-            </div>
-            <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-xs text-muted-foreground font-medium">Loss Streak</p>
-              <p className="text-lg font-bold text-foreground">{analytics.consecutive_losses as number}</p>
-            </div>
-          </div>
-
-          {(analytics.equity_curve as {time: string; equity: number}[])?.length > 1 && (
-            <Card>
-              <CardHeader className="p-3 sm:p-6">
-                <CardTitle className="text-sm font-bold">Equity Curve</CardTitle>
-              </CardHeader>
-              <CardContent className="h-48 p-3 pt-0 sm:p-6 sm:pt-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={analytics.equity_curve as {time: string; equity: number}[]}>
-                    <defs>
-                      <linearGradient id="eqGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#9fe870" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#9fe870" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="time" hide />
-                    <YAxis className="fill-muted-foreground" fontSize={10} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "var(--popover)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "12px",
-                        color: "var(--foreground)",
-                        fontSize: "12px",
-                      }}
-                      formatter={(value) => [`$${Number(value).toFixed(2)}`, "Equity"]}
-                      labelFormatter={() => ""}
-                    />
-                    <Area type="monotone" dataKey="equity" stroke="#9fe870" strokeWidth={2} fill="url(#eqGradient)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -46,10 +46,10 @@ def ensure_connected() -> bool:
     if mt5.terminal_info() is not None:
         return True
     logger.warning("MT5 disconnected, attempting reconnect...")
-    if not mt5.initialize():
+    if not mt5.initialize(MT5_PATH):
         logger.error(f"MT5 initialize failed: {mt5.last_error()}")
         return False
-    if not mt5.login(MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER):
+    if MT5_LOGIN and not mt5.login(MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER):
         logger.error(f"MT5 login failed: {mt5.last_error()}")
         return False
     logger.info("MT5 reconnected successfully")
@@ -77,17 +77,24 @@ class ModifyPositionRequest(BaseModel):
 
 
 # --- Startup / Shutdown ---
+MT5_PATH = os.getenv("MT5_PATH", r"C:\Program Files\MetaTrader 5\terminal64.exe")
+
+
 @app.on_event("startup")
 async def startup():
     logger.info("Initializing MT5...")
-    if not mt5.initialize():
+    if not mt5.initialize(MT5_PATH):
         logger.error(f"MT5 init failed: {mt5.last_error()}")
         return
-    if not mt5.login(MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER):
+    logger.info("MT5 terminal connected, logging in...")
+    if MT5_LOGIN and not mt5.login(MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER):
         logger.error(f"MT5 login failed: {mt5.last_error()}")
         return
     info = mt5.account_info()
-    logger.info(f"MT5 connected: {info.login} @ {info.server}")
+    if info:
+        logger.info(f"MT5 connected: {info.login} @ {info.server}")
+    else:
+        logger.warning(f"MT5 initialized but no account info: {mt5.last_error()}")
 
 
 @app.on_event("shutdown")

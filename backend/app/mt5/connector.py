@@ -15,8 +15,8 @@ class MT5BridgeConnector:
     def __init__(self):
         self.base_url = settings.mt5_bridge_url
         self.headers = {"X-Bridge-Key": settings.mt5_bridge_api_key}
-        self.timeout = 5.0
-        self.max_retries = 2
+        self.timeout = 2.0
+        self.max_retries = 1
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
