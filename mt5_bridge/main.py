@@ -385,8 +385,8 @@ async def get_ohlcv_history(symbol: str, timeframe: str = "M15", from_date: str 
 
 
 @app.get("/history", dependencies=[Depends(verify_api_key)])
-async def get_history(days: int = 1):
-    """Get closed deals (trades) from the last N days."""
+async def get_history(days: int = 1, symbol: str | None = None):
+    """Get closed deals (trades) from the last N days, optionally filtered by symbol."""
     if not ensure_connected():
         return mt5_response(False, error="MT5 not connected")
 
@@ -400,6 +400,8 @@ async def get_history(days: int = 1):
     result = []
     for deal in deals:
         if deal.entry == 1 and deal.type in (0, 1):  # entry=1 means exit, type 0=buy 1=sell
+            if symbol and deal.symbol != symbol:
+                continue
             result.append({
                 "ticket": deal.position_id,
                 "deal_ticket": deal.ticket,
