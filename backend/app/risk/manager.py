@@ -37,11 +37,20 @@ class RiskManager:
         self.sl_atr_mult = sl_atr_mult
         self.tp_atr_mult = tp_atr_mult
 
-    def calculate_lot_size(self, balance: float, sl_pips: float, pip_value: float | None = None, atr_pct: float | None = None) -> float:
+    def calculate_lot_size(
+        self, balance: float, sl_pips: float, pip_value: float | None = None,
+        atr_pct: float | None = None, slippage_pips: float = 2.0, commission_pct: float = 0.002,
+    ) -> float:
         if sl_pips <= 0:
             return 0.01
         pv = pip_value if pip_value is not None else self.pip_value
-        lot = (balance * self.max_risk_per_trade) / (sl_pips * pv * 100)
+
+        # Account for slippage in effective SL distance
+        effective_sl = sl_pips + slippage_pips
+
+        # Risk budget minus estimated commission
+        risk_budget = (balance * self.max_risk_per_trade) * (1 - commission_pct)
+        lot = risk_budget / (effective_sl * pv * 100)
 
         # Volatility adjustment
         if atr_pct is not None:

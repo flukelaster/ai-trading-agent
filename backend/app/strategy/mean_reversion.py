@@ -48,11 +48,20 @@ class MeanReversionStrategy(BaseStrategy):
         # RSI
         df["rsi"] = rsi(df["close"], self._rsi_period)
 
+        # Rolling min bandwidth for squeeze detection
+        df["bb_bw_min5"] = df["bb_bandwidth"].rolling(5).min()
+
         # Generate signals
         for i in range(self._bb_period, len(df)):
             bw = df.iloc[i]["bb_bandwidth"]
             if pd.isna(bw) or bw < self._min_bandwidth:
                 continue  # skip low bandwidth (squeeze / ranging)
+
+            # Bollinger squeeze gate: skip if bandwidth is near 5-bar minimum
+            # (squeeze about to break — mean reversion is dangerous here)
+            bw_min5 = df.iloc[i].get("bb_bw_min5")
+            if not pd.isna(bw_min5) and bw_min5 > 0 and bw < bw_min5 * 1.2:
+                continue  # in or near squeeze, skip
 
             rsi_val = df.iloc[i]["rsi"]
             close = df.iloc[i]["close"]

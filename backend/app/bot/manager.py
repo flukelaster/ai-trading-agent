@@ -38,6 +38,11 @@ class BotManager:
             self._binance_connector = BinanceConnector()
             logger.info(f"BotManager: Binance connector initialized for {binance_symbols}")
 
+        # Validate symbol profiles exist
+        for symbol in settings.symbol_list:
+            if symbol not in SYMBOL_PROFILES:
+                logger.warning(f"BotManager: Symbol '{symbol}' missing from SYMBOL_PROFILES — using defaults (review contract_size!)")
+
         # Create an engine for each configured symbol
         for symbol in settings.symbol_list:
             profile = SYMBOL_PROFILES.get(symbol, {})
@@ -135,6 +140,38 @@ class BotManager:
         self._positions_cache = result
         self._positions_cache_time = now
         return result
+
+    async def get_portfolio_exposure(self, balance: float) -> dict:
+        """Calculate total notional exposure across all symbols."""
+        positions_by_sym = await self.get_active_positions()
+        total_notional = 0.0
+        symbol_exposure: dict[str, float] = {}
+
+        for symbol, positions in positions_by_sym.items():
+            profile = SYMBOL_PROFILES.get(symbol, {})
+            contract_size = profile.get("contract_size", 1)
+            sym_notional = 0.0
+            for pos in positions:
+                notional = abs(pos.get("lot", 0) * pos.get("current_price", 0) * contract_size)
+                sym_notional += notional
+            symbol_exposure[symbol] = sym_notional
+            total_notional += sym_notional
+
+        leverage = total_notional / balance if balance > 0 else 0
+        return {
+            "total_notional": total_notional,
+            "leverage": leverage,
+            "symbol_exposure": symbol_exposure,
+        }
+
+    async def check_portfolio_limit(self, balance: float, max_leverage: float = 3.0) -> tuple[bool, str]:
+        """Check if portfolio exposure exceeds max leverage. Returns (can_trade, reason)."""
+        exposure = await self.get_portfolio_exposure(balance)
+        if exposure["leverage"] >= max_leverage:
+            reason = f"Portfolio leverage {exposure['leverage']:.1f}x exceeds limit {max_leverage:.1f}x"
+            logger.warning(reason)
+            return False, reason
+        return True, "OK"
 
     def set_sentiment_analyzer(self, analyzer, symbol: str | None = None):
         """Set sentiment analyzer on one or all engines."""

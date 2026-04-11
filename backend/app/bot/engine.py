@@ -194,6 +194,15 @@ class BotEngine:
 
     async def process_candle(self):
         """Main trading logic — called every candle close."""
+        # Auto-recovery: check if paused bot can resume after cooldown
+        if self.state == BotState.PAUSED:
+            if await self.circuit_breaker.can_resume():
+                logger.info(f"Circuit breaker cooldown complete [{self.symbol}] — resuming")
+                self.state = BotState.RUNNING
+                await self._log_event(BotEventType.STARTED, "Auto-resumed after circuit breaker cooldown")
+            else:
+                return
+
         if self.state != BotState.RUNNING:
             return
 
@@ -214,7 +223,7 @@ class BotEngine:
 
             # Check global portfolio daily loss (across all symbols)
             all_symbols = settings.symbol_list
-            if await CircuitBreaker.is_global_triggered(self.redis, all_symbols, balance, settings.max_daily_loss * 1.5):
+            if await CircuitBreaker.is_global_triggered(self.redis, all_symbols, balance):
                 self.state = BotState.PAUSED
                 await self._log_event(BotEventType.CIRCUIT_BREAKER, "Portfolio circuit breaker triggered (global daily loss)")
                 if self.notifier:
@@ -292,6 +301,15 @@ class BotEngine:
                     await self._notify(self.notifier._send(f"🚫 <b>{signal_label} Blocked</b>\n{reason}"))
                 return
 
+            # Check portfolio exposure limit
+            if self._manager:
+                can_trade_portfolio, portfolio_reason = await self._manager.check_portfolio_limit(balance)
+                if not can_trade_portfolio:
+                    logger.info(f"Portfolio limit: {portfolio_reason}")
+                    await self._log_event(BotEventType.TRADE_BLOCKED, portfolio_reason)
+                    await self._push_event("bot_event", {"type": "trade_blocked", "signal": signal_label, "reason": portfolio_reason})
+                    return
+
             # Check symbol correlation conflicts
             if self._manager:
                 from app.risk.correlation import check_correlation_conflict
@@ -315,26 +333,40 @@ class BotEngine:
             # Calculate ATR as percentage of price for vol adjustment
             atr_pct = atr / entry_price if entry_price > 0 else 0
 
-            # Try Kelly Criterion if enough trade history
-            lot = self.risk_manager.calculate_lot_size(balance, sl_pips, atr_pct=atr_pct)
+            # Position sizing: Kelly Criterion if enough history, otherwise fixed risk
+            lot = await self._calculate_position_size(balance, sl_pips, atr_pct)
 
-            # 6. Place order (real or paper)
+            # 6. Apply warmup ramp-in (reduce lot during first 2 hours)
+            if self.started_at:
+                elapsed = (datetime.now(timezone.utc) - self.started_at).total_seconds()
+                warmup_seconds = 7200  # 2 hours
+                if elapsed < warmup_seconds:
+                    ramp_pct = max(elapsed / warmup_seconds, 0.25)  # min 25% lot
+                    lot = max(round(lot * ramp_pct, 2), 0.01)
+                    logger.info(f"Warmup ramp-in [{self.symbol}]: {ramp_pct:.0%} — lot={lot}")
+
+            # Place order (real or paper)
             order_type = "BUY" if signal == 1 else "SELL"
             comment = f"{self.strategy.name}"
             tag = "📝 PAPER" if self.paper_trade else ""
 
             if self.paper_trade:
-                # Paper trade: simulate order fill
+                # Paper trade: simulate order fill with realistic slippage
                 self._paper_ticket_counter += 1
                 ticket = self._paper_ticket_counter
+                # Simulate 1-3 pips slippage (unfavorable direction)
+                tick_size = 10 ** (-self.risk_manager.price_decimals)
+                slippage = random.uniform(1, 3) * tick_size
+                fill_price = entry_price + slippage if signal == 1 else entry_price - slippage
+                fill_price = round(fill_price, self.risk_manager.price_decimals)
                 result = {"success": True, "data": {
-                    "ticket": ticket, "price": entry_price,
+                    "ticket": ticket, "price": fill_price,
                     "lot": lot, "type": order_type,
                 }}
                 self._paper_positions.append({
                     "ticket": ticket, "symbol": self.symbol,
                     "type": order_type, "lot": lot,
-                    "open_price": entry_price, "current_price": entry_price,
+                    "open_price": fill_price, "current_price": fill_price,
                     "sl": sl_tp.sl, "tp": sl_tp.tp,
                     "profit": 0.0, "open_time": datetime.now(timezone.utc).isoformat(),
                     "comment": comment, "magic": 234000,
@@ -358,6 +390,12 @@ class BotEngine:
                 # 7. Save trade to DB
                 sentiment_data = ai_sentiment or {}
                 actual_fill = result["data"].get("price", entry_price)
+
+                # Track slippage
+                slippage_price = abs(actual_fill - entry_price)
+                if slippage_price > 0:
+                    logger.info(f"Slippage [{self.symbol}]: expected={entry_price}, fill={actual_fill}, diff={slippage_price:.{self.risk_manager.price_decimals}f}")
+
                 trade = Trade(
                     ticket=result["data"]["ticket"],
                     symbol=self.symbol,
@@ -372,8 +410,7 @@ class BotEngine:
                     ai_sentiment_score=sentiment_data.get("confidence"),
                     ai_sentiment_label=sentiment_data.get("label"),
                 )
-                self.db.add(trade)
-                await self.db.commit()
+                await self._save_trade(trade)
 
                 await self._log_event(
                     BotEventType.TRADE_OPENED,
@@ -443,6 +480,12 @@ class BotEngine:
                 positions = await self.executor.get_open_positions(self.symbol)
 
             current_tickets = {p["ticket"] for p in positions}
+
+            # Safety: if fetch returned empty but we have known positions, skip sync
+            # (likely a timeout, not all positions actually closed)
+            if not positions and len(self._known_tickets) > 0 and not self.paper_trade:
+                logger.warning(f"Position fetch returned empty but {len(self._known_tickets)} known — skipping sync (possible timeout)")
+                return
 
             # Always track ALL open positions (including manually opened ones)
             self._known_tickets = self._known_tickets | current_tickets
@@ -589,7 +632,9 @@ class BotEngine:
 
             # Stage 1: Breakeven stop after profit > 0.5x ATR
             if profit_distance > pos_atr * 0.5 and ticket not in self._position_breakeven:
-                be_price = open_price + (0.0001 if pos_type == "BUY" else -0.0001)  # 1 pip above/below entry
+                # Use symbol-appropriate tick size (1 pip above/below entry)
+                tick_size = 10 ** (-self.risk_manager.price_decimals)
+                be_price = open_price + (tick_size if pos_type == "BUY" else -tick_size)
                 if pos_type == "BUY" and be_price > current_sl:
                     logger.info(f"Breakeven stop BUY {ticket}: SL → {be_price:.{self.risk_manager.price_decimals}f}")
                     await self.executor.modify_position(ticket, sl=round(be_price, self.risk_manager.price_decimals))
@@ -611,6 +656,74 @@ class BotEngine:
                     if current_sl == 0 or new_sl < current_sl:
                         logger.info(f"Trailing SELL {ticket}: SL {current_sl} → {new_sl:.{self.risk_manager.price_decimals}f}")
                         await self.executor.modify_position(ticket, sl=round(new_sl, self.risk_manager.price_decimals))
+
+    async def _save_trade(self, trade: Trade, max_retries: int = 3):
+        """Save trade to DB with retry and Redis fallback."""
+        import asyncio as _asyncio
+
+        for attempt in range(max_retries):
+            try:
+                self.db.add(trade)
+                await self.db.commit()
+                return
+            except Exception as e:
+                logger.warning(f"Trade save attempt {attempt + 1}/{max_retries} failed: {e}")
+                try:
+                    await self.db.rollback()
+                except Exception:
+                    pass
+                if attempt < max_retries - 1:
+                    await _asyncio.sleep(2 ** attempt)
+
+        # Fallback: save to Redis for later reconciliation
+        logger.error(f"DB save failed after {max_retries} attempts — saving to Redis for reconciliation")
+        try:
+            await self.redis.rpush(f"pending_trades:{self.symbol}", json.dumps({
+                "ticket": trade.ticket,
+                "symbol": trade.symbol,
+                "type": trade.type,
+                "lot": trade.lot,
+                "open_price": trade.open_price,
+                "expected_price": trade.expected_price,
+                "sl": trade.sl,
+                "tp": trade.tp,
+                "open_time": trade.open_time.isoformat() if trade.open_time else None,
+                "strategy_name": trade.strategy_name,
+            }))
+        except Exception as e:
+            logger.error(f"Redis fallback also failed: {e}")
+
+    async def _calculate_position_size(self, balance: float, sl_pips: float, atr_pct: float) -> float:
+        """Use Kelly Criterion if >= 20 closed trades, otherwise fixed risk sizing."""
+        MIN_KELLY_TRADES = 20
+        try:
+            from sqlalchemy import select
+            stmt = (
+                select(Trade)
+                .where(Trade.symbol == self.symbol, Trade.profit.isnot(None))
+                .order_by(Trade.id.desc())
+                .limit(50)
+            )
+            result = await self.db.execute(stmt)
+            trades = result.scalars().all()
+
+            if len(trades) >= MIN_KELLY_TRADES:
+                wins = [t for t in trades if t.profit > 0]
+                losses = [t for t in trades if t.profit <= 0]
+                win_rate = len(wins) / len(trades)
+                avg_win = sum(t.profit for t in wins) / len(wins) if wins else 0
+                avg_loss = abs(sum(t.profit for t in losses) / len(losses)) if losses else 1
+
+                if win_rate >= 0.35 and avg_win > 0 and avg_loss > 0:
+                    lot = self.risk_manager.calculate_kelly_size(
+                        balance, sl_pips, win_rate, avg_win, avg_loss,
+                    )
+                    logger.info(f"Kelly sizing [{self.symbol}]: WR={win_rate:.0%}, lot={lot}")
+                    return lot
+        except Exception as e:
+            logger.warning(f"Kelly sizing failed, using fixed risk: {e}")
+
+        return self.risk_manager.calculate_lot_size(balance, sl_pips, atr_pct=atr_pct)
 
     async def update_strategy(self, name: str, params: dict | None = None):
         self.strategy = get_strategy(name, params, symbol=self.symbol)

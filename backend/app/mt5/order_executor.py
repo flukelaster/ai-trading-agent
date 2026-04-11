@@ -1,10 +1,15 @@
 """
-Order Executor — places and manages orders via MT5 Bridge.
+Order Executor — places and manages orders via MT5 Bridge with retry logic.
 """
+
+import asyncio
 
 from loguru import logger
 
 from app.mt5.connector import MT5BridgeConnector
+
+# Errors that should NOT be retried (permanent failures)
+_NO_RETRY_ERRORS = {"margin", "insufficient", "invalid volume", "market closed", "symbol not found"}
 
 
 class OrderExecutor:
@@ -12,14 +17,33 @@ class OrderExecutor:
         self.connector = connector
 
     async def place_order(
-        self, symbol: str, order_type: str, lot: float, sl: float, tp: float, comment: str = "", magic: int = 234000
+        self, symbol: str, order_type: str, lot: float, sl: float, tp: float,
+        comment: str = "", magic: int = 234000, max_retries: int = 3,
     ) -> dict:
         logger.info(f"Placing order: {order_type} {lot} {symbol} SL={sl} TP={tp}")
-        result = await self.connector.place_order(symbol, order_type, lot, sl, tp, comment, magic)
-        if result.get("success"):
-            logger.info(f"Order placed: ticket={result['data'].get('ticket')}")
-        else:
-            logger.error(f"Order failed: {result.get('error')}")
+
+        for attempt in range(max_retries):
+            result = await self.connector.place_order(symbol, order_type, lot, sl, tp, comment, magic)
+
+            if result.get("success"):
+                logger.info(f"Order placed: ticket={result['data'].get('ticket')} (attempt {attempt + 1})")
+                return result
+
+            error = str(result.get("error", "")).lower()
+
+            # Don't retry permanent errors
+            if any(e in error for e in _NO_RETRY_ERRORS):
+                logger.error(f"Order failed (permanent): {result.get('error')}")
+                return result
+
+            # Retry transient errors with exponential backoff
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(f"Order failed (attempt {attempt + 1}/{max_retries}): {result.get('error')} — retrying in {wait}s")
+                await asyncio.sleep(wait)
+            else:
+                logger.error(f"Order failed after {max_retries} attempts: {result.get('error')}")
+
         return result
 
     async def close_position(self, ticket: int) -> dict:
