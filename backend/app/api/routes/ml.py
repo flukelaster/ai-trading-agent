@@ -230,10 +230,12 @@ async def predict_now(symbol: str = Query("GOLD")):
     predictor.model = model_data["model"]
     predictor.feature_columns = model_data.get("features", [])
 
-    # Get recent OHLCV from DB
-    df = await _collector.load_from_db(symbol, settings.timeframe)
+    # Get recent OHLCV from DB — use symbol's ML timeframe, not global default
+    from app.config import SYMBOL_PROFILES
+    predict_tf = SYMBOL_PROFILES.get(symbol, {}).get("ml_timeframe", settings.timeframe)
+    df = await _collector.load_from_db(symbol, predict_tf)
     if df.empty or len(df) < 200:
-        return {"error": f"Insufficient market data for {symbol}"}
+        return {"error": f"Insufficient market data for {symbol} ({predict_tf}). Collected {len(df) if not df.empty else 0} bars, need 200+."}
 
     # Use last 300 bars for feature computation
     df_recent = df.tail(300)
@@ -246,7 +248,7 @@ async def predict_now(symbol: str = Query("GOLD")):
         "confidence": round(confidence, 4),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "symbol": symbol,
-        "timeframe": settings.timeframe,
+        "timeframe": predict_tf,
     }
 
 
