@@ -61,7 +61,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <h1 className="text-base font-black tracking-tight text-foreground">
               TRADE BOT
             </h1>
-            <p className="text-[11px] text-muted-foreground font-medium">
+            <p className="text-xs text-muted-foreground font-medium">
               Multi-Symbol Trading
             </p>
           </div>
@@ -72,7 +72,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-0.5">
-        <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        <p className="px-3 py-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Navigation
         </p>
         {navItems.map((item) => {
@@ -102,7 +102,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Footer */}
       <div className="p-4 space-y-2">
         <ThemeToggle />
-        <p className="px-3 text-[10px] text-muted-foreground/50 font-medium">v2.0.0</p>
+        <p className="px-3 text-xs text-muted-foreground/50 font-medium">v2.0.0</p>
       </div>
     </>
   );

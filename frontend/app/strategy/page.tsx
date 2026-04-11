@@ -15,6 +15,7 @@ import { BarChart3, TrendingUp, Target, AlertTriangle } from "lucide-react";
 import {
   getBotStatus, getAvailableStrategies, updateStrategy, updateSettings, runBacktest, getSymbols,
 } from "@/lib/api";
+import { SymbolTabs } from "@/components/ui/symbol-tabs";
 
 type SymbolInfo = { symbol: string; display_name: string; state: string };
 
@@ -132,33 +133,15 @@ export default function StrategyPage() {
   const activeSymbolInfo = symbols.find((s) => s.symbol === activeSymbol);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="Strategy" subtitle="Configure trading strategy and risk per symbol" />
 
       {/* Symbol Tabs */}
-      {symbols.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {symbols.map((s) => (
-            <button
-              key={s.symbol}
-              type="button"
-              onClick={() => { setActiveSymbol(s.symbol); setBacktestResult(null); }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
-                s.symbol === activeSymbol
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-foreground border-border hover:border-primary/50"
-              }`}
-            >
-              <span>{s.display_name}</span>
-              <span
-                className={`size-1.5 rounded-full ${
-                  s.state === "RUNNING" ? "bg-green-400" : "bg-muted-foreground/30"
-                }`}
-              />
-            </button>
-          ))}
-        </div>
-      )}
+      <SymbolTabs
+        symbols={symbols.map(s => ({ symbol: s.symbol, display_name: s.display_name, state: s.state }))}
+        active={activeSymbol}
+        onSelect={(s) => { setActiveSymbol(s); setBacktestResult(null); }}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Strategy */}
@@ -218,7 +201,7 @@ export default function StrategyPage() {
                   <ParamSlider label="ATR Threshold" value={params.atr_threshold} min={0.1} max={2.0} step={0.1}
                     onChange={(v) => setParams({ ...params, atr_threshold: v })} />
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground font-medium">Volume Filter</span>
+                    <span className="text-xs text-muted-foreground font-medium">Volume Filter</span>
                     <Switch
                       checked={params.volume_filter}
                       onCheckedChange={(v) => setParams({ ...params, volume_filter: v })}
@@ -242,7 +225,7 @@ export default function StrategyPage() {
               <ParamSlider label="Max Daily Loss %" value={riskParams.max_daily_loss} min={1} max={10} step={0.5}
                 onChange={(v) => setRiskParams({ ...riskParams, max_daily_loss: v })} />
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground font-medium">Max Concurrent Trades</span>
+                <span className="text-xs text-muted-foreground font-medium">Max Concurrent Trades</span>
                 <Input
                   type="number"
                   value={riskParams.max_concurrent}
@@ -269,7 +252,7 @@ export default function StrategyPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground font-medium">Enable AI Sentiment Filter</span>
+                <span className="text-xs text-muted-foreground font-medium">Enable AI Sentiment Filter</span>
                 <Switch
                   checked={aiSettings.use_ai_filter}
                   onCheckedChange={(v) => setAiSettings({ ...aiSettings, use_ai_filter: v })}
@@ -328,13 +311,13 @@ function ParamSlider({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground font-medium">{label}</span>
+        <span className="text-xs text-muted-foreground font-medium">{label}</span>
         <span className="text-xs font-mono bg-accent text-accent-foreground px-2 py-0.5 rounded-lg font-bold">
           {value}
         </span>
       </div>
       <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} />
-      <div className="flex justify-between text-[10px] text-muted-foreground/50 font-medium">
+      <div className="flex justify-between text-xs text-muted-foreground/50 font-medium">
         <span>{min}</span>
         <span>{max}</span>
       </div>

@@ -80,13 +80,13 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
     });
 
     const emaFastSeries = chart.addSeries(LineSeries, {
-      color: "#3b82f6",
+      color: isDark ? "#60a5fa" : "#3b82f6",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     const emaSlowSeries = chart.addSeries(LineSeries, {
-      color: "#f59e0b",
+      color: isDark ? "#fbbf24" : "#f59e0b",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,

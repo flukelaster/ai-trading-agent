@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import SentimentBadge from "@/components/ai/SentimentBadge";
 import { getTradeHistory, getPerformance, getSymbols } from "@/lib/api";
+import { SymbolTabs } from "@/components/ui/symbol-tabs";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
 } from "recharts";
@@ -30,13 +31,13 @@ export default function HistoryPage() {
   const [performance, setPerformance] = useState<Record<string, unknown> | null>(null);
   const [days, setDays] = useState(30);
   const [symbolFilter, setSymbolFilter] = useState<string>("all");
-  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+  const [symbols, setSymbols] = useState<{symbol: string; display_name: string}[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getSymbols().then((res) => {
       if (res.data?.symbols) {
-        setAvailableSymbols(res.data.symbols.map((s: { symbol: string }) => s.symbol));
+        setSymbols(res.data.symbols);
       }
     }).catch(() => {});
   }, []);
@@ -70,31 +71,14 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="Trade History" subtitle="Review past trades and performance">
-        {availableSymbols.length > 1 && (
-          <div className="flex gap-1 border border-border rounded-2xl p-1 bg-card">
-            <Button
-              variant={symbolFilter === "all" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setSymbolFilter("all")}
-              className={`rounded-xl text-xs ${symbolFilter === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            >
-              All
-            </Button>
-            {availableSymbols.map((sym) => (
-              <Button
-                key={sym}
-                variant={symbolFilter === sym ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setSymbolFilter(sym)}
-                className={`rounded-xl text-xs ${symbolFilter === sym ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              >
-                {sym}
-              </Button>
-            ))}
-          </div>
-        )}
+        <SymbolTabs
+          symbols={symbols}
+          active={symbolFilter}
+          onSelect={setSymbolFilter}
+          showAll
+        />
         <div className="flex gap-1 border border-border rounded-2xl p-1 bg-card">
           {[7, 30, 90].map((d) => (
             <Button
@@ -135,7 +119,7 @@ export default function HistoryPage() {
                   ))}
                 </div>
               ) : trades.length > 0 ? (
-                <ScrollArea className="h-[500px]">
+                <ScrollArea className="h-[400px] sm:h-[500px]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -169,7 +153,7 @@ export default function HistoryPage() {
                         ) : null;
                       })()}
                       {trades.map((t) => (
-                        <TableRow key={t.id}>
+                        <TableRow key={t.id} className="hover:bg-muted/30 transition-colors">
                           <TableCell className="text-muted-foreground text-xs font-medium">
                             {new Date(t.open_time).toLocaleDateString()}
                           </TableCell>

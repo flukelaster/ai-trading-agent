@@ -61,7 +61,7 @@ export function StatCard({
         {trend && (
           <span
             className={cn(
-              "text-[10px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 rounded-full",
+              "text-xs font-semibold px-1.5 sm:px-2 py-0.5 rounded-full",
               trend.direction === "up" && "bg-success/10 text-success dark:bg-green-400/10 dark:text-green-400",
               trend.direction === "down" && "bg-destructive/10 text-destructive",
               trend.direction === "flat" && "bg-muted text-muted-foreground"
@@ -73,7 +73,7 @@ export function StatCard({
         )}
       </div>
       <div className="mt-2 sm:mt-3">
-        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground font-medium">{label}</p>
         <p
           className={cn(
             "mt-0.5 sm:mt-1 text-base sm:text-xl font-bold font-mono tracking-tight truncate",
@@ -83,7 +83,7 @@ export function StatCard({
           {value}
         </p>
         {subtitle && (
-          <p className="mt-0.5 text-[10px] text-muted-foreground font-medium truncate">{subtitle}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground font-medium truncate">{subtitle}</p>
         )}
       </div>
     </div>

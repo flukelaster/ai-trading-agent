@@ -43,7 +43,7 @@ export default function MacroPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Skeleton className="h-60 rounded-2xl" />
@@ -57,7 +57,7 @@ export default function MacroPage() {
   const corrEntries = Object.entries(correlations);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="Macro Data" subtitle="Economic indicators and gold correlations">
         <Button onClick={handleCollect} disabled={collecting} variant="outline" size="sm" className="rounded-full">
           <RefreshCw className={`size-4 mr-1.5 ${collecting ? "animate-spin" : ""}`} />
@@ -80,7 +80,7 @@ export default function MacroPage() {
                 <div key={id} className="border border-border rounded-2xl p-4 space-y-1">
                   <p className="text-xs text-muted-foreground font-medium">{data.name}</p>
                   <p className="text-xl font-black">{typeof data.value === "number" ? data.value.toFixed(2) : data.value}</p>
-                  <p className="text-[10px] text-muted-foreground font-medium">{data.date}</p>
+                  <p className="text-xs text-muted-foreground font-medium">{data.date}</p>
                 </div>
               ))}
             </div>
@@ -119,7 +119,7 @@ export default function MacroPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold">{data.name}</span>
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-[10px] rounded-full">{data.data_points} pts</Badge>
+                          <Badge variant="outline" className="text-xs rounded-full">{data.data_points} pts</Badge>
                           <span className={`text-sm font-mono font-bold ${isNeg ? "text-destructive" : "text-success dark:text-green-400"}`}>
                             {corr > 0 ? "+" : ""}{corr.toFixed(3)}
                           </span>
@@ -132,7 +132,7 @@ export default function MacroPage() {
                             style={{ width: `${absCorr * 100}%` }}
                           />
                         </div>
-                        <span className="text-[10px] text-muted-foreground w-16 text-right font-medium">{strength}</span>
+                        <span className="text-xs text-muted-foreground w-16 text-right font-medium">{strength}</span>
                       </div>
                     </div>
                   );
@@ -177,7 +177,7 @@ export default function MacroPage() {
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground font-medium">{event.note}</p>
-                      <p className="text-[10px] text-muted-foreground/60 font-medium">{event.date}</p>
+                      <p className="text-xs text-muted-foreground/60 font-medium">{event.date}</p>
                     </div>
                   );
                 })}

@@ -11,6 +11,7 @@ import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database } from "lucid
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData, getSymbols } from "@/lib/api";
+import { SymbolTabs } from "@/components/ui/symbol-tabs";
 
 type SymbolInfo = { symbol: string; display_name: string; state: string };
 
@@ -39,16 +40,20 @@ export default function MLPage() {
   const [collectFrom, setCollectFrom] = useState("2025-04-01");
   const [collectTo, setCollectTo] = useState(new Date().toISOString().split("T")[0]);
 
+  useEffect(() => {
+    getSymbols().then(res => {
+      if (res.data?.symbols) setSymbols(res.data.symbols);
+    }).catch(() => {});
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, dataRes, symbolsRes] = await Promise.all([
+      const [statusRes, dataRes] = await Promise.all([
         getModelStatus(activeSymbol).catch(() => null),
         getDataStatus(activeSymbol).catch(() => null),
-        getSymbols().catch(() => null),
       ]);
       if (statusRes) setModelStatus(statusRes.data);
       if (dataRes) setDataStatus(Array.isArray(dataRes.data) ? dataRes.data : []);
-      if (symbolsRes?.data?.symbols) setSymbols(symbolsRes.data.symbols);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [activeSymbol]);
@@ -100,7 +105,7 @@ export default function MLPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Skeleton className="h-60 rounded-2xl" />
@@ -117,28 +122,15 @@ export default function MLPage() {
   const activeSymbolInfo = symbols.find((s) => s.symbol === activeSymbol);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="ML Model" subtitle="Train and manage LightGBM signal model per symbol" />
 
       {/* Symbol Tabs */}
-      {symbols.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {symbols.map((s) => (
-            <button
-              key={s.symbol}
-              type="button"
-              onClick={() => setActiveSymbol(s.symbol)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
-                s.symbol === activeSymbol
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-foreground border-border hover:border-primary/50"
-              }`}
-            >
-              <span>{s.display_name}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <SymbolTabs
+        symbols={symbols}
+        active={activeSymbol}
+        onSelect={setActiveSymbol}
+      />
 
       {/* Data Status */}
       <Card>
@@ -155,9 +147,9 @@ export default function MLPage() {
                 <div key={i} className="border border-border rounded-2xl p-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold">{d.symbol as string} / {d.timeframe as string}</span>
-                    <Badge variant="outline" className="text-[10px] rounded-full">{(d.bar_count as number).toLocaleString()} bars</Badge>
+                    <Badge variant="outline" className="text-xs rounded-full">{(d.bar_count as number).toLocaleString()} bars</Badge>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1 font-medium">
+                  <p className="text-xs text-muted-foreground mt-1 font-medium">
                     {d.first_bar as string} — {d.last_bar as string}
                   </p>
                 </div>
@@ -264,7 +256,7 @@ export default function MLPage() {
             <CardTitle className="text-sm font-bold flex items-center gap-2">
               <Zap className="size-4 text-primary-foreground dark:text-primary" />
               Model Status — {activeSymbol}
-              {hasModel && <Badge className="ml-auto bg-success/10 text-success dark:bg-green-400/10 dark:text-green-400 text-[10px] rounded-full">Ready</Badge>}
+              {hasModel && <Badge className="ml-auto bg-success/10 text-success dark:bg-green-400/10 dark:text-green-400 text-xs rounded-full">Ready</Badge>}
               {!hasModel && <Badge className="ml-auto rounded-full" variant="outline">No Model</Badge>}
             </CardTitle>
           </CardHeader>
@@ -278,14 +270,14 @@ export default function MLPage() {
                   </div>
                   <div className="border border-border rounded-xl p-2">
                     <span className="text-muted-foreground font-medium">Train Period</span>
-                    <p className="font-semibold text-[10px]">{modelStatus.train_period as string}</p>
+                    <p className="font-semibold text-xs">{modelStatus.train_period as string}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground font-semibold">Top Features</p>
                   {fiEntries.slice(0, 8).map(([name, val]) => (
                     <div key={name} className="flex items-center gap-2">
-                      <span className="text-[10px] text-muted-foreground w-28 truncate font-medium">{name}</span>
+                      <span className="text-xs text-muted-foreground w-28 truncate font-medium">{name}</span>
                       <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                         <div className="h-full bg-primary rounded-full" style={{ width: `${(val / fiMax) * 100}%` }} />
                       </div>

@@ -57,7 +57,7 @@ export default function InsightsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Skeleton className="h-80 rounded-2xl" />
@@ -68,7 +68,7 @@ export default function InsightsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="AI Insights" subtitle="Sentiment analysis and strategy optimization" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

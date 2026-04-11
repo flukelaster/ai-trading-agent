@@ -75,7 +75,7 @@ export default function BacktestPage() {
   const equityCurve = (result?.equity_curve as number[] || []).map((v, i) => ({ bar: i, equity: v }));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="Backtester" subtitle="Test strategies against historical data" />
 
       <Tabs defaultValue="backtest">

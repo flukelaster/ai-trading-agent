@@ -34,6 +34,8 @@ import {
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { useBotStore } from "@/store/botStore";
+import { SymbolTabs } from "@/components/ui/symbol-tabs";
+import { TimeframeSelector } from "@/components/ui/timeframe-selector";
 
 export default function DashboardPage() {
   const {
@@ -51,7 +53,7 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, symbolsRes, posRes, sentRes, newsRes, accRes, pnlRes] = await Promise.all([
+      const [statusRes, symbolsRes, posRes, sentRes, newsRes, accRes, pnlRes, analyticsRes] = await Promise.all([
         getBotStatus().catch(() => null),
         getSymbols().catch(() => null),
         getPositions().catch(() => null),
@@ -59,6 +61,7 @@ export default function DashboardPage() {
         getSentimentHistory(1).catch(() => null),
         getAccount().catch(() => null),
         getDailyPnl().catch(() => null),
+        getAnalytics(undefined, 30).catch(() => null),
       ]);
 
       // Aggregate status response has { symbols: { XAUUSD: {...}, ... }, active_count, total_count }
@@ -81,8 +84,6 @@ export default function DashboardPage() {
       if (newsRes) setNews((newsRes.data.history || []).slice(0, 5));
       if (accRes) setAccount(accRes.data);
       if (pnlRes) setDailyPnl(pnlRes.data);
-
-      const analyticsRes = await getAnalytics(undefined, 30).catch(() => null);
       if (analyticsRes) setAnalytics(analyticsRes.data);
 
       // Load persisted events from DB (survives page refresh)
@@ -198,21 +199,21 @@ export default function DashboardPage() {
       <PageHeader title="Dashboard" subtitle="Real-time trading overview">
         {activeTick && (
           <div className="border border-border rounded-full px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-2 sm:gap-3 bg-card">
-            <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">{activeSymbol}</span>
+            <span className="text-xs text-muted-foreground font-medium">{activeSymbol}</span>
             <span className="text-xs sm:text-sm font-mono font-bold text-foreground">
               {activeTick.bid.toFixed(priceDecimals)}
             </span>
-            <span className="text-[10px] text-muted-foreground">/</span>
+            <span className="text-xs text-muted-foreground">/</span>
             <span className="text-xs sm:text-sm font-mono text-muted-foreground">
               {activeTick.ask.toFixed(priceDecimals)}
             </span>
-            <span className="hidden sm:inline text-[10px] text-muted-foreground font-medium">
+            <span className="hidden sm:inline text-xs text-muted-foreground font-medium">
               spd: {activeTick.spread.toFixed(1)}
             </span>
           </div>
         )}
         {status?.paper_trade && (
-          <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 text-[10px] font-semibold">
+          <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 text-xs font-semibold">
             PAPER
           </Badge>
         )}
@@ -229,46 +230,19 @@ export default function DashboardPage() {
       </PageHeader>
 
       {/* Symbol Selector Tabs */}
-      {symbols.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {symbols.map((s) => {
-            const isActive = s.symbol === activeSymbol;
-            const symTick = ticks[s.symbol];
-            const symStatus = symbolStatuses[s.symbol];
-            return (
-              <button
-                key={s.symbol}
-                type="button"
-                onClick={() => setActiveSymbol(s.symbol)}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
-                  isActive
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-foreground border-border hover:border-primary/50"
-                }`}
-              >
-                <span
-                  className={`size-2 rounded-full shrink-0 ${
-                    symStatus?.state === "RUNNING"
-                      ? isActive ? "bg-green-900" : "bg-green-400"
-                      : isActive ? "bg-primary-foreground/30" : "bg-muted-foreground/30"
-                  }`}
-                />
-                <span>{s.display_name}</span>
-                <span className="font-mono text-[10px] opacity-75">
-                  {symTick ? symTick.bid.toFixed(s.price_decimals) : "---"}
-                </span>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setViewMode(viewMode === "single" ? "multi" : "single")}
-            className="px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold hover:border-primary/50 transition-all"
-          >
-            {viewMode === "single" ? "4-Grid" : "Single"}
-          </button>
-        </div>
-      )}
+      <SymbolTabs
+        symbols={symbols.map(s => ({ ...s, state: symbolStatuses[s.symbol]?.state }))}
+        active={activeSymbol}
+        onSelect={setActiveSymbol}
+      >
+        <button
+          type="button"
+          onClick={() => setViewMode(viewMode === "single" ? "multi" : "single")}
+          className="min-h-[44px] px-4 py-2.5 rounded-xl border border-border bg-card text-xs font-semibold hover:border-primary/50 transition-all"
+        >
+          {viewMode === "single" ? "4-Grid" : "Single"}
+        </button>
+      </SymbolTabs>
 
       {/* Account Balances Bar */}
       {account && (
@@ -291,7 +265,7 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div>
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase">{acc.connector}</p>
+                  <p className="text-xs text-muted-foreground font-medium uppercase">{acc.connector}</p>
                   <p className="text-sm font-bold font-mono">${acc.balance.toLocaleString("en", { minimumFractionDigits: 2 })}{acc.currency === "USDT" ? " USDT" : ""}</p>
                 </div>
                 {i < (account.accounts?.length ?? 0) - 1 && <div className="h-8 w-px bg-border ml-2" />}
@@ -301,7 +275,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3">
               <Wallet className="size-4 text-muted-foreground" />
               <div>
-                <p className="text-[10px] text-muted-foreground font-medium">Balance</p>
+                <p className="text-xs text-muted-foreground font-medium">Balance</p>
                 <p className="text-sm font-bold font-mono">${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}</p>
               </div>
             </div>
@@ -393,7 +367,7 @@ export default function DashboardPage() {
             </div>
 
             {status?.paper_trade && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 rounded-xl px-3 py-1.5 font-medium">
+              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 rounded-xl px-3 py-1.5 font-medium">
                 Paper mode — no real orders sent to MT5
               </p>
             )}
@@ -449,22 +423,7 @@ export default function DashboardPage() {
             <CardHeader className="p-3 sm:p-6">
               <CardTitle className="text-sm font-bold flex items-center justify-between">
                 <span>All Symbols</span>
-                <div className="flex gap-0.5 bg-muted rounded-xl p-0.5">
-                  {["M1", "M5", "M15", "H1", "H4", "D1"].map((tf) => (
-                    <button
-                      key={tf}
-                      type="button"
-                      onClick={() => setChartTimeframe(tf)}
-                      className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors ${
-                        chartTimeframe === tf
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {tf}
-                    </button>
-                  ))}
-                </div>
+                <TimeframeSelector value={chartTimeframe} onChange={setChartTimeframe} />
               </CardTitle>
             </CardHeader>
             <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
@@ -477,7 +436,7 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-bold">{s.display_name}</span>
-                      <span className="text-[10px] font-mono text-muted-foreground">
+                      <span className="text-xs font-mono text-muted-foreground">
                         {ticks[s.symbol]?.bid.toFixed(s.price_decimals) || "---"}
                       </span>
                     </div>
@@ -503,22 +462,7 @@ export default function DashboardPage() {
                     <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
                   )}
                 </div>
-                <div className="flex gap-0.5 bg-muted rounded-xl p-0.5">
-                  {["M1", "M5", "M15", "H1", "H4", "D1"].map((tf) => (
-                    <button
-                      key={tf}
-                      type="button"
-                      onClick={() => setChartTimeframe(tf)}
-                      className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors ${
-                        chartTimeframe === tf
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {tf}
-                    </button>
-                  ))}
-                </div>
+                <TimeframeSelector value={chartTimeframe} onChange={setChartTimeframe} />
               </CardTitle>
             </CardHeader>
             <CardContent className="h-56 sm:h-72 xl:h-80 p-3 pt-0 sm:p-6 sm:pt-0">
@@ -584,7 +528,7 @@ export default function DashboardPage() {
                     </TableHeader>
                     <TableBody>
                       {positions.map((p) => (
-                        <TableRow key={p.ticket}>
+                        <TableRow key={p.ticket} className="hover:bg-muted/30 transition-colors">
                           <TableCell className="font-medium text-xs">{p.symbol}</TableCell>
                           <TableCell
                             className={`font-semibold ${p.type === "BUY" ? "text-success dark:text-green-400" : "text-destructive"}`}
@@ -635,35 +579,35 @@ export default function DashboardPage() {
           <h3 className="text-sm font-bold text-foreground">Performance Analytics (30d)</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-[10px] text-muted-foreground font-medium">Sharpe</p>
+              <p className="text-xs text-muted-foreground font-medium">Sharpe</p>
               <p className={`text-lg font-bold ${(analytics.sharpe_ratio as number) > 1 ? "text-success dark:text-green-400" : "text-foreground"}`}>
                 {(analytics.sharpe_ratio as number).toFixed(2)}
               </p>
             </div>
             <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-[10px] text-muted-foreground font-medium">Sortino</p>
+              <p className="text-xs text-muted-foreground font-medium">Sortino</p>
               <p className={`text-lg font-bold ${(analytics.sortino_ratio as number) > 1.5 ? "text-success dark:text-green-400" : "text-foreground"}`}>
                 {(analytics.sortino_ratio as number).toFixed(2)}
               </p>
             </div>
             <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-[10px] text-muted-foreground font-medium">Profit Factor</p>
+              <p className="text-xs text-muted-foreground font-medium">Profit Factor</p>
               <p className={`text-lg font-bold ${(analytics.profit_factor as number) > 1.5 ? "text-success dark:text-green-400" : "text-foreground"}`}>
                 {(analytics.profit_factor as number).toFixed(2)}
               </p>
             </div>
             <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-[10px] text-muted-foreground font-medium">Max Drawdown</p>
+              <p className="text-xs text-muted-foreground font-medium">Max Drawdown</p>
               <p className="text-lg font-bold text-destructive">
                 {(analytics.max_drawdown_pct as number).toFixed(1)}%
               </p>
             </div>
             <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-[10px] text-muted-foreground font-medium">Win Streak</p>
+              <p className="text-xs text-muted-foreground font-medium">Win Streak</p>
               <p className="text-lg font-bold text-foreground">{analytics.consecutive_wins as number}</p>
             </div>
             <div className="border border-border rounded-xl p-4 text-center">
-              <p className="text-[10px] text-muted-foreground font-medium">Loss Streak</p>
+              <p className="text-xs text-muted-foreground font-medium">Loss Streak</p>
               <p className="text-lg font-bold text-foreground">{analytics.consecutive_losses as number}</p>
             </div>
           </div>

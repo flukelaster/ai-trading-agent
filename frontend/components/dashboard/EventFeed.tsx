@@ -48,7 +48,7 @@ export default function EventFeed({ events }: { events: BotEvent[] }) {
               <Icon className={`size-3.5 mt-0.5 shrink-0 ${config.color}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-foreground truncate font-medium">{event.message}</p>
-                <p className="text-[10px] text-muted-foreground">{formatTime(event.timestamp)}</p>
+                <p className="text-xs text-muted-foreground">{formatTime(event.timestamp)}</p>
               </div>
             </div>
           );
