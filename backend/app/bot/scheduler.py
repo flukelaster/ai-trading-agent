@@ -238,8 +238,13 @@ class BotScheduler:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _ml_retrain_job(self):
-        """Weekly ML retrain — trains on last 6 months of data, replaces model only if accuracy improves."""
+        """Weekly ML retrain — trains per-symbol on last 6 months of data."""
         logger.info("Weekly ML retrain triggered")
+        for symbol, engine in self._engines.items():
+            await self._ml_retrain_symbol(symbol, engine)
+
+    async def _ml_retrain_symbol(self, symbol: str, engine):
+        """Train ML model for a single symbol."""
         try:
             import asyncio
             import io
@@ -254,13 +259,15 @@ class BotScheduler:
             from app.db.models import MLModelLog
             from app.db.session import async_session
 
-            # Use first engine's symbol for ML retrain (primary symbol)
-            first_engine = next(iter(self._engines.values()))
+            model_name = f"lightgbm_{symbol.lower()}_auto"
+            model_path = f"models/{symbol.lower()}_signal.pkl"
 
             async with async_session() as session:
-                # Get current model accuracy for comparison
+                # Get current model accuracy for this symbol
                 result = await session.execute(
-                    select(MLModelLog).where(MLModelLog.is_active == True).limit(1)
+                    select(MLModelLog)
+                    .where(MLModelLog.is_active == True, MLModelLog.model_name == model_name)
+                    .limit(1)
                 )
                 current_log = result.scalar_one_or_none()
                 current_accuracy = 0.0
@@ -271,17 +278,17 @@ class BotScheduler:
                 # Load last 6 months of data
                 from_date = (datetime.utcnow() - timedelta(days=180)).strftime("%Y-%m-%d")
                 collector = DataCollector(session)
-                df = await collector.load_from_db(first_engine.symbol, first_engine.timeframe, from_date=from_date)
+                df = await collector.load_from_db(symbol, engine.timeframe, from_date=from_date)
 
                 if df.empty or len(df) < 500:
-                    logger.warning(f"ML retrain skipped: insufficient data ({len(df)} bars)")
+                    logger.warning(f"ML retrain [{symbol}] skipped: insufficient data ({len(df)} bars)")
                     return
 
                 from app.ml.trainer import ModelTrainer
                 trainer = ModelTrainer()
                 X, y = trainer.prepare_dataset(df)
                 if len(X) < 200:
-                    logger.warning(f"ML retrain skipped: insufficient labeled samples ({len(X)})")
+                    logger.warning(f"ML retrain [{symbol}] skipped: insufficient labeled samples ({len(X)})")
                     return
 
                 # Train in executor to avoid blocking
@@ -289,34 +296,35 @@ class BotScheduler:
                 new_result = await loop.run_in_executor(None, trainer.train_walk_forward, X, y)
 
                 new_accuracy = new_result.accuracy
-                logger.info(f"ML retrain complete: new_accuracy={new_accuracy:.4f}, current_accuracy={current_accuracy:.4f}")
+                logger.info(f"ML retrain [{symbol}]: new={new_accuracy:.4f}, current={current_accuracy:.4f}")
 
-                # Only replace if new model is better
                 if new_accuracy <= current_accuracy:
-                    logger.info("New model not better than current — keeping existing model")
-                    msg = (f"ML Retrain (weekly): new accuracy {new_accuracy:.1%} did NOT beat "
-                           f"current {current_accuracy:.1%} — keeping existing model")
+                    logger.info(f"ML retrain [{symbol}]: new model not better — keeping existing")
+                    msg = (f"ML Retrain [{symbol}]: {new_accuracy:.1%} did NOT beat "
+                           f"{current_accuracy:.1%} — keeping existing")
                 else:
-                    # Save to file and DB
-                    trainer.save_model(settings.ml_model_path)
+                    trainer.save_model(model_path)
 
                     buf = io.BytesIO()
                     joblib.dump({"model": trainer.model, "features": trainer.feature_columns}, buf)
                     model_bytes = buf.getvalue()
 
+                    # Deactivate old model for this symbol
                     await session.execute(
-                        update(MLModelLog).where(MLModelLog.is_active == True).values(is_active=False)
+                        update(MLModelLog)
+                        .where(MLModelLog.is_active == True, MLModelLog.model_name == model_name)
+                        .values(is_active=False)
                     )
                     log = MLModelLog(
-                        model_name=f"lightgbm_{first_engine.symbol.lower()}_auto",
-                        timeframe=first_engine.timeframe,
+                        model_name=model_name,
+                        timeframe=engine.timeframe,
                         train_start=df.index[0].to_pydatetime(),
                         train_end=df.index[int(len(df) * 0.8)].to_pydatetime(),
                         test_start=df.index[int(len(df) * 0.8)].to_pydatetime(),
                         test_end=df.index[-1].to_pydatetime(),
                         metrics=json.dumps(new_result.report),
                         feature_importance=json.dumps(new_result.feature_importance),
-                        model_path=settings.ml_model_path,
+                        model_path=model_path,
                         model_binary=model_bytes,
                         is_active=True,
                     )
@@ -324,20 +332,19 @@ class BotScheduler:
                     await session.commit()
 
                     # Reload model in strategy
-                    if hasattr(first_engine, 'strategy') and hasattr(first_engine.strategy, '_model_loaded'):
-                        first_engine.strategy._model_loaded = False
-                        await first_engine.strategy._ensure_model()
+                    if hasattr(engine, 'strategy') and hasattr(engine.strategy, '_model_loaded'):
+                        engine.strategy._model_loaded = False
+                        await engine.strategy._ensure_model()
 
-                    msg = (f"ML Retrain (weekly): accuracy improved {current_accuracy:.1%} → "
-                           f"{new_accuracy:.1%} — new model deployed!")
+                    msg = (f"ML Retrain [{symbol}]: accuracy {current_accuracy:.1%} → "
+                           f"{new_accuracy:.1%} — deployed!")
                     logger.info(msg)
 
-                # Send Telegram notification
-                if hasattr(first_engine, 'notifier') and first_engine.notifier:
+                if hasattr(engine, 'notifier') and engine.notifier:
                     try:
-                        await first_engine.notifier.send_message(msg)
+                        await engine.notifier.send_message(msg)
                     except Exception:
                         pass
 
         except Exception as e:
-            logger.error(f"ML retrain job error: {e}")
+            logger.error(f"ML retrain [{symbol}] error: {e}")

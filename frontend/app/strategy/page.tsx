@@ -13,8 +13,10 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import { BarChart3, TrendingUp, Target, AlertTriangle } from "lucide-react";
 import {
-  getBotStatus, getAvailableStrategies, getCurrentStrategy, updateStrategy, updateSettings, runBacktest,
+  getBotStatus, getAvailableStrategies, updateStrategy, updateSettings, runBacktest, getSymbols,
 } from "@/lib/api";
+
+type SymbolInfo = { symbol: string; display_name: string; state: string };
 
 const strategyDescriptions: Record<string, string> = {
   ema_crossover: "Buy when fast EMA crosses above slow EMA, sell on cross below. Simple trend-following strategy.",
@@ -24,6 +26,8 @@ const strategyDescriptions: Record<string, string> = {
 };
 
 export default function StrategyPage() {
+  const [symbols, setSymbols] = useState<SymbolInfo[]>([]);
+  const [activeSymbol, setActiveSymbol] = useState("GOLD");
   const [strategies, setStrategies] = useState<{ name: string }[]>([]);
   const [selectedStrategy, setSelectedStrategy] = useState("ema_crossover");
   const [params, setParams] = useState({
@@ -40,27 +44,39 @@ export default function StrategyPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [stratRes, currentRes, statusRes] = await Promise.all([
-        getAvailableStrategies(), getCurrentStrategy(), getBotStatus(),
+      const [stratRes, symbolsRes] = await Promise.all([
+        getAvailableStrategies(),
+        getSymbols().catch(() => null),
       ]);
       setStrategies(stratRes.data.strategies || []);
-      setSelectedStrategy(currentRes.data.name);
-      if (currentRes.data.params) setParams((prev) => ({ ...prev, ...currentRes.data.params }));
+      if (symbolsRes?.data?.symbols) {
+        setSymbols(symbolsRes.data.symbols);
+      }
+    } catch (e) { console.error(e); }
+  }, []);
+
+  // Load per-symbol settings when activeSymbol changes
+  const loadSymbolSettings = useCallback(async (symbol: string) => {
+    try {
+      const statusRes = await getBotStatus(symbol);
+      const data = statusRes.data;
+      setSelectedStrategy(data.strategy || "ema_crossover");
+      if (data.strategy_params) setParams((prev) => ({ ...prev, ...data.strategy_params }));
       setAiSettings({
-        use_ai_filter: statusRes.data.use_ai_filter ?? true,
+        use_ai_filter: data.use_ai_filter ?? true,
         confidence_threshold: 0.7,
       });
-      // Load current risk settings from bot
       setRiskParams({
-        risk_per_trade: statusRes.data.max_risk_per_trade != null ? statusRes.data.max_risk_per_trade * 100 : 1.0,
-        max_daily_loss: statusRes.data.max_daily_loss != null ? statusRes.data.max_daily_loss * 100 : 3.0,
-        max_concurrent: statusRes.data.max_concurrent_trades ?? 3,
-        max_lot: statusRes.data.max_lot ?? 1.0,
+        risk_per_trade: data.max_risk_per_trade != null ? data.max_risk_per_trade * 100 : 1.0,
+        max_daily_loss: data.max_daily_loss != null ? data.max_daily_loss * 100 : 3.0,
+        max_concurrent: data.max_concurrent_trades ?? 3,
+        max_lot: data.max_lot ?? 1.0,
       });
     } catch (e) { console.error(e); }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { loadSymbolSettings(activeSymbol); }, [activeSymbol, loadSymbolSettings]);
 
   const getStrategyParams = () => {
     if (selectedStrategy === "ema_crossover") {
@@ -83,8 +99,9 @@ export default function StrategyPage() {
 
   const handleSave = async () => {
     try {
-      await updateStrategy(selectedStrategy, getStrategyParams());
+      await updateStrategy(selectedStrategy, getStrategyParams(), activeSymbol);
       await updateSettings({
+        symbol: activeSymbol,
         use_ai_filter: aiSettings.use_ai_filter,
         ai_confidence_threshold: aiSettings.confidence_threshold,
         max_risk_per_trade: riskParams.risk_per_trade / 100,
@@ -104,7 +121,7 @@ export default function StrategyPage() {
     setLoading(true);
     try {
       const res = await runBacktest({
-        strategy: selectedStrategy, params: getStrategyParams(), count: 5000,
+        strategy: selectedStrategy, params: getStrategyParams(), symbol: activeSymbol, count: 5000,
         use_ai_filter: aiSettings.use_ai_filter, initial_balance: 10000,
       });
       setBacktestResult(res.data);
@@ -112,16 +129,44 @@ export default function StrategyPage() {
   };
 
   const riskLevel = Math.min(100, (riskParams.risk_per_trade / 5) * 50 + (riskParams.max_daily_loss / 10) * 50);
+  const activeSymbolInfo = symbols.find((s) => s.symbol === activeSymbol);
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader title="Strategy" subtitle="Configure trading strategy and risk parameters" />
+      <PageHeader title="Strategy" subtitle="Configure trading strategy and risk per symbol" />
+
+      {/* Symbol Tabs */}
+      {symbols.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {symbols.map((s) => (
+            <button
+              key={s.symbol}
+              type="button"
+              onClick={() => { setActiveSymbol(s.symbol); setBacktestResult(null); }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
+                s.symbol === activeSymbol
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-foreground border-border hover:border-primary/50"
+              }`}
+            >
+              <span>{s.display_name}</span>
+              <span
+                className={`size-1.5 rounded-full ${
+                  s.state === "RUNNING" ? "bg-green-400" : "bg-muted-foreground/30"
+                }`}
+              />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Strategy */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold">Trading Strategy</CardTitle>
+            <CardTitle className="text-sm font-bold">
+              Trading Strategy — {activeSymbolInfo?.display_name || activeSymbol}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2">
@@ -248,7 +293,7 @@ export default function StrategyPage() {
           className="rounded-full bg-primary text-primary-foreground font-semibold hover-scale"
         >
           {saved ? <Check className="size-4 mr-1.5" /> : <Save className="size-4 mr-1.5" />}
-          {saved ? "Saved!" : "Save Strategy"}
+          {saved ? `Saved for ${activeSymbol}!` : `Save Strategy (${activeSymbol})`}
         </Button>
         <Button onClick={handleBacktest} variant="secondary" disabled={loading} className="rounded-full">
           <FlaskConical className="size-4 mr-1.5" />

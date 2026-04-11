@@ -37,10 +37,13 @@ class TelegramNotifier:
         text = f"{icon} <b>{trade_type}</b> {symbol} @ {price:.2f}\nLot: {lot} | SL: {sl:.2f} | TP: {tp:.2f}{sentiment}{extra_text}"
         await self._send(text)
 
-    async def send_sentiment_alert(self, label: str, score: float, key_factors: list[str]):
+    async def send_sentiment_alert(self, label: str, score: float, key_factors: list[str], symbol: str = ""):
         icon = {"bullish": "🟢", "bearish": "🔴", "neutral": "⚪"}.get(label, "⚪")
         factors = ", ".join(key_factors[:3]) if key_factors else "N/A"
-        text = f"{icon} <b>Sentiment: {label.upper()}</b> (score: {score:+.2f})\nFactors: {factors}"
+        if symbol:
+            text = f"{icon} <b>Sentiment [{symbol}]: {label.upper()}</b> (score: {score:+.2f})\nFactors: {factors}"
+        else:
+            text = f"{icon} <b>Sentiment: {label.upper()}</b> (score: {score:+.2f})\nFactors: {factors}"
         await self._send(text)
 
     async def send_optimization_report(self, assessment: str, confidence: float):
@@ -50,6 +53,9 @@ class TelegramNotifier:
     async def send_daily_report(self, trades: int, pnl: float, win_rate: float):
         icon = "📈" if pnl >= 0 else "📉"
         text = f"{icon} <b>Daily Report</b>\nTrades: {trades} | P&L: ${pnl:.2f} | Win Rate: {win_rate:.1%}"
+        await self._send(text)
+
+    async def send_message(self, text: str):
         await self._send(text)
 
     async def send_error_alert(self, error: str):

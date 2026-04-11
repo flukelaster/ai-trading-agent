@@ -31,6 +31,7 @@ def set_collector(collector):
 class BacktestRequest(BaseModel):
     strategy: str = "ema_crossover"
     params: dict | None = None
+    symbol: str = "GOLD"
     timeframe: str = "M15"
     count: int = 5000
     use_ai_filter: bool = False
@@ -45,6 +46,7 @@ class BacktestRequest(BaseModel):
 class OptimizeRequest(BaseModel):
     strategy: str = "ema_crossover"
     param_grid: dict[str, list]  # e.g. {"fast_period": [10,20,30], "slow_period": [40,50,60]}
+    symbol: str = "GOLD"
     timeframe: str = "M15"
     initial_balance: float = 10000.0
     risk_per_trade: float = 0.01
@@ -58,7 +60,7 @@ class OptimizeRequest(BaseModel):
 
 @router.post("/run")
 async def run_backtest(req: BacktestRequest):
-    df = await _load_data(req.source, req.timeframe, req.count, req.from_date, req.to_date)
+    df = await _load_data(req.symbol, req.source, req.timeframe, req.count, req.from_date, req.to_date)
     if df.empty:
         return {"error": "No OHLCV data available"}
 
@@ -76,7 +78,7 @@ async def run_backtest(req: BacktestRequest):
 
 @router.post("/optimize")
 async def run_optimization(req: OptimizeRequest):
-    df = await _load_data(req.source, req.timeframe, req.count, req.from_date, req.to_date)
+    df = await _load_data(req.symbol, req.source, req.timeframe, req.count, req.from_date, req.to_date)
     if df.empty:
         return {"error": "No OHLCV data available"}
 
@@ -92,10 +94,8 @@ async def run_optimization(req: OptimizeRequest):
     return result.to_dict()
 
 
-async def _load_data(source: str, timeframe: str, count: int, from_date: str | None, to_date: str | None):
+async def _load_data(symbol: str, source: str, timeframe: str, count: int, from_date: str | None, to_date: str | None):
     """Load OHLCV data from MT5 (live) or DB (historical)."""
-    symbol = Settings().symbol
-
     if source == "db":
         if _collector is None:
             raise HTTPException(status_code=503, detail="Data collector not initialized")

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import AIClient
 from app.ai.prompts import ENHANCED_SENTIMENT_SYSTEM_PROMPT, SENTIMENT_SYSTEM_PROMPT
+from app.ai.prompts import get_enhanced_sentiment_prompt, get_sentiment_prompt
 from app.db.models import NewsSentiment
 
 
@@ -45,7 +46,7 @@ class NewsSentimentAnalyzer:
         self.db = db_session
         self.redis = redis_client
 
-    async def analyze(self, news_items: list[dict], context: dict | None = None) -> SentimentResult:
+    async def analyze(self, news_items: list[dict], context: dict | None = None, symbol: str = "GOLD") -> SentimentResult:
         now = datetime.now(timezone.utc).isoformat()
 
         if not news_items:
@@ -53,12 +54,12 @@ class NewsSentimentAnalyzer:
 
         # Build prompt from headlines
         headlines = "\n".join(f"{i+1}. {item['title']}" for i, item in enumerate(news_items))
-        user_prompt = f"Analyze these gold market headlines:\n\n{headlines}"
+        user_prompt = f"Analyze these {symbol} market headlines:\n\n{headlines}"
 
         # Enrich with context if available
-        system_prompt = SENTIMENT_SYSTEM_PROMPT
+        system_prompt = get_sentiment_prompt(symbol)
         if context:
-            system_prompt = ENHANCED_SENTIMENT_SYSTEM_PROMPT
+            system_prompt = get_enhanced_sentiment_prompt(symbol)
             sections = []
             if context.get("price_action"):
                 sections.append(f"--- PRICE ACTION ---\n{context['price_action']}")
@@ -107,7 +108,7 @@ class NewsSentimentAnalyzer:
         # Cache in Redis
         try:
             await self.redis.set(
-                SENTIMENT_CACHE_KEY,
+                f"sentiment:latest:{symbol}",
                 json.dumps(sentiment.to_dict()),
                 ex=SENTIMENT_CACHE_TTL,
             )
@@ -116,10 +117,10 @@ class NewsSentimentAnalyzer:
 
         return sentiment
 
-    async def get_latest_sentiment(self) -> SentimentResult:
+    async def get_latest_sentiment(self, symbol: str = "GOLD") -> SentimentResult:
         # Try Redis cache first
         try:
-            cached = await self.redis.get(SENTIMENT_CACHE_KEY)
+            cached = await self.redis.get(f"sentiment:latest:{symbol}")
             if cached:
                 data = json.loads(cached)
                 return SentimentResult(**data)

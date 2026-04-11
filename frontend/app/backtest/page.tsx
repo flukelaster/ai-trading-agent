@@ -17,6 +17,7 @@ import {
 
 export default function BacktestPage() {
   const [strategy, setStrategy] = useState("ema_crossover");
+  const [symbol, setSymbol] = useState("GOLD");
   const [count, setCount] = useState(5000);
   const [timeframe, setTimeframe] = useState("M15");
   const [balance, setBalance] = useState(10000);
@@ -44,7 +45,7 @@ export default function BacktestPage() {
   const handleRun = async () => {
     setLoading(true);
     try {
-      const params: Record<string, unknown> = { strategy, timeframe, initial_balance: balance, source };
+      const params: Record<string, unknown> = { strategy, symbol, timeframe, initial_balance: balance, source };
       if (source === "db") { params.from_date = fromDate; params.to_date = toDate; }
       else { params.count = count; }
       const res = await runBacktest(params as Parameters<typeof runBacktest>[0]);
@@ -59,7 +60,7 @@ export default function BacktestPage() {
     try {
       const parseList = (s: string) => s.split(",").map(Number).filter(n => !isNaN(n));
       const grid: Record<string, number[]> = { fast_period: parseList(fastPeriods), slow_period: parseList(slowPeriods) };
-      const params: Record<string, unknown> = { strategy, param_grid: grid, timeframe, initial_balance: balance, source };
+      const params: Record<string, unknown> = { strategy, symbol, param_grid: grid, timeframe, initial_balance: balance, source };
       if (source === "db") { params.from_date = fromDate; params.to_date = toDate; }
       const res = await runOptimize(params as Parameters<typeof runOptimize>[0]);
       setOptResult(res.data);
@@ -99,6 +100,18 @@ export default function BacktestPage() {
                     <SelectItem value="rsi_filter">RSI Filter</SelectItem>
                     <SelectItem value="breakout">Breakout</SelectItem>
                     <SelectItem value="ml_signal">ML Signal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground font-medium">Symbol</label>
+                <Select value={symbol} onValueChange={(v) => v && setSymbol(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GOLD">Gold (XAUUSD)</SelectItem>
+                    <SelectItem value="OILCash">WTI Oil</SelectItem>
+                    <SelectItem value="BTCUSD">Bitcoin</SelectItem>
+                    <SelectItem value="USDJPY">USD/JPY</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

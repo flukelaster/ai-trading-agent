@@ -37,6 +37,7 @@ class BotManager:
                 symbol=symbol,
                 symbol_profile=profile,
             )
+            engine._manager = self
             self.engines[symbol] = engine
             logger.info(f"BotManager: created engine for {symbol} ({profile.get('display_name', symbol)})")
 
@@ -97,6 +98,18 @@ class BotManager:
             "active_count": running,
             "total_count": len(self.engines),
         }
+
+    async def get_active_positions(self) -> dict[str, list[dict]]:
+        """Get open positions grouped by symbol."""
+        result = {}
+        for symbol, engine in self.engines.items():
+            try:
+                positions = await engine.executor.get_open_positions(symbol)
+                if positions:
+                    result[symbol] = positions
+            except Exception:
+                pass
+        return result
 
     def set_sentiment_analyzer(self, analyzer, symbol: str | None = None):
         """Set sentiment analyzer on one or all engines."""

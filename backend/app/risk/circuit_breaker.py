@@ -53,6 +53,28 @@ class CircuitBreaker:
         logger.info(f"Circuit breaker [{self.symbol}] reset")
 
     @staticmethod
+    async def get_global_daily_pnl(redis_client, symbols: list[str]) -> float:
+        """Sum daily PnL across all symbols for portfolio-level risk check."""
+        total = 0.0
+        for symbol in symbols:
+            key = f"circuit:daily_pnl:{symbol}"
+            val = await redis_client.get(key)
+            if val:
+                total += float(val)
+        return total
+
+    @staticmethod
+    async def is_global_triggered(redis_client, symbols: list[str], balance: float, max_daily_loss: float) -> bool:
+        """Check if total daily loss across all symbols exceeds limit."""
+        total_pnl = await CircuitBreaker.get_global_daily_pnl(redis_client, symbols)
+        max_loss = balance * max_daily_loss
+        triggered = total_pnl <= -max_loss
+        if triggered:
+            from loguru import logger
+            logger.warning(f"GLOBAL circuit breaker TRIGGERED: total_pnl={total_pnl:.2f}, limit=-{max_loss:.2f}")
+        return triggered
+
+    @staticmethod
     def _seconds_until_midnight() -> int:
         now = datetime.now(timezone.utc)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)

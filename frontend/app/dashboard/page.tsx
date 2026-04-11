@@ -23,7 +23,7 @@ import PriceChart from "@/components/chart/PriceChart";
 import EventFeed from "@/components/dashboard/EventFeed";
 import {
   getBotStatus, startBot, stopBot, emergencyStop, getPositions,
-  getLatestSentiment, getSentimentHistory, updateSettings, getAccount,
+  getLatestSentiment, getSentimentHistory, updateSettings, updateStrategy, getAccount,
   getDailyPnl,
   getBotEvents,
   getSymbols,
@@ -146,6 +146,7 @@ export default function DashboardPage() {
   };
 
   const [chartTimeframe, setChartTimeframe] = useState("M5");
+  const [viewMode, setViewMode] = useState<"single" | "multi">("single");
   const chartTfSynced = useRef(false);
   useEffect(() => {
     if (status?.timeframe && !chartTfSynced.current) {
@@ -249,6 +250,13 @@ export default function DashboardPage() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setViewMode(viewMode === "single" ? "multi" : "single")}
+            className="px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold hover:border-primary/50 transition-all"
+          >
+            {viewMode === "single" ? "4-Grid" : "Single"}
+          </button>
         </div>
       )}
 
@@ -343,9 +351,26 @@ export default function DashboardPage() {
             )}
 
             <div className="space-y-2 text-xs text-muted-foreground">
-              <div className="flex justify-between">
+              <div className="flex items-center justify-between">
                 <span className="font-medium">Strategy</span>
-                <span className="text-foreground font-semibold">{status?.strategy || "—"}</span>
+                <Select
+                  value={status?.strategy || "ema_crossover"}
+                  onValueChange={async (v) => {
+                    if (v) {
+                      await updateStrategy(v, undefined, activeSymbol);
+                      fetchData();
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-32 h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["ema_crossover", "rsi_filter", "breakout", "ml_signal"].map((s) => (
+                      <SelectItem key={s} value={s}>{s.replace("_", " ")}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex justify-between">
                 <span className="font-medium">Symbol</span>
@@ -371,41 +396,92 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="order-2 lg:order-1 lg:col-span-2">
-          <CardHeader className="p-3 sm:p-6">
-            <CardTitle className="text-sm font-bold flex items-center justify-between">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <span>{activeSymbolInfo?.display_name || activeSymbol}</span>
-                {sentiment && (
-                  <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
-                )}
-              </div>
-              <div className="flex gap-0.5 bg-muted rounded-xl p-0.5">
-                {["M1", "M5", "M15", "H1", "H4", "D1"].map((tf) => (
-                  <button
-                    key={tf}
-                    type="button"
-                    onClick={() => setChartTimeframe(tf)}
-                    className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors ${
-                      chartTimeframe === tf
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
+        {viewMode === "multi" ? (
+          <Card className="order-2 lg:order-1 lg:col-span-2">
+            <CardHeader className="p-3 sm:p-6">
+              <CardTitle className="text-sm font-bold flex items-center justify-between">
+                <span>All Symbols</span>
+                <div className="flex gap-0.5 bg-muted rounded-xl p-0.5">
+                  {["M1", "M5", "M15", "H1", "H4", "D1"].map((tf) => (
+                    <button
+                      key={tf}
+                      type="button"
+                      onClick={() => setChartTimeframe(tf)}
+                      className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors ${
+                        chartTimeframe === tf
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="grid grid-cols-2 gap-2">
+                {symbols.map((s) => (
+                  <div
+                    key={s.symbol}
+                    className="border border-border rounded-xl p-2 cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => { setActiveSymbol(s.symbol); setViewMode("single"); }}
                   >
-                    {tf}
-                  </button>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold">{s.display_name}</span>
+                      <span className="text-[10px] font-mono text-muted-foreground">
+                        {ticks[s.symbol]?.bid.toFixed(s.price_decimals) || "---"}
+                      </span>
+                    </div>
+                    <div className="h-32">
+                      <PriceChart
+                        symbol={s.symbol}
+                        timeframe={chartTimeframe}
+                        tick={ticks[s.symbol] || null}
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="h-48 sm:h-64 p-3 pt-0 sm:p-6 sm:pt-0">
-            <PriceChart
-              symbol={activeSymbol}
-              timeframe={chartTimeframe}
-              tick={activeTick}
-            />
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="order-2 lg:order-1 lg:col-span-2">
+            <CardHeader className="p-3 sm:p-6">
+              <CardTitle className="text-sm font-bold flex items-center justify-between">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span>{activeSymbolInfo?.display_name || activeSymbol}</span>
+                  {sentiment && (
+                    <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
+                  )}
+                </div>
+                <div className="flex gap-0.5 bg-muted rounded-xl p-0.5">
+                  {["M1", "M5", "M15", "H1", "H4", "D1"].map((tf) => (
+                    <button
+                      key={tf}
+                      type="button"
+                      onClick={() => setChartTimeframe(tf)}
+                      className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors ${
+                        chartTimeframe === tf
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="h-48 sm:h-64 p-3 pt-0 sm:p-6 sm:pt-0">
+              <PriceChart
+                symbol={activeSymbol}
+                timeframe={chartTimeframe}
+                tick={activeTick}
+              />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* News + Positions + Events */}

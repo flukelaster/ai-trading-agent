@@ -105,6 +105,7 @@ class BotEngine:
         self.news_fetcher = NewsFetcher()
 
         self.state = BotState.STOPPED
+        self._manager = None  # BotManager ref (set in manager.py)
         self._known_tickets: set[int] = set()  # Track open tickets for close detection
 
         # Paper trade mode
@@ -208,6 +209,17 @@ class BotEngine:
                     await self._notify(self.notifier.send_error_alert("⚡ Circuit breaker triggered — bot paused"))
                 return
 
+            # Check global portfolio daily loss (across all symbols)
+            from app.risk.circuit_breaker import CircuitBreaker
+            from app.config import settings
+            all_symbols = settings.symbol_list
+            if await CircuitBreaker.is_global_triggered(self.redis, all_symbols, balance, settings.max_daily_loss * 1.5):
+                self.state = BotState.PAUSED
+                await self._log_event(BotEventType.CIRCUIT_BREAKER, "Portfolio circuit breaker triggered (global daily loss)")
+                if self.notifier:
+                    await self._notify(self.notifier.send_error_alert("⚡ Portfolio circuit breaker — ALL symbols paused"))
+                return
+
             # 2. Fetch OHLCV and calculate signal
             df = await self.market_data.get_ohlcv(self.symbol, self.timeframe, 200)
             if df.empty:
@@ -250,7 +262,7 @@ class BotEngine:
             # 3. Get AI sentiment (optional)
             ai_sentiment = None
             if self.sentiment_analyzer and self.risk_manager.use_ai_filter:
-                sentiment = await self.sentiment_analyzer.get_latest_sentiment()
+                sentiment = await self.sentiment_analyzer.get_latest_sentiment(self.symbol)
                 if sentiment.confidence > 0:
                     ai_sentiment = {"label": sentiment.label, "confidence": sentiment.confidence}
 
@@ -278,6 +290,17 @@ class BotEngine:
                 if self.notifier:
                     await self._notify(self.notifier._send(f"🚫 <b>{signal_label} Blocked</b>\n{reason}"))
                 return
+
+            # Check symbol correlation conflicts
+            if self._manager:
+                from app.risk.correlation import check_correlation_conflict
+                active_positions = await self._manager.get_active_positions()
+                has_conflict, conflict_reason = check_correlation_conflict(self.symbol, signal, active_positions)
+                if has_conflict:
+                    logger.info(f"Correlation conflict: {conflict_reason}")
+                    await self._log_event(BotEventType.TRADE_BLOCKED, conflict_reason)
+                    await self._push_event("bot_event", {"type": "trade_blocked", "signal": signal_label, "reason": conflict_reason})
+                    return
 
             # 5. Calculate lot size and SL/TP
             atr = df.iloc[-2].get("atr", 10.0)
@@ -389,14 +412,14 @@ class BotEngine:
                 logger.warning(f"Context building failed, using basic sentiment: {e}")
                 self._ai_context = None
 
-            news = await self.news_fetcher.fetch_all_sources()
+            news = await self.news_fetcher.fetch_for_symbol(self.symbol)
             if news:
-                result = await self.sentiment_analyzer.analyze(news, context=self._ai_context)
+                result = await self.sentiment_analyzer.analyze(news, context=self._ai_context, symbol=self.symbol)
                 logger.info(f"Sentiment: {result.label} (score={result.score}, confidence={result.confidence})")
                 await self._push_event("sentiment_update", result.to_dict())
                 if self.notifier:
                     await self._notify(self.notifier.send_sentiment_alert(
-                        result.label, result.score, result.key_factors,
+                        result.label, result.score, result.key_factors, symbol=self.symbol,
                     ))
         except Exception as e:
             logger.error(f"Sentiment analysis error: {e}")

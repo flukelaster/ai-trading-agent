@@ -14,8 +14,8 @@ export const stopBot = (symbol?: string) =>
   api.post("/api/bot/stop", null, { params: symbol ? { symbol } : {} });
 export const emergencyStop = (symbol?: string) =>
   api.post("/api/bot/emergency-stop", null, { params: symbol ? { symbol } : {} });
-export const updateStrategy = (name: string, params?: Record<string, unknown>) =>
-  api.put("/api/bot/strategy", { name, params });
+export const updateStrategy = (name: string, params?: Record<string, unknown>, symbol?: string) =>
+  api.put("/api/bot/strategy", { name, params, symbol });
 export const updateSettings = (data: {
   symbol?: string;
   use_ai_filter?: boolean;
@@ -71,6 +71,7 @@ export const getAIContext = () => api.get("/api/ai/context");
 export const runBacktest = (params: {
   strategy: string;
   params?: Record<string, unknown>;
+  symbol?: string;
   timeframe?: string;
   count?: number;
   use_ai_filter?: boolean;
@@ -82,6 +83,7 @@ export const runBacktest = (params: {
 export const runOptimize = (params: {
   strategy: string;
   param_grid: Record<string, number[]>;
+  symbol?: string;
   timeframe?: string;
   source?: string;
   from_date?: string;
