@@ -2,16 +2,18 @@
 Health check endpoint.
 """
 
+import asyncio
+
 from fastapi import APIRouter
 
 router = APIRouter()
 
 
 async def check_health(bot_engine, connector, redis_client, ai_client) -> dict:
-    # MT5 Bridge
+    # MT5 Bridge — timeout 2s to avoid blocking Railway healthcheck
     mt5_ok = False
     try:
-        result = await connector.get_health()
+        result = await asyncio.wait_for(connector.get_health(), timeout=2.0)
         mt5_ok = result.get("status") == "ok"
     except Exception:
         pass
