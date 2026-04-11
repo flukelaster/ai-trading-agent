@@ -25,6 +25,12 @@ class HistoricalDataCollector:
         Fetch historical OHLCV from MT5 in 30-day chunks and upsert into DB.
         Returns summary of collected data.
         """
+        # Reset any dirty transaction state from previous failed operations
+        try:
+            await self.db.rollback()
+        except Exception:
+            pass
+
         dt_from = datetime.fromisoformat(from_date)
         dt_to = datetime.fromisoformat(to_date)
         total_bars = 0
@@ -122,6 +128,11 @@ class HistoricalDataCollector:
 
     async def get_data_status(self, symbol: str | None = None) -> list[dict]:
         """Return data coverage info per symbol/timeframe."""
+        try:
+            await self.db.rollback()
+        except Exception:
+            pass
+
         query = text("""
             SELECT symbol, timeframe,
                    MIN(time) as first_bar,
