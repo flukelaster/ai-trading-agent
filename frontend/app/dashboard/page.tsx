@@ -178,7 +178,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -186,7 +186,7 @@ export default function DashboardPage() {
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-          <Skeleton className="h-60 sm:h-80 rounded-2xl lg:col-span-2" />
+          <Skeleton className="h-60 sm:h-80 rounded-2xl lg:col-span-3" />
           <Skeleton className="h-60 sm:h-80 rounded-2xl" />
         </div>
       </div>
@@ -194,7 +194,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="Dashboard" subtitle="Real-time trading overview">
         {activeTick && (
           <div className="border border-border rounded-full px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-2 sm:gap-3 bg-card">
@@ -230,7 +230,7 @@ export default function DashboardPage() {
 
       {/* Symbol Selector Tabs */}
       {symbols.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {symbols.map((s) => {
             const isActive = s.symbol === activeSymbol;
             const symTick = ticks[s.symbol];
@@ -240,7 +240,7 @@ export default function DashboardPage() {
                 key={s.symbol}
                 type="button"
                 onClick={() => setActiveSymbol(s.symbol)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
+                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${
                   isActive
                     ? "bg-primary text-primary-foreground border-primary"
                     : "bg-card text-foreground border-border hover:border-primary/50"
@@ -268,32 +268,47 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Account Balances Bar */}
+      {account && (
+        <div className="flex flex-wrap gap-4 items-center px-4 py-3 rounded-2xl border border-border bg-card">
+          {account.accounts && account.accounts.length > 1 ? (
+            account.accounts.map((acc, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                  {acc.connector === "binance" ? (
+                    <svg viewBox="0 0 511.97 511.97" className="size-5">
+                      <path fill="#f3ba2f" d="M156.56,215.14,256,115.71l99.47,99.47,57.86-57.85L256,0,98.71,157.28l57.85,57.85M0,256l57.86-57.87L115.71,256,57.85,313.83Zm156.56,40.85L256,396.27l99.47-99.47,57.89,57.82,0,0L256,512,98.71,354.7l-.08-.09,57.93-57.77M396.27,256l57.85-57.85L512,256l-57.85,57.85Z"/>
+                      <path fill="#f3ba2f" d="M314.66,256h0L256,197.25,212.6,240.63h0l-5,5L197.33,255.9l-.08.08.08.08L256,314.72l58.7-58.7,0,0-.05,0"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 122.88 122.88" className="size-5">
+                      <path fill="#fecb00" d="M61.44,0A61.46,61.46,0,1,1,18,18,61.21,61.21,0,0,1,61.44,0Z"/>
+                      <path fill="#db9300" d="M63.28,12.41A50.87,50.87,0,1,1,12.41,63.28,50.87,50.87,0,0,1,63.28,12.41Z"/>
+                      <path fill="#fecb00" d="M81.19,45,67.1,47.22a14.53,14.53,0,0,0-1.91-3.68,9.19,9.19,0,0,0-2.81-2.08V52.38q11.48,3.07,15.34,6.47a14.92,14.92,0,0,1,5.09,11.61A15.77,15.77,0,0,1,81,78a18.66,18.66,0,0,1-4.68,5.75,18.87,18.87,0,0,1-6.07,3.35,30,30,0,0,1-7.85,1.22v7.12h-5.5V88.32a34.54,34.54,0,0,1-9-1.78,18.16,18.16,0,0,1-6-3.6A17.75,17.75,0,0,1,38,78a23.24,23.24,0,0,1-2-6.41l15.24-1.77a13.92,13.92,0,0,0,1.85,5.37,9.55,9.55,0,0,0,3.8,2.93V64.75A69.82,69.82,0,0,1,46,61.09a14.48,14.48,0,0,1-7.89-13.31,15,15,0,0,1,4.71-11.25q4.72-4.53,14-5V27.8h5.5v3.71q8.48.52,13,4A16.06,16.06,0,0,1,81.19,45ZM56.88,41.26a7.19,7.19,0,0,0-3.38,2,4.24,4.24,0,0,0-1,2.76,4.47,4.47,0,0,0,1,2.87,7.1,7.1,0,0,0,3.36,2.07V41.26Zm5.5,37.23a8.76,8.76,0,0,0,4.69-2.37,5.37,5.37,0,0,0,1.5-3.69,5.08,5.08,0,0,0-1.26-3.29,11.58,11.58,0,0,0-4.93-2.77V78.49Z"/>
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase">{acc.connector}</p>
+                  <p className="text-sm font-bold font-mono">${acc.balance.toLocaleString("en", { minimumFractionDigits: 2 })}{acc.currency === "USDT" ? " USDT" : ""}</p>
+                </div>
+                {i < (account.accounts?.length ?? 0) - 1 && <div className="h-8 w-px bg-border ml-2" />}
+              </div>
+            ))
+          ) : (
+            <div className="flex items-center gap-3">
+              <Wallet className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-[10px] text-muted-foreground font-medium">Balance</p>
+                <p className="text-sm font-bold font-mono">${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
-        {account?.accounts && account.accounts.length > 1 ? (
-          <>
-            {account.accounts.map((acc, i) => (
-              <StatCard
-                key={i}
-                iconNode={acc.connector === "binance" ? (
-                  <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
-                    <path d="M12 1.5L6.5 7l2 2L12 5.5 15.5 9l2-2L12 1.5zM3 10.5l2 2 2-2-2-2-2 2zm9 0L8.5 14l2 2L12 14.5 13.5 16l2-2L12 10.5zm9 0l-2 2 2 2 2-2-2-2zM12 18.5L8.5 15l-2 2L12 22.5l5.5-5.5-2-2L12 18.5z"/>
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
-                    <path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" opacity="0.3"/>
-                    <path d="M3 3v18h18V3H3zm8 16H5v-6h6v6zm0-8H5V5h6v6zm8 8h-6v-6h6v6zm0-8h-6V5h6v6z"/>
-                  </svg>
-                )}
-                label={acc.connector === "binance" ? "Binance" : "MT5"}
-                value={`$${acc.balance.toLocaleString("en", { minimumFractionDigits: 2 })}${acc.currency === "USDT" ? " USDT" : ""}`}
-                variant={acc.connector === "binance" ? "default" : "gold"}
-              />
-            ))}
-          </>
-        ) : (
-          <StatCard icon={Wallet} label="Balance" value={account ? `$${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}` : "—"} variant="gold" />
-        )}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={TrendingUp}
           label="Unrealized P&L"
@@ -321,7 +336,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Controls + Price Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 xl:gap-6">
         <Card className="order-1 lg:order-2">
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold">Controls</CardTitle>
@@ -428,7 +443,7 @@ export default function DashboardPage() {
         </Card>
 
         {viewMode === "multi" ? (
-          <Card className="order-2 lg:order-1 lg:col-span-2">
+          <Card className="order-2 lg:order-1 lg:col-span-3">
             <CardHeader className="p-3 sm:p-6">
               <CardTitle className="text-sm font-bold flex items-center justify-between">
                 <span>All Symbols</span>
@@ -464,7 +479,7 @@ export default function DashboardPage() {
                         {ticks[s.symbol]?.bid.toFixed(s.price_decimals) || "---"}
                       </span>
                     </div>
-                    <div className="h-32">
+                    <div className="h-40">
                       <PriceChart
                         symbol={s.symbol}
                         timeframe={chartTimeframe}
@@ -477,7 +492,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="order-2 lg:order-1 lg:col-span-2">
+          <Card className="order-2 lg:order-1 lg:col-span-3">
             <CardHeader className="p-3 sm:p-6">
               <CardTitle className="text-sm font-bold flex items-center justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
@@ -504,7 +519,7 @@ export default function DashboardPage() {
                 </div>
               </CardTitle>
             </CardHeader>
-            <CardContent className="h-48 sm:h-64 p-3 pt-0 sm:p-6 sm:pt-0">
+            <CardContent className="h-56 sm:h-72 xl:h-80 p-3 pt-0 sm:p-6 sm:pt-0">
               <PriceChart
                 symbol={activeSymbol}
                 timeframe={chartTimeframe}
@@ -516,13 +531,13 @@ export default function DashboardPage() {
       </div>
 
       {/* News + Positions + Events */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6">
         <Card>
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold">News Feed</CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <ScrollArea className="h-48 sm:h-64">
+            <ScrollArea className="h-56 sm:h-72">
               <div className="space-y-2 pr-3">
                 {news.length > 0 ? (
                   news.map((n, i) => (
@@ -552,7 +567,7 @@ export default function DashboardPage() {
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
             {positions.length > 0 ? (
               <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-                <ScrollArea className="h-48 sm:h-64">
+                <ScrollArea className="h-56 sm:h-72">
                   <Table className="min-w-[480px]">
                     <TableHeader>
                       <TableRow>
@@ -616,36 +631,36 @@ export default function DashboardPage() {
       {analytics && (analytics.total_trades as number) > 0 && (
         <div className="space-y-4">
           <h3 className="text-sm font-bold text-foreground">Performance Analytics (30d)</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div className="border border-border rounded-xl p-3 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="border border-border rounded-xl p-4 text-center">
               <p className="text-[10px] text-muted-foreground font-medium">Sharpe</p>
               <p className={`text-lg font-bold ${(analytics.sharpe_ratio as number) > 1 ? "text-success dark:text-green-400" : "text-foreground"}`}>
                 {(analytics.sharpe_ratio as number).toFixed(2)}
               </p>
             </div>
-            <div className="border border-border rounded-xl p-3 text-center">
+            <div className="border border-border rounded-xl p-4 text-center">
               <p className="text-[10px] text-muted-foreground font-medium">Sortino</p>
               <p className={`text-lg font-bold ${(analytics.sortino_ratio as number) > 1.5 ? "text-success dark:text-green-400" : "text-foreground"}`}>
                 {(analytics.sortino_ratio as number).toFixed(2)}
               </p>
             </div>
-            <div className="border border-border rounded-xl p-3 text-center">
+            <div className="border border-border rounded-xl p-4 text-center">
               <p className="text-[10px] text-muted-foreground font-medium">Profit Factor</p>
               <p className={`text-lg font-bold ${(analytics.profit_factor as number) > 1.5 ? "text-success dark:text-green-400" : "text-foreground"}`}>
                 {(analytics.profit_factor as number).toFixed(2)}
               </p>
             </div>
-            <div className="border border-border rounded-xl p-3 text-center">
+            <div className="border border-border rounded-xl p-4 text-center">
               <p className="text-[10px] text-muted-foreground font-medium">Max Drawdown</p>
               <p className="text-lg font-bold text-destructive">
                 {(analytics.max_drawdown_pct as number).toFixed(1)}%
               </p>
             </div>
-            <div className="border border-border rounded-xl p-3 text-center">
+            <div className="border border-border rounded-xl p-4 text-center">
               <p className="text-[10px] text-muted-foreground font-medium">Win Streak</p>
               <p className="text-lg font-bold text-foreground">{analytics.consecutive_wins as number}</p>
             </div>
-            <div className="border border-border rounded-xl p-3 text-center">
+            <div className="border border-border rounded-xl p-4 text-center">
               <p className="text-[10px] text-muted-foreground font-medium">Loss Streak</p>
               <p className="text-lg font-bold text-foreground">{analytics.consecutive_losses as number}</p>
             </div>
@@ -656,7 +671,7 @@ export default function DashboardPage() {
               <CardHeader className="p-3 sm:p-6">
                 <CardTitle className="text-sm font-bold">Equity Curve</CardTitle>
               </CardHeader>
-              <CardContent className="h-40 p-3 pt-0 sm:p-6 sm:pt-0">
+              <CardContent className="h-48 p-3 pt-0 sm:p-6 sm:pt-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={analytics.equity_curve as {time: string; equity: number}[]}>
                     <defs>
