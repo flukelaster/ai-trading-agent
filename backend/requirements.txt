@@ -20,4 +20,4 @@ joblib==1.4.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-py-webauthn==2.5.0
+webauthn==2.7.1
