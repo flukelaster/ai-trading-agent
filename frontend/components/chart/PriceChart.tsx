@@ -200,7 +200,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
               }
             }
 
-            if (markers.length > 0 && markersRef.current) {
+            if (markersRef.current) {
               markers.sort((a, b) => (a.time as number) - (b.time as number));
               markersRef.current.setMarkers(markers);
             }
