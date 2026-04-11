@@ -83,6 +83,8 @@ async def get_trades(
                     deal_type = deal.get("type", "").upper()
                     if trade_type and deal_type != trade_type.upper():
                         continue
+                    if symbol and deal.get("symbol") != symbol:
+                        continue
                     rows.append({
                         "id": None,
                         "ticket": ticket,
