@@ -69,69 +69,75 @@ async def train_model(req: TrainRequest):
     model_name = f"lightgbm_{symbol.lower()}"
     model_path = f"models/{symbol.lower()}_signal.pkl"
 
-    # Load data from DB
-    df = await _collector.load_from_db(symbol, req.timeframe, req.from_date, req.to_date)
-    if df.empty or len(df) < 500:
-        return {"error": f"Insufficient data for {symbol}: {len(df)} bars (need 500+)"}
-
-    # Load macro data from DB
-    macro_df = await _load_macro_from_db(_db_session)
-
-    from app.ml.trainer import ModelTrainer
-    trainer = ModelTrainer()
-
-    # Prepare dataset (with macro features if available)
-    X, y = trainer.prepare_dataset(df, req.forward_bars, req.tp_pips, req.sl_pips, macro_df=macro_df)
-    if len(X) < 200:
-        return {"error": f"Insufficient labeled samples for {symbol}: {len(X)} (need 200+)"}
-
-    # Train in thread pool to avoid blocking event loop
-    loop = asyncio.get_event_loop()
-    if req.use_walk_forward:
-        result = await loop.run_in_executor(None, trainer.train_walk_forward, X, y)
-    else:
-        result = await loop.run_in_executor(None, trainer.train, X, y, req.test_size)
-
-    # Save model to file (local) and serialize to bytes (for DB)
-    trainer.save_model(model_path)
-    result.model_path = model_path
-
-    # Serialize model to bytes for DB storage
-    buf = io.BytesIO()
-    joblib.dump({"model": trainer.model, "features": trainer.feature_columns}, buf)
-    model_bytes = buf.getvalue()
-
-    # Save to DB — deactivate old model for this symbol only
     try:
-        from app.db.models import MLModelLog
-        from sqlalchemy import update
-        await _db_session.execute(
-            update(MLModelLog)
-            .where(MLModelLog.is_active == True, MLModelLog.model_name == model_name)
-            .values(is_active=False)
-        )
+        # Load data from DB
+        df = await _collector.load_from_db(symbol, req.timeframe, req.from_date, req.to_date)
+        if df.empty or len(df) < 500:
+            return {"error": f"Insufficient data for {symbol}: {len(df) if not df.empty else 0} bars (need 500+). Collect data first."}
 
-        split_idx = int(len(X) * (1 - req.test_size))
-        log = MLModelLog(
-            model_name=model_name,
-            timeframe=req.timeframe,
-            train_start=df.index[0].to_pydatetime(),
-            train_end=df.index[split_idx].to_pydatetime(),
-            test_start=df.index[split_idx].to_pydatetime(),
-            test_end=df.index[-1].to_pydatetime(),
-            metrics=json.dumps(result.report),
-            feature_importance=json.dumps(result.feature_importance),
-            model_path=model_path,
-            model_binary=model_bytes,
-            is_active=True,
-        )
-        _db_session.add(log)
-        await _db_session.commit()
+        # Load macro data from DB
+        macro_df = await _load_macro_from_db(_db_session)
+
+        from app.ml.trainer import ModelTrainer
+        trainer = ModelTrainer()
+
+        # Prepare dataset (with macro features if available)
+        X, y = trainer.prepare_dataset(df, req.forward_bars, req.tp_pips, req.sl_pips, macro_df=macro_df)
+        if len(X) < 200:
+            return {"error": f"Insufficient labeled samples for {symbol}: {len(X)} (need 200+)"}
+
+        # Train in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        if req.use_walk_forward:
+            result = await loop.run_in_executor(None, trainer.train_walk_forward, X, y)
+        else:
+            result = await loop.run_in_executor(None, trainer.train, X, y, req.test_size)
+
+        # Save model to file (local) and serialize to bytes (for DB)
+        trainer.save_model(model_path)
+        result.model_path = model_path
+
+        # Serialize model to bytes for DB storage
+        buf = io.BytesIO()
+        joblib.dump({"model": trainer.model, "features": trainer.feature_columns}, buf)
+        model_bytes = buf.getvalue()
+
+        # Save to DB — deactivate old model for this symbol only
+        try:
+            from app.db.models import MLModelLog
+            from sqlalchemy import update
+            await _db_session.execute(
+                update(MLModelLog)
+                .where(MLModelLog.is_active == True, MLModelLog.model_name == model_name)
+                .values(is_active=False)
+            )
+
+            split_idx = int(len(X) * (1 - req.test_size))
+            log = MLModelLog(
+                model_name=model_name,
+                timeframe=req.timeframe,
+                train_start=df.index[0].to_pydatetime(),
+                train_end=df.index[split_idx].to_pydatetime(),
+                test_start=df.index[split_idx].to_pydatetime(),
+                test_end=df.index[-1].to_pydatetime(),
+                metrics=json.dumps(result.report),
+                feature_importance=json.dumps(result.feature_importance),
+                model_path=model_path,
+                model_binary=model_bytes,
+                is_active=True,
+            )
+            _db_session.add(log)
+            await _db_session.commit()
+        except Exception as e:
+            await _db_session.rollback()
+            return {"warning": f"Model trained but DB log failed: {e}", **result.to_dict()}
+
+        return {**result.to_dict(), "symbol": symbol}
+
     except Exception as e:
-        await _db_session.rollback()
-        return {"warning": f"Model trained but DB log failed: {e}", **result.to_dict()}
-
-    return {**result.to_dict(), "symbol": symbol}
+        from loguru import logger
+        logger.error(f"Train model error [{symbol}]: {e}")
+        return {"error": f"Training failed: {e}"}
 
 
 @router.get("/status")

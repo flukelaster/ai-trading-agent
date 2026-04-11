@@ -3,7 +3,11 @@ Shared test fixtures for gold-trading-bot backend.
 """
 
 import asyncio
+import os
 from unittest.mock import AsyncMock
+
+# Disable auth for tests (prevent .env from enabling it)
+os.environ["AUTH_PASSWORD_HASH"] = ""
 
 import numpy as np
 import pandas as pd
