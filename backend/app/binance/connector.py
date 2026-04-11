@@ -296,9 +296,9 @@ class BinanceConnector:
 
         return {"success": True, "data": all_candles}
 
-    async def get_history(self, days: int = 1) -> dict:
+    async def get_history(self, days: int = 1, symbol: str = "BTCUSD") -> dict:
         """Get recent trade history."""
-        sym = self._to_binance_symbol("BTCUSD")
+        sym = self._to_binance_symbol(symbol)
         data = await self._signed_get("/api/v3/myTrades", {
             "symbol": sym, "limit": 100,
         })
@@ -313,7 +313,7 @@ class BinanceConnector:
                 continue
             trades.append({
                 "ticket": t["id"],
-                "symbol": "BTCUSD",
+                "symbol": symbol,
                 "type": "BUY" if t["isBuyer"] else "SELL",
                 "lot": float(t["qty"]),
                 "price": float(t["price"]),

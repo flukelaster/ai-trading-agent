@@ -67,8 +67,9 @@ async def get_trades(
     # 2. Merge MT5 history (catches manual trades not in DB)
     if _manager is not None and not strategy:
         try:
-            first_engine = next(iter(_manager.engines.values()))
-            mt5_result = await first_engine.connector.get_history(days=days)
+            engine = _manager.get_engine(symbol) if symbol else None
+            engine = engine or next(iter(_manager.engines.values()))
+            mt5_result = await engine.connector.get_history(days=days, symbol=symbol)
             if mt5_result.get("success"):
                 for deal in mt5_result.get("data", []):
                     ticket = deal.get("ticket")
@@ -127,8 +128,9 @@ async def get_daily_pnl(
     mt5_deals: list[dict] = []
     if _manager is not None:
         try:
-            first_engine = next(iter(_manager.engines.values()))
-            result = await first_engine.connector.get_history(days=1)
+            engine = _manager.get_engine(symbol) if symbol else None
+            engine = engine or next(iter(_manager.engines.values()))
+            result = await engine.connector.get_history(days=1, symbol=symbol)
             if result.get("success"):
                 for deal in result.get("data", []):
                     try:

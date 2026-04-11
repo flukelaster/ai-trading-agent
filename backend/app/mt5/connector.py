@@ -122,5 +122,8 @@ class MT5BridgeConnector:
             logger.error(f"MT5 Bridge historical OHLCV HTTP error: {e.response.status_code}")
             return {"success": False, "data": None, "error": str(e)}
 
-    async def get_history(self, days: int = 1) -> dict:
-        return await self._request("get", "/history", params={"days": days})
+    async def get_history(self, days: int = 1, symbol: str | None = None) -> dict:
+        params: dict = {"days": days}
+        if symbol:
+            params["symbol"] = symbol
+        return await self._request("get", "/history", params=params)

@@ -16,6 +16,12 @@ build/
 .idea/
 *.swp
 
+# Claude Code
+.claude/
+
+# Test scripts
+mt5_bridge/test_mt5.py
+
 # Node
 node_modules/
 .next/
