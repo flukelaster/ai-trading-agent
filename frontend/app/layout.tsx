@@ -14,6 +14,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Trading Bot",
   description: "Multi-Symbol Auto-Trading Platform",
+  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({
