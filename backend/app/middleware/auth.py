@@ -6,7 +6,7 @@ is_setup_complete=True), all requests pass through unauthenticated.
 This preserves existing behavior for deployments that haven't set up passkeys yet.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from loguru import logger
 from sqlalchemy import select
@@ -89,7 +89,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     select(AuthSession).where(
                         AuthSession.jwt_jti == jti,
                         AuthSession.revoked_at.is_(None),
-                        AuthSession.expires_at > datetime.now(UTC),
+                        AuthSession.expires_at > datetime.utcnow(),
                     )
                 )
                 session = result.scalar_one_or_none()
