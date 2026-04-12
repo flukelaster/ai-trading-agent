@@ -115,18 +115,17 @@ async def run_multi_agent(
 
     # ─── Phase 1: Run specialists in parallel ────────────────────────────
 
-    specialist_tasks = {
-        "technical": technical_analyst.analyze(symbol, timeframe),
-        "fundamental": fundamental_analyst.analyze(symbol, timeframe),
-        "risk": risk_analyst.analyze(symbol, timeframe=timeframe),
-    }
+    # Run specialists sequentially (SDK doesn't support concurrent subprocess queries)
+    specialist_order = [
+        ("technical", lambda: technical_analyst.analyze(symbol, timeframe)),
+        ("fundamental", lambda: fundamental_analyst.analyze(symbol, timeframe)),
+        ("risk", lambda: risk_analyst.analyze(symbol, timeframe=timeframe)),
+    ]
 
-    # Run all specialists concurrently
-    tasks = {name: asyncio.create_task(coro) for name, coro in specialist_tasks.items()}
-
-    for name, task in tasks.items():
+    for name, run_fn in specialist_order:
         try:
-            results[name] = await task
+            logger.info(f"[Orchestrator] Running {name} analyst...")
+            results[name] = await run_fn()
         except Exception as e:
             logger.error(f"[Orchestrator] {name} analyst failed: {e}")
             specialist_errors[name] = str(e)
