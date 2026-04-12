@@ -244,8 +244,9 @@ class BotScheduler:
         await self._run_ai_agent(symbols)
 
     async def _sentiment_job(self):
+        """Fetch news sentiment regardless of bot state — news comes out 24/7."""
         logger.debug("Sentiment job triggered")
-        tasks = [e.fetch_and_analyze_sentiment() for e in self._engines.values() if e.state.value == "RUNNING"]
+        tasks = [e.fetch_and_analyze_sentiment() for e in self._engines.values()]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
