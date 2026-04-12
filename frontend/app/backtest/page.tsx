@@ -189,8 +189,8 @@ export default function BacktestPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               {/* Row 1: Strategy & Market */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
+              <div className="flex flex-wrap gap-4">
+                <div className="space-y-1.5 w-44">
                   <label className="text-xs text-muted-foreground font-medium">
                     Strategy
                   </label>
@@ -211,7 +211,7 @@ export default function BacktestPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-40">
                   <label className="text-xs text-muted-foreground font-medium">
                     Symbol
                   </label>
@@ -235,7 +235,7 @@ export default function BacktestPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-28">
                   <label className="text-xs text-muted-foreground font-medium">
                     Timeframe
                   </label>
@@ -260,8 +260,8 @@ export default function BacktestPage() {
               <div className="border-t border-border" />
 
               {/* Row 2: Data Source & Related Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="space-y-1.5">
+              <div className="flex flex-wrap gap-4">
+                <div className="space-y-1.5 w-36">
                   <label className="text-xs text-muted-foreground font-medium">
                     Data Source
                   </label>
@@ -281,7 +281,7 @@ export default function BacktestPage() {
                   </Select>
                 </div>
                 {source === "mt5" && (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 w-32">
                     <label className="text-xs text-muted-foreground font-medium">
                       Bars
                     </label>
@@ -296,7 +296,7 @@ export default function BacktestPage() {
                 )}
                 {source === "db" && (
                   <>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 w-40">
                       <label className="text-xs text-muted-foreground font-medium">
                         From
                       </label>
@@ -306,7 +306,7 @@ export default function BacktestPage() {
                         onChange={(e) => setFromDate(e.target.value)}
                       />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 w-40">
                       <label className="text-xs text-muted-foreground font-medium">
                         To
                       </label>
@@ -318,7 +318,7 @@ export default function BacktestPage() {
                     </div>
                   </>
                 )}
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-36">
                   <label className="text-xs text-muted-foreground font-medium">
                     Initial Balance
                   </label>
@@ -508,8 +508,8 @@ export default function BacktestPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               {/* Row 1: Strategy & Market */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
+              <div className="flex flex-wrap gap-4">
+                <div className="space-y-1.5 w-44">
                   <label className="text-xs text-muted-foreground font-medium">
                     Strategy
                   </label>
@@ -530,7 +530,7 @@ export default function BacktestPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-40">
                   <label className="text-xs text-muted-foreground font-medium">
                     Symbol
                   </label>
@@ -554,7 +554,7 @@ export default function BacktestPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-28">
                   <label className="text-xs text-muted-foreground font-medium">
                     Timeframe
                   </label>
@@ -579,8 +579,8 @@ export default function BacktestPage() {
               <div className="border-t border-border" />
 
               {/* Row 2: Data Source & Balance */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="space-y-1.5">
+              <div className="flex flex-wrap gap-4">
+                <div className="space-y-1.5 w-36">
                   <label className="text-xs text-muted-foreground font-medium">
                     Data Source
                   </label>
@@ -601,7 +601,7 @@ export default function BacktestPage() {
                 </div>
                 {source === "db" && (
                   <>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 w-40">
                       <label className="text-xs text-muted-foreground font-medium">
                         From
                       </label>
@@ -611,7 +611,7 @@ export default function BacktestPage() {
                         onChange={(e) => setFromDate(e.target.value)}
                       />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 w-40">
                       <label className="text-xs text-muted-foreground font-medium">
                         To
                       </label>
@@ -623,7 +623,7 @@ export default function BacktestPage() {
                     </div>
                   </>
                 )}
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-36">
                   <label className="text-xs text-muted-foreground font-medium">
                     Initial Balance
                   </label>
@@ -651,8 +651,8 @@ export default function BacktestPage() {
                 <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-3">
                   Parameter Grid
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-4">
+                  <div className="space-y-1.5 w-52">
                     <label className="text-xs text-muted-foreground font-medium">
                       Fast EMA Periods
                     </label>
@@ -665,7 +665,7 @@ export default function BacktestPage() {
                       Comma-separated values
                     </p>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 w-52">
                     <label className="text-xs text-muted-foreground font-medium">
                       Slow EMA Periods
                     </label>
