@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <MobileHeader />
         <Sidebar />
         <main className="flex-1 overflow-auto">
-          <div className="max-w-[1600px] mx-auto animate-fade-in">{children}</div>
+          <div className="max-w-[1600px] mx-auto">{children}</div>
         </main>
       </div>
     </TooltipProvider>
