@@ -33,9 +33,10 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; dot: strin
   optimization: { label: "Optimization", color: "text-purple-400", dot: "bg-purple-400", bg: "bg-purple-500/10" },
   risk:         { label: "Risk",         color: "text-red-400",    dot: "bg-red-400",    bg: "bg-red-500/10" },
   error:        { label: "Error",        color: "text-red-400",    dot: "bg-red-400",    bg: "bg-red-500/10" },
+  system:       { label: "System",       color: "text-zinc-400",   dot: "bg-zinc-400",   bg: "bg-zinc-500/10" },
 };
 
-const CATEGORIES = ["", "trade", "signal", "sentiment", "optimization", "risk"];
+const CATEGORIES = ["", "trade", "signal", "sentiment", "optimization", "risk", "system"];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

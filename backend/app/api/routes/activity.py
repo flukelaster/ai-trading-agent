@@ -15,7 +15,7 @@ from app.db.session import get_db
 router = APIRouter(prefix="/api/ai/activity", tags=["activity"])
 
 
-# AI-relevant event types only — excludes system start/stop/settings
+# Event type → category mapping (includes system events for visibility)
 _AI_EVENT_MAP: dict[str, str] = {
     "TRADE_OPENED": "trade",
     "TRADE_CLOSED": "trade",
@@ -26,6 +26,10 @@ _AI_EVENT_MAP: dict[str, str] = {
     "CIRCUIT_BREAKER": "risk",
     "ORDER_FAILED": "error",
     "STRATEGY_CHANGED": "optimization",
+    "STARTED": "system",
+    "STOPPED": "system",
+    "ERROR": "error",
+    "SETTINGS_CHANGED": "system",
 }
 
 
@@ -39,7 +43,7 @@ async def get_activity_log(
     """Unified AI activity timeline from multiple data sources."""
     cutoff = datetime.utcnow() - timedelta(days=days)
 
-    # 1. Bot events — AI-relevant only (no system start/stop)
+    # 1. Bot events (AI + system)
     ai_event_types = list(_AI_EVENT_MAP.keys())
     events_q = (
         select(BotEvent)
