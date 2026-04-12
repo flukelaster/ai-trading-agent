@@ -32,20 +32,23 @@ class RolloutModeRequest(BaseModel):
 
 @router.get("/mode")
 async def get_rollout_mode(request: Request):
-    """Get current rollout mode."""
-    mode = os.environ.get("ROLLOUT_MODE", settings.rollout_mode)
-
-    # Try to read persisted mode from Redis via runner_manager
-    manager = getattr(request.app.state, "runner_manager", None)
-    if manager:
-        try:
-            val = await manager.redis.get("guardrails:rollout_mode")
-            if val:
-                persisted = val.decode() if isinstance(val, bytes) else str(val)
-                if persisted in VALID_MODES:
-                    mode = persisted
-        except Exception:
-            pass
+    """Get current rollout mode. Env var ROLLOUT_MODE takes priority over Redis."""
+    env_mode = os.environ.get("ROLLOUT_MODE", "")
+    if env_mode and env_mode in VALID_MODES:
+        mode = env_mode
+    else:
+        # Fallback: Redis persisted value, then settings default
+        mode = settings.rollout_mode
+        manager = getattr(request.app.state, "runner_manager", None)
+        if manager:
+            try:
+                val = await manager.redis.get("guardrails:rollout_mode")
+                if val:
+                    persisted = val.decode() if isinstance(val, bytes) else str(val)
+                    if persisted in VALID_MODES:
+                        mode = persisted
+            except Exception:
+                pass
 
     return {
         "mode": mode,
@@ -72,7 +75,7 @@ async def set_rollout_mode(
     old_mode = os.environ.get("ROLLOUT_MODE", settings.rollout_mode)
     os.environ["ROLLOUT_MODE"] = req.mode
 
-    # Persist to Redis if available
+    # Sync to Redis so both sources agree
     manager = getattr(request.app.state, "runner_manager", None)
     if manager:
         try:
