@@ -16,6 +16,7 @@ import {
   Wallet, TrendingUp, Layers, Activity, Play, Square, ShieldAlert, Wifi, WifiOff, DollarSign,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import { StatCard } from "@/components/ui/stat-card";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
 import SentimentBadge from "@/components/ai/SentimentBadge";
@@ -229,6 +230,14 @@ export default function DashboardPage() {
           </span>
         </div>
       </PageHeader>
+
+      <PageInstructions
+        pageId="dashboard"
+        items={[
+          "Start/Stop controls the trading bot. Emergency Stop closes all positions immediately.",
+          "The bot trades automatically based on the selected strategy. Monitor open positions, equity, and live events below.",
+        ]}
+      />
 
       {/* Symbol Selector Tabs */}
       <SymbolTabs

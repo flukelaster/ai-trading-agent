@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import api from "@/lib/api";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -121,6 +122,14 @@ export default function ActivityPage() {
           </button>
         </div>
       </PageHeader>
+
+      <PageInstructions
+        pageId="activity"
+        items={[
+          "Timeline of all bot events: trades, signals, sentiment analyses, errors, and system events.",
+          "Filter by time range and category. Events are stored persistently in the database.",
+        ]}
+      />
 
       {/* Summary cards */}
       {summary && (

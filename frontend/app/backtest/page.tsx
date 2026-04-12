@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
   AlertTriangle, Search, Loader2, FlaskConical, Zap,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   runBacktest, runOptimize, getCurrentStrategy, getDataStatus, getSymbols,
@@ -22,13 +23,62 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 
+// ─── Constants ────────────────────────────────────────────────────
+
 const STRATEGIES = [
   { value: "ema_crossover", label: "EMA Crossover" },
   { value: "rsi_filter", label: "RSI Filter" },
   { value: "breakout", label: "Breakout" },
+  { value: "mean_reversion", label: "Mean Reversion" },
   { value: "ml_signal", label: "ML Signal" },
 ];
-const TIMEFRAMES = ["M5", "M15", "H1", "H4"];
+
+const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"];
+
+interface ParamDef {
+  key: string;
+  label: string;
+  defaults: number[];
+}
+
+const STRATEGY_PARAMS: Record<string, ParamDef[]> = {
+  ema_crossover: [
+    { key: "fast_period", label: "Fast EMA Period", defaults: [10, 15, 20, 25, 30] },
+    { key: "slow_period", label: "Slow EMA Period", defaults: [40, 50, 60, 80, 100] },
+  ],
+  rsi_filter: [
+    { key: "ema_fast", label: "EMA Fast", defaults: [10, 15, 20, 25] },
+    { key: "ema_slow", label: "EMA Slow", defaults: [40, 50, 60] },
+    { key: "rsi_period", label: "RSI Period", defaults: [10, 14, 20] },
+    { key: "rsi_overbought", label: "RSI Overbought", defaults: [65, 70, 75, 80] },
+    { key: "rsi_oversold", label: "RSI Oversold", defaults: [20, 25, 30, 35] },
+  ],
+  breakout: [
+    { key: "lookback", label: "Lookback Period", defaults: [10, 15, 20, 30] },
+    { key: "atr_period", label: "ATR Period", defaults: [10, 14, 20] },
+    { key: "atr_threshold", label: "ATR Threshold", defaults: [0.3, 0.5, 0.8, 1.0] },
+  ],
+  mean_reversion: [
+    { key: "bb_period", label: "BB Period", defaults: [15, 20, 25] },
+    { key: "bb_std", label: "BB Std Dev", defaults: [1.5, 2.0, 2.5] },
+    { key: "rsi_period", label: "RSI Period", defaults: [10, 14, 20] },
+    { key: "rsi_overbought", label: "RSI Overbought", defaults: [65, 70, 75] },
+    { key: "rsi_oversold", label: "RSI Oversold", defaults: [25, 30, 35] },
+    { key: "min_bandwidth", label: "Min Bandwidth", defaults: [0.003, 0.005, 0.01] },
+  ],
+  ml_signal: [],
+};
+
+function buildDefaultGridInputs(strat: string): Record<string, string> {
+  const params = STRATEGY_PARAMS[strat] || [];
+  const result: Record<string, string> = {};
+  for (const p of params) {
+    result[p.key] = p.defaults.join(",");
+  }
+  return result;
+}
+
+// ─── Page ─────────────────────────────────────────────────────────
 
 export default function BacktestPage() {
   const [strategy, setStrategy] = useState("ema_crossover");
@@ -46,8 +96,16 @@ export default function BacktestPage() {
 
   const [optResult, setOptResult] = useState<Record<string, unknown> | null>(null);
   const [optimizing, setOptimizing] = useState(false);
-  const [fastPeriods, setFastPeriods] = useState("10,15,20,25,30");
-  const [slowPeriods, setSlowPeriods] = useState("40,50,60,80,100");
+  const [paramGridInputs, setParamGridInputs] = useState<Record<string, string>>(
+    () => buildDefaultGridInputs("ema_crossover")
+  );
+
+  const currentParams = useMemo(() => STRATEGY_PARAMS[strategy] || [], [strategy]);
+
+  // Reset param grid when strategy changes
+  useEffect(() => {
+    setParamGridInputs(buildDefaultGridInputs(strategy));
+  }, [strategy]);
 
   useEffect(() => {
     getCurrentStrategy().then((res) => { if (res.data?.name) setStrategy(res.data.name); }).catch(() => {});
@@ -71,9 +129,14 @@ export default function BacktestPage() {
     setOptResult(null);
     try {
       const parseList = (s: string) => s.split(",").map(Number).filter((n) => !isNaN(n));
+      const paramGrid: Record<string, number[]> = {};
+      for (const [key, value] of Object.entries(paramGridInputs)) {
+        const parsed = parseList(value);
+        if (parsed.length > 0) paramGrid[key] = parsed;
+      }
       const params: Record<string, unknown> = {
         strategy, symbol, timeframe, initial_balance: balance, source,
-        param_grid: { fast_period: parseList(fastPeriods), slow_period: parseList(slowPeriods) },
+        param_grid: paramGrid,
       };
       if (source === "db") { params.from_date = fromDate; params.to_date = toDate; }
       const res = await runOptimize(params as Parameters<typeof runOptimize>[0]);
@@ -163,6 +226,15 @@ export default function BacktestPage() {
     <div className="p-4 lg:p-6 space-y-6">
       <PageHeader title="Backtester" subtitle="Test strategies against historical data" />
 
+      <PageInstructions
+        pageId="backtest"
+        items={[
+          "Select a strategy, symbol, and timeframe. Use MT5 for live data or DB for historical (requires data collection from ML page).",
+          "Backtest tab runs a single test. Optimizer tab searches parameter combinations to find the best settings.",
+          "ML Signal strategy requires a trained model — train one on the ML page first.",
+        ]}
+      />
+
       <Tabs defaultValue="backtest" className="space-y-5">
         <TabsList className="grid w-full grid-cols-2 max-w-xs">
           <TabsTrigger value="backtest"><FlaskConical className="size-3.5 mr-1.5" />Backtest</TabsTrigger>
@@ -233,23 +305,34 @@ export default function BacktestPage() {
         <TabsContent value="optimize" className="space-y-4 mt-0">
           {configForm}
 
-          {/* Parameter Grid */}
+          {/* Dynamic Parameter Grid */}
           <div className="rounded-xl border border-border bg-card p-4 space-y-3">
             <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Parameter Grid</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[11px] text-muted-foreground font-medium">Fast EMA Periods</label>
-                <Input value={fastPeriods} onChange={(e) => setFastPeriods(e.target.value)} placeholder="10,15,20,25,30" className="text-sm font-mono" />
+            {currentParams.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {currentParams.map((p) => (
+                  <div key={p.key} className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground font-medium">{p.label}</label>
+                    <Input
+                      value={paramGridInputs[p.key] || ""}
+                      onChange={(e) => setParamGridInputs((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                      placeholder={p.defaults.join(",")}
+                      className="text-sm font-mono"
+                    />
+                  </div>
+                ))}
               </div>
-              <div className="space-y-1">
-                <label className="text-[11px] text-muted-foreground font-medium">Slow EMA Periods</label>
-                <Input value={slowPeriods} onChange={(e) => setSlowPeriods(e.target.value)} placeholder="40,50,60,80,100" className="text-sm font-mono" />
-              </div>
-            </div>
+            ) : (
+              <p className="text-xs text-muted-foreground py-2">
+                {strategy === "ml_signal"
+                  ? "ML Signal does not support parameter optimization. Train models on the ML page instead."
+                  : "No optimizable parameters for this strategy."}
+              </p>
+            )}
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={handleOptimize} disabled={optimizing} className="rounded-lg font-medium min-w-35">
+            <Button onClick={handleOptimize} disabled={optimizing || currentParams.length === 0} className="rounded-lg font-medium min-w-35">
               {optimizing ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Search className="size-4 mr-1.5" />}
               {optimizing ? "Optimizing..." : "Run Grid Search"}
             </Button>

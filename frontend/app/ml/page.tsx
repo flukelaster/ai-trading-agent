@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database, CheckCircle2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData, getSymbols } from "@/lib/api";
 import { SymbolTabs } from "@/components/ui/symbol-tabs";
 
@@ -155,6 +156,15 @@ export default function MLPage() {
   return (
     <div className="p-4 lg:p-6 space-y-6">
       <PageHeader title="ML Model" subtitle="Train and manage LightGBM signal model per symbol" />
+
+      <PageInstructions
+        pageId="ml"
+        items={[
+          "Step 1: Collect Data — Fetch historical bars from MT5 into the database for your chosen symbol and timeframe.",
+          "Step 2: Train Model — Train a LightGBM classifier on collected data. Adjust TP/SL pips and forward bars in Advanced Parameters.",
+          "Step 3: Predict — Run the trained model on latest market data to get a buy/sell/hold signal with confidence score.",
+        ]}
+      />
 
       <SymbolTabs symbols={symbols} active={activeSymbol} onSelect={setActiveSymbol} />
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import api from "@/lib/api";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -119,6 +120,14 @@ export default function IntegrationPage() {
           {testing === "all" ? "Testing..." : "Test All"}
         </button>
       </PageHeader>
+
+      <PageInstructions
+        pageId="integration"
+        items={[
+          "Connect external services here. Click Configure to add API keys, then Test Connection to verify.",
+          "MT5 requires a running MetaTrader 5 terminal. Claude AI needs an Anthropic API key. Telegram needs a bot token from @BotFather.",
+        ]}
+      />
 
       {loading ? (
         <div className="text-center text-muted-foreground py-8">Loading...</div>

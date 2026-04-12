@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, Brain, BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import { GoldGauge } from "@/components/ui/gold-gauge";
 import SentimentBadge from "@/components/ai/SentimentBadge";
 import OptimizationReport from "@/components/ai/OptimizationReport";
@@ -70,6 +71,14 @@ export default function InsightsPage() {
   return (
     <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="AI Insights" subtitle="Sentiment analysis and strategy optimization" />
+
+      <PageInstructions
+        pageId="insights"
+        items={[
+          "The sentiment gauge shows AI analysis of gold market news — from bearish to bullish with confidence score.",
+          "Run Optimization lets AI suggest strategy parameter improvements based on recent trade performance.",
+        ]}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Sentiment */}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getBotEvents } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 
 interface BotEvent {
   id: number;
@@ -55,6 +56,14 @@ export default function NotificationsPage() {
   return (
     <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
       <PageHeader title="Notifications" subtitle="Bot event history and alerts" />
+
+      <PageInstructions
+        pageId="notifications"
+        items={[
+          "Bot event notifications in chronological order, color-coded by type.",
+          "Trade events in green, errors in red, settings changes in purple. Filter by time range and type.",
+        ]}
+      />
 
       <div className="flex flex-wrap gap-3">
         <select

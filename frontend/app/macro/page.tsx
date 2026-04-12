@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Globe, Calendar, RefreshCw, ArrowRightLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import { getMacroLatest, getMacroCorrelations, getMacroEvents, collectMacro } from "@/lib/api";
 
 export default function MacroPage() {
@@ -64,6 +65,14 @@ export default function MacroPage() {
           {collecting ? "Collecting..." : "Refresh FRED Data"}
         </Button>
       </PageHeader>
+
+      <PageInstructions
+        pageId="macro"
+        items={[
+          "Economic indicators (DXY, Treasury yields, VIX) and their correlation with gold prices.",
+          "Click Refresh FRED Data to fetch latest values. Upcoming economic events are listed with impact ratings.",
+        ]}
+      />
 
       {/* Macro Snapshot */}
       <Card>
