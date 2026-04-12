@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir \
     && pip install --no-cache-dir -r /app/requirements-backend.txt || true
 
 # Copy application code
-COPY mcp_server/ /app/mcp_server/
+COPY backend/mcp_server/ /app/mcp_server/
 COPY backend/app/strategy/ /app/backend/app/strategy/
 COPY backend/app/risk/ /app/backend/app/risk/
 COPY backend/app/mt5/ /app/backend/app/mt5/

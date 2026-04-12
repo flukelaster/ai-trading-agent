@@ -2,12 +2,9 @@
 Unit tests for Phase F — rollout modes, broker enforcement, deploy readiness.
 """
 
-import sys
-import os
 import json
+import os
 from unittest.mock import AsyncMock, patch
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import pytest
 

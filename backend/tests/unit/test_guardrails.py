@@ -2,11 +2,7 @@
 Unit tests for mcp_server/guardrails.py — TradingGuardrails.
 """
 
-import sys
-import os
 import time
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import pytest
 from mcp_server.guardrails import (

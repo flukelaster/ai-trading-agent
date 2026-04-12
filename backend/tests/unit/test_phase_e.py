@@ -2,12 +2,8 @@
 Unit tests for Phase E features — learning, session memory, strategy generation, reflector.
 """
 
-import sys
-import os
 import json
 from unittest.mock import AsyncMock, patch
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import pytest
 

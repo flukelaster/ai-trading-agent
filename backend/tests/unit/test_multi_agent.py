@@ -3,12 +3,9 @@ Unit tests for mcp_server/agents/ — multi-agent architecture.
 Tests with mocked AsyncAnthropic (Anthropic API).
 """
 
-import sys
-import os
 import json
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import pytest
 
