@@ -15,6 +15,7 @@ from app.ai.client import AIClient
 from app.ai.news_sentiment import NewsSentimentAnalyzer
 from app.ai.strategy_optimizer import StrategyOptimizer
 from app.api.routes import (
+    activity,
     ai_insights,
     analytics,
     backtest,
@@ -246,6 +247,7 @@ app.include_router(runners.router)
 app.include_router(jobs.router)
 app.include_router(rollout.router)
 app.include_router(integration.router)
+app.include_router(activity.router)
 app.include_router(ws_router)
 app.include_router(ws_runners_router)
 
