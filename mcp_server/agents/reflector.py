@@ -33,8 +33,18 @@ Provide a structured reflection with:
 
 After your analysis:
 - Use `save_context` to store key insights for the current session
-- Use `save_learning` for any new cross-session insights
+- Use `save_learning` for any new cross-session insights (7-day Redis cache)
 - Use `recommend_strategy` to suggest the best strategy for the regime
+
+## Persistent Memory (Long-term Learning)
+- Use `get_memories` to recall past insights for this symbol (mid-term 30d + long-term permanent)
+- If a stored memory's prediction matched recent outcomes → `validate_memory(id, hit=true)`
+- If a stored memory was wrong → `validate_memory(id, hit=false)`
+- If you discover a NEW data-backed pattern → `save_memory` to persist it beyond 7 days
+
+Only save memories backed by evidence (trade stats, dates, win rates). Each memory should be actionable.
+Examples: "EMA crossover win rate drops to 25% in ranging regime for GOLD",
+"USDJPY reverses within 2 hours after NFP when actual > forecast by 0.2%+"
 
 Be concise and actionable. The Orchestrator reads your report to calibrate its approach."""
 
@@ -47,6 +57,9 @@ TOOL_NAMES = [
     "save_learning",
     "get_strategy_profiles",
     "recommend_strategy",
+    "get_memories",
+    "save_memory",
+    "validate_memory",
 ]
 
 

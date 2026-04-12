@@ -346,3 +346,40 @@ class RunnerMetric(Base):
     memory_limit_mb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     network_rx_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     network_tx_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+
+
+# ─── Agent Memory (Layered Memory System) ────────────────────────────────────
+
+
+class MemoryTier(str, enum.Enum):
+    MID = "mid"
+    LONG = "long"
+
+
+class MemoryCategory(str, enum.Enum):
+    PATTERN = "pattern"
+    STRATEGY = "strategy"
+    RISK = "risk"
+    REGIME = "regime"
+    CORRELATION = "correlation"
+
+
+class AgentMemory(Base):
+    __tablename__ = "agent_memories"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tier: Mapped[MemoryTier] = mapped_column(Enum(MemoryTier), index=True)
+    category: Mapped[MemoryCategory] = mapped_column(Enum(MemoryCategory), index=True)
+    symbol: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    hit_count: Mapped[int] = mapped_column(Integer, default=1)
+    miss_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_validated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    promoted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="reflector")
+    content_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

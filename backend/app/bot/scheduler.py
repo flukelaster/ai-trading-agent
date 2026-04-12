@@ -127,6 +127,16 @@ class BotScheduler:
             max_instances=1,
         )
 
+        # Daily memory consolidation: 02:00 UTC (promote, expire, decay)
+        self.scheduler.add_job(
+            self._memory_consolidation_job,
+            "cron",
+            hour=2,
+            minute=0,
+            id="memory_consolidation",
+            max_instances=1,
+        )
+
         # Health check heartbeat every 30 seconds
         if self._health_monitor:
             self.scheduler.add_job(
@@ -340,6 +350,18 @@ class BotScheduler:
         ]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _memory_consolidation_job(self):
+        """Daily memory consolidation — promote, expire, decay memories."""
+        try:
+            from app.db.session import async_session
+            from app.memory.consolidator import run_consolidation
+
+            async with async_session() as db:
+                result = await run_consolidation(db)
+                logger.info(f"Memory consolidation: {result}")
+        except Exception as e:
+            logger.warning(f"Memory consolidation failed: {e}")
 
     async def _vault_health_job(self):
         """Check OAuth token health via vault."""

@@ -16,6 +16,7 @@ from mcp_server.agents.base import run_agent_loop, MODEL_ORCHESTRATOR
 from mcp_server.guardrails import AGENT_TIMEOUT, MAX_AGENT_TURNS
 from mcp_server.tools import market_data, indicators, risk, broker, portfolio
 from mcp_server.tools import sentiment, history, journal, learning, session, strategy_gen
+from mcp_server.tools import memory
 
 
 # ─── System Prompt ───────────────────────────────────────────────────────────
@@ -77,6 +78,10 @@ TOOLS: list[dict[str, Any]] = [
     {"name": "recommend_strategy", "description": "Recommend strategy for regime", "input_schema": {"type": "object", "properties": {"regime": {"type": "string"}, "symbol": {"type": "string"}}, "required": ["regime"]}},
     {"name": "generate_strategy_config", "description": "Generate custom strategy config", "input_schema": {"type": "object", "properties": {"base_strategy": {"type": "string"}, "param_overrides": {"type": "object"}, "name": {"type": "string"}}, "required": ["base_strategy"]}},
     {"name": "generate_ensemble_config", "description": "Generate ensemble config", "input_schema": {"type": "object", "properties": {"weights": {"type": "object"}, "name": {"type": "string"}}, "required": ["weights"]}},
+    # Memory (Layered Memory System)
+    {"name": "save_memory", "description": "Save insight to persistent memory (30d mid-term, promotable to permanent)", "input_schema": {"type": "object", "properties": {"summary": {"type": "string"}, "category": {"type": "string", "enum": ["pattern", "strategy", "risk", "regime", "correlation"]}, "symbol": {"type": "string"}, "evidence": {"type": "object"}}, "required": ["summary", "category"]}},
+    {"name": "get_memories", "description": "Recall stored memories sorted by confidence", "input_schema": {"type": "object", "properties": {"symbol": {"type": "string"}, "category": {"type": "string"}, "tier": {"type": "string", "enum": ["mid", "long"]}, "limit": {"type": "integer"}}}},
+    {"name": "validate_memory", "description": "Validate whether a stored memory matched reality (hit/miss)", "input_schema": {"type": "object", "properties": {"memory_id": {"type": "integer"}, "hit": {"type": "boolean"}}, "required": ["memory_id", "hit"]}},
 ]
 
 # ─── Tool Dispatch ───────────────────────────────────────────────────────────
@@ -114,6 +119,9 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "recommend_strategy": lambda **kw: strategy_gen.recommend_strategy(**kw),
     "generate_strategy_config": lambda **kw: strategy_gen.generate_strategy_config(**kw),
     "generate_ensemble_config": lambda **kw: strategy_gen.generate_ensemble_config(**kw),
+    "save_memory": memory.save_memory,
+    "get_memories": memory.get_memories,
+    "validate_memory": memory.validate_memory,
 }
 
 

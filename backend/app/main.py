@@ -17,6 +17,7 @@ from app.ai.strategy_optimizer import StrategyOptimizer
 from app.api.routes import (
     activity,
     ai_insights,
+    memory as memory_routes,
     analytics,
     backtest,
     bot,
@@ -248,6 +249,7 @@ app.include_router(jobs.router)
 app.include_router(rollout.router)
 app.include_router(integration.router)
 app.include_router(activity.router)
+app.include_router(memory_routes.router)
 app.include_router(ws_router)
 app.include_router(ws_runners_router)
 
