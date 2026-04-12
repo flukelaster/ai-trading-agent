@@ -2,7 +2,7 @@
 Backtest Engine — bar-by-bar simulation of trading strategies.
 """
 
-import random
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -50,13 +50,26 @@ class BacktestEngine:
         self.risk_manager = risk_manager
         self.initial_balance = initial_balance
 
-    def run(self, df: pd.DataFrame, use_ai_filter: bool = False) -> BacktestResult:
+    def run(
+        self,
+        df: pd.DataFrame,
+        use_ai_filter: bool = False,
+        sentiment_data: list[dict] | None = None,
+    ) -> BacktestResult:
         if len(df) < self.strategy.min_bars_required:
             logger.warning(f"Not enough bars: {len(df)} < {self.strategy.min_bars_required}")
             return BacktestResult()
 
         # Calculate signals on full dataset
         df = self.strategy.calculate(df)
+
+        # Pre-sort sentiment data for binary search lookup
+        sorted_sentiments: list[dict] = []
+        sentiment_times: list[datetime] = []
+        if use_ai_filter and sentiment_data:
+            sorted_sentiments = sorted(sentiment_data, key=lambda s: s["created_at"])
+            sentiment_times = [s["created_at"] for s in sorted_sentiments]
+            logger.info(f"Loaded {len(sorted_sentiments)} historical sentiment records for backtest")
 
         balance = self.initial_balance
         equity_curve = [balance]
@@ -83,17 +96,20 @@ class BacktestEngine:
             # Check for new signal (only if no open trade)
             signal = int(prev_row.get("signal", 0))
             if signal != 0 and open_trade is None:
-                # AI filter simulation
-                if use_ai_filter:
-                    mock_sentiment = random.choice(["bullish", "bearish", "neutral"])
-                    mock_confidence = random.uniform(0.3, 0.9)
-                    if mock_confidence >= self.risk_manager.ai_confidence_threshold:
-                        if signal == 1 and mock_sentiment == "bearish":
-                            ai_filtered += 1
-                            continue
-                        if signal == -1 and mock_sentiment == "bullish":
-                            ai_filtered += 1
-                            continue
+                # AI sentiment filter using historical data
+                if use_ai_filter and sorted_sentiments:
+                    candle_time = pd.Timestamp(row.name).to_pydatetime().replace(tzinfo=None)
+                    sentiment = self._lookup_sentiment(candle_time, sorted_sentiments, sentiment_times)
+                    if sentiment:
+                        confidence = sentiment["confidence"]
+                        label = sentiment["sentiment_label"]
+                        if confidence >= self.risk_manager.ai_confidence_threshold:
+                            if signal == 1 and label == "bearish":
+                                ai_filtered += 1
+                                continue
+                            if signal == -1 and label == "bullish":
+                                ai_filtered += 1
+                                continue
 
                 atr = prev_row.get("atr", 10.0)
                 if pd.isna(atr) or atr <= 0:
@@ -127,6 +143,18 @@ class BacktestEngine:
             equity_curve[-1] = balance
 
         return self._build_result(trades, equity_curve, ai_filtered)
+
+    @staticmethod
+    def _lookup_sentiment(
+        candle_time: datetime,
+        sorted_sentiments: list[dict],
+        sentiment_times: list[datetime],
+    ) -> dict | None:
+        """Find the most recent sentiment record before candle_time (binary search)."""
+        idx = bisect_right(sentiment_times, candle_time) - 1
+        if idx < 0:
+            return None
+        return sorted_sentiments[idx]
 
     def _check_sl_tp(self, trade: dict, row) -> dict | None:
         if trade["type"] == "BUY":

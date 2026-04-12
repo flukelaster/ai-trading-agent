@@ -2,9 +2,15 @@
 Backtest API routes.
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_auth
+from app.db.models import NewsSentiment
+from app.db.session import get_db
 from pydantic import BaseModel, Field
 
 from app.backtest.engine import BacktestEngine
@@ -58,8 +64,28 @@ class OptimizeRequest(_BacktestBase):
     min_trades: int = Field(10, ge=1, le=1000)
 
 
+async def _load_sentiment(db: AsyncSession, from_date: str | None, to_date: str | None) -> list[dict]:
+    """Load historical sentiment records from DB for the backtest date range."""
+    query = select(NewsSentiment).order_by(NewsSentiment.created_at)
+    if from_date:
+        query = query.where(NewsSentiment.created_at >= datetime.fromisoformat(from_date))
+    if to_date:
+        query = query.where(NewsSentiment.created_at <= datetime.fromisoformat(to_date))
+    result = await db.execute(query)
+    records = result.scalars().all()
+    return [
+        {
+            "created_at": r.created_at,
+            "sentiment_label": r.sentiment_label,
+            "sentiment_score": r.sentiment_score,
+            "confidence": r.confidence,
+        }
+        for r in records
+    ]
+
+
 @router.post("/run", dependencies=[Depends(require_auth)])
-async def run_backtest(req: BacktestRequest):
+async def run_backtest(req: BacktestRequest, db: AsyncSession = Depends(get_db)):
     df = await _load_data(req.symbol, req.source, req.timeframe, req.count, req.from_date, req.to_date)
     if df.empty:
         return {"error": "No OHLCV data available"}
@@ -70,10 +96,17 @@ async def run_backtest(req: BacktestRequest):
         max_lot=req.max_lot,
     )
 
-    engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
-    result = engine.run(df, use_ai_filter=req.use_ai_filter)
+    sentiment_data = None
+    if req.use_ai_filter:
+        sentiment_data = await _load_sentiment(db, req.from_date, req.to_date)
 
-    return result.to_dict()
+    engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
+    result = engine.run(df, use_ai_filter=req.use_ai_filter, sentiment_data=sentiment_data)
+
+    resp = result.to_dict()
+    if req.use_ai_filter:
+        resp["sentiment_records_used"] = len(sentiment_data) if sentiment_data else 0
+    return resp
 
 
 @router.post("/optimize", dependencies=[Depends(require_auth)])
