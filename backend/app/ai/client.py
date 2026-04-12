@@ -1,45 +1,29 @@
 """
-AI Client — wrapper for Anthropic SDK (Claude Haiku).
+AI Client — wrapper for Claude Agent SDK (Max subscription).
 AI is an optional layer — all calls return None on failure.
 """
 
 import json
 import re
 
-import anthropic
 from loguru import logger
-
-from app.config import settings
 
 MODEL = "claude-haiku-4-5-20251001"
 
 
 class AIClient:
-    def __init__(self):
-        self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key) if settings.anthropic_api_key else None
+    """AI client using Claude Agent SDK. No API key needed — uses Max subscription."""
 
-    def complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 256) -> str | None:
-        if not self.client:
-            logger.warning("AI client not configured (no API key)")
-            return None
+    async def complete_async(self, system_prompt: str, user_prompt: str, max_tokens: int = 256) -> str | None:
         try:
-            response = self.client.messages.create(
-                model=MODEL,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
-            )
-            text = response.content[0].text
-            input_tokens = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
-            logger.info(f"AI call: {input_tokens} in / {output_tokens} out tokens")
-            return text
+            from mcp_server.sdk_client import sdk_complete
+            return await sdk_complete(user_prompt, system_prompt, model=MODEL)
         except Exception as e:
             logger.error(f"AI call failed: {e}")
             return None
 
-    def complete_json(self, system_prompt: str, user_prompt: str, max_tokens: int = 256) -> dict | None:
-        text = self.complete(system_prompt, user_prompt, max_tokens)
+    async def complete_json_async(self, system_prompt: str, user_prompt: str, max_tokens: int = 256) -> dict | None:
+        text = await self.complete_async(system_prompt, user_prompt, max_tokens)
         if text is None:
             return None
         try:

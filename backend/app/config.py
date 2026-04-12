@@ -98,8 +98,7 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # AI
-    anthropic_api_key: str = ""
+    # AI (Claude Agent SDK uses CLAUDE_CODE_OAUTH_TOKEN env var directly)
 
     # Binance (for BTCUSD — uses Binance API instead of MT5)
     binance_api_key: str = ""

@@ -228,3 +228,16 @@ def create_server() -> FastMCP:
         return strategy_gen.generate_ensemble_config(weights, name)
 
     return mcp
+
+
+if __name__ == "__main__":
+    import os
+    import redis
+    from mcp_server.tools import init_mcp_tools
+
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    redis_client = redis.from_url(redis_url)
+    init_mcp_tools(redis_client)
+
+    server = create_server()
+    server.run(transport="stdio")

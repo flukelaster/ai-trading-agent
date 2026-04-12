@@ -103,7 +103,7 @@ Profit factor: {pf:.2f}"""
         summary = await self.build_performance_summary()
         user_prompt = f"Current performance:\n{summary}\n\nCurrent params: {json.dumps(current_params)}"
 
-        result = self.ai.complete_json(OPTIMIZATION_SYSTEM_PROMPT, user_prompt, max_tokens=512)
+        result = await self.ai.complete_json_async(OPTIMIZATION_SYSTEM_PROMPT, user_prompt, max_tokens=512)
         if result is None:
             logger.warning("AI optimization failed")
             return None

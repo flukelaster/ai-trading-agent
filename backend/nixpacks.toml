@@ -1,2 +1,2 @@
 [phases.setup]
-nixPkgs = ["python312"]
+nixPkgs = ["python312", "nodejs_22"]

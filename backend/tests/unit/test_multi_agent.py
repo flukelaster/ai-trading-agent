@@ -1,6 +1,6 @@
 """
 Unit tests for mcp_server/agents/ — multi-agent architecture.
-Tests with mocked AsyncAnthropic (Anthropic API).
+Tests with mocked Claude Agent SDK.
 """
 
 import json
@@ -13,19 +13,17 @@ from mcp_server.agents.base import MODEL_ORCHESTRATOR, MODEL_SPECIALIST
 
 
 class TestToolSubsets:
-    def test_all_tools_defined(self):
-        from mcp_server.agent_config import TOOLS
-        all_names = {t["name"] for t in TOOLS}
-
+    def test_all_specialist_tools_are_strings(self):
+        """Verify specialist TOOL_NAMES are valid string lists (SDK filters by name)."""
         from mcp_server.agents.technical_analyst import TOOL_NAMES as tech
         from mcp_server.agents.fundamental_analyst import TOOL_NAMES as fund
         from mcp_server.agents.risk_analyst import TOOL_NAMES as risk_t
         from mcp_server.agents.orchestrator import ORCHESTRATOR_TOOL_NAMES as orch
 
-        for n in tech: assert n in all_names, f"'{n}' missing"
-        for n in fund: assert n in all_names, f"'{n}' missing"
-        for n in risk_t: assert n in all_names, f"'{n}' missing"
-        for n in orch: assert n in all_names, f"'{n}' missing"
+        for names in [tech, fund, risk_t, orch]:
+            assert len(names) > 0
+            for n in names:
+                assert isinstance(n, str), f"Tool name must be str, got {type(n)}"
 
     def test_technical_no_execution(self):
         from mcp_server.agents.technical_analyst import TOOL_NAMES
@@ -54,47 +52,35 @@ class TestModelSelection:
 
 class TestBaseAgentLoop:
     @pytest.mark.asyncio
-    async def test_returns_error_without_key(self):
-        from mcp_server.agents.base import run_agent_loop
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
-            result = await run_agent_loop(system_prompt="test", user_message="test")
-            assert "No ANTHROPIC_API_KEY" in result["response"]
-
-    @pytest.mark.asyncio
     async def test_handles_text_response(self):
         from mcp_server.agents.base import run_agent_loop
 
-        mock_block = MagicMock()
-        mock_block.type = "text"
-        mock_block.text = "HOLD recommended"
+        mock_result = {
+            "response": "HOLD recommended",
+            "tool_calls": [],
+            "turns": 1,
+            "duration_s": 2.0,
+        }
 
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
-        mock_response.stop_reason = "end_turn"
-
-        mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("mcp_server.agents.base.AsyncAnthropic", return_value=mock_client),
-        ):
+        with patch("mcp_server.agents.base.sdk_agent_loop", AsyncMock(return_value=mock_result)):
             result = await run_agent_loop(system_prompt="test", user_message="Analyze")
 
         assert "HOLD recommended" in result["response"]
         assert result["turns"] == 1
 
     @pytest.mark.asyncio
-    async def test_handles_api_error(self):
+    async def test_handles_sdk_error(self):
         from mcp_server.agents.base import run_agent_loop
 
-        mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(side_effect=Exception("rate limited"))
+        mock_result = {
+            "response": "Agent error: rate limited",
+            "tool_calls": [],
+            "turns": 0,
+            "duration_s": 0.1,
+            "error": "rate limited",
+        }
 
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("mcp_server.agents.base.AsyncAnthropic", return_value=mock_client),
-        ):
+        with patch("mcp_server.agents.base.sdk_agent_loop", AsyncMock(return_value=mock_result)):
             result = await run_agent_loop(system_prompt="test", user_message="test")
 
         assert "error" in result

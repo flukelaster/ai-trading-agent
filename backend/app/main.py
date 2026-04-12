@@ -86,12 +86,11 @@ async def lifespan(app: FastAPI):
         engine.context_builder.set_macro_service(macro_service)
         engine.context_builder.set_event_calendar(event_calendar)
 
-    # Initialize optimizer if AI available
-    if ai_client.client:
-        optimizer = StrategyOptimizer(ai_client, db_session)
-        optimizer.set_collector(hist_collector)
-        for engine in manager.engines.values():
-            engine._optimizer = optimizer
+    # Initialize optimizer (uses Claude Agent SDK via AIClient)
+    optimizer = StrategyOptimizer(ai_client, db_session)
+    optimizer.set_collector(hist_collector)
+    for engine in manager.engines.values():
+        engine._optimizer = optimizer
 
     # Initialize Telegram notifier
     notifier = TelegramNotifier()

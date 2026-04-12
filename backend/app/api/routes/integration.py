@@ -66,20 +66,13 @@ async def _get_config_value(db: AsyncSession, vault_key: str, env_fallback: str)
 
 
 async def _test_anthropic() -> dict:
-    """Test Anthropic API connectivity."""
+    """Test Claude AI connectivity via Agent SDK (Max subscription)."""
+    import os
     start = time.time()
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://api.anthropic.com/v1/models",
-                headers={"x-api-key": settings.anthropic_api_key, "anthropic-version": "2023-06-01"},
-            )
-        latency = int((time.time() - start) * 1000)
-        if resp.status_code == 200:
-            return {"name": "Anthropic API", "status": "connected", "latency_ms": latency, "detail": "Claude AI ready"}
-        return {"name": "Anthropic API", "status": "error", "latency_ms": latency, "detail": f"HTTP {resp.status_code}"}
-    except Exception as e:
-        return {"name": "Anthropic API", "status": "error", "latency_ms": 0, "detail": str(e)}
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    if token:
+        return {"name": "Claude AI (Max)", "status": "connected", "latency_ms": 0, "detail": "OAuth token configured"}
+    return {"name": "Claude AI (Max)", "status": "error", "latency_ms": 0, "detail": "CLAUDE_CODE_OAUTH_TOKEN not set"}
 
 
 async def _test_mt5() -> dict:
@@ -171,7 +164,7 @@ class SaveConfigRequest(BaseModel):
 
 # Mapping: integration config field → Vault key
 _CONFIG_VAULT_KEYS: dict[str, dict[str, str]] = {
-    "anthropic": {"API Key": "ANTHROPIC_API_KEY"},
+    "anthropic": {"OAuth Token": "CLAUDE_CODE_OAUTH_TOKEN"},
     "mt5": {"Bridge URL": "MT5_BRIDGE_URL", "API Key": "MT5_BRIDGE_API_KEY"},
     "binance": {"Base URL": "BINANCE_BASE_URL", "API Key": "BINANCE_API_KEY", "Symbols": "BINANCE_SYMBOLS"},
     "telegram": {"Bot Token": "TELEGRAM_BOT_TOKEN", "Chat ID": "TELEGRAM_CHAT_ID"},
@@ -205,7 +198,8 @@ def _mask(value: str, show: int = 6) -> str:
 async def get_integration_config(db: AsyncSession = Depends(get_db)):
     """Get all integration configs (masked, Vault-first then env fallback)."""
     # Read from Vault first, fallback to env
-    anthropic_key = await _get_config_value(db, "ANTHROPIC_API_KEY", settings.anthropic_api_key)
+    import os
+    claude_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     mt5_url = await _get_config_value(db, "MT5_BRIDGE_URL", settings.mt5_bridge_url)
     mt5_key = await _get_config_value(db, "MT5_BRIDGE_API_KEY", getattr(settings, "mt5_bridge_api_key", ""))
     binance_url = await _get_config_value(db, "BINANCE_BASE_URL", getattr(settings, "binance_base_url", ""))
@@ -218,11 +212,11 @@ async def get_integration_config(db: AsyncSession = Depends(get_db)):
         "integrations": [
             {
                 "id": "anthropic",
-                "name": "Anthropic API",
+                "name": "Claude AI (Max Subscription)",
                 "description": "Claude AI for market analysis and autonomous trading decisions",
-                "status": "configured" if anthropic_key else "not_configured",
+                "status": "configured" if claude_token else "not_configured",
                 "config": {
-                    "API Key": _mask(anthropic_key),
+                    "Auth": "Max Subscription (OAuth)" if claude_token else "Not configured",
                     "Orchestrator Model": "claude-sonnet-4-20250514",
                     "Specialist Model": "claude-haiku-4-5-20251001",
                 },

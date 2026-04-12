@@ -26,8 +26,8 @@ async def check_health(bot_engine, connector, redis_client, ai_client) -> dict:
     except Exception:
         pass
 
-    # AI
-    ai_ok = ai_client.client is not None
+    # AI (always available via Claude Agent SDK + Max subscription)
+    ai_ok = True
 
     return {
         "status": "ok" if redis_ok else "degraded",

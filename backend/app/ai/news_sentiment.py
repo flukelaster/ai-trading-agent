@@ -70,7 +70,7 @@ class NewsSentimentAnalyzer:
             if sections:
                 user_prompt += "\n\n" + "\n\n".join(sections)
 
-        result = self.ai.complete_json(system_prompt, user_prompt)
+        result = await self.ai.complete_json_async(system_prompt, user_prompt)
 
         if result is None:
             logger.warning("AI sentiment analysis failed, returning neutral")

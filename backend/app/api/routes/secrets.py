@@ -281,36 +281,25 @@ async def _get_secret_or_404(db: AsyncSession, key: str) -> Secret:
 
 
 async def _test_anthropic(token: str) -> dict:
-    """Test Claude token — tries SDK (Max subscription) first, then API key."""
-    # Try Claude Code SDK (Max subscription — no API key needed)
+    """Test Claude AI via Agent SDK (Max subscription)."""
     try:
-        from claude_code_sdk import query as sdk_query, ClaudeCodeOptions, AssistantMessage, TextBlock
+        from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage
+        from claude_agent_sdk.types import TextBlock
         text = ""
-        async for msg in sdk_query(
+        async for msg in query(
             prompt="Say OK",
-            options=ClaudeCodeOptions(max_turns=1, model="claude-haiku-4-5-20251001"),
+            options=ClaudeAgentOptions(max_turns=1, model="claude-haiku-4-5-20251001"),
         ):
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
                     if isinstance(block, TextBlock):
                         text = block.text
         if text:
-            return {"ok": True, "message": "Claude (Max subscription) connected via SDK"}
+            return {"ok": True, "message": "Claude (Max subscription) connected via Agent SDK"}
     except Exception as e:
         if "rate_limit" in str(e).lower():
             return {"ok": True, "message": "Claude (Max subscription) connected (rate limited)"}
-        # SDK not available or failed — try API key
-
-    # Fallback: try as API key (x-api-key header)
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(
-            "https://api.anthropic.com/v1/models",
-            headers={"x-api-key": token, "anthropic-version": "2023-06-01"},
-        )
-        if resp.status_code == 200:
-            return {"ok": True, "message": "Anthropic API key valid"}
-
-    return {"ok": False, "message": "Cannot test: Claude Code SDK requires 'claude' CLI on this server. Agent runs locally, not on Railway."}
+        return {"ok": False, "message": f"Agent SDK error: {e}"}
 
 
 async def _test_telegram(token: str) -> dict:
