@@ -281,8 +281,20 @@ async def _get_secret_or_404(db: AsyncSession, key: str) -> Secret:
 
 
 async def _test_anthropic(token: str) -> dict:
-    """Test Anthropic API token by listing models."""
+    """Test Anthropic API/OAuth token by listing models."""
     async with httpx.AsyncClient(timeout=10) as client:
+        # Try OAuth token format first (Authorization: Bearer)
+        resp = await client.get(
+            "https://api.anthropic.com/v1/models",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        if resp.status_code == 200:
+            return {"ok": True, "message": "Claude OAuth token valid"}
+
+        # Fallback: try API key format (x-api-key)
         resp = await client.get(
             "https://api.anthropic.com/v1/models",
             headers={
@@ -292,6 +304,7 @@ async def _test_anthropic(token: str) -> dict:
         )
         if resp.status_code == 200:
             return {"ok": True, "message": "Anthropic API key valid"}
+
         return {"ok": False, "message": f"Anthropic API error: {resp.status_code}"}
 
 
