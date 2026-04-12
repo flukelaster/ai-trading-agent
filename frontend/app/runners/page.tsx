@@ -16,7 +16,6 @@ import {
   listJobs,
   cancelJob,
   retryJob,
-  getWsToken,
   getRolloutMode,
   setRolloutMode,
   getDeployReadiness,
@@ -292,8 +291,7 @@ export default function RunnersPage() {
 
     // Open WebSocket for live logs
     try {
-      const tokenRes = await getWsToken();
-      const token = tokenRes.data.token;
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
       const wsUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
         .replace(/^http/, "ws");
       const ws = new WebSocket(`${wsUrl}/ws/runners/${runnerId}/logs?token=${token}`);
