@@ -42,7 +42,6 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(Non
                     "data": json.loads(message["data"]) if isinstance(message["data"], (str, bytes)) else message["data"],
                 }
                 await websocket.send_json(data)
-            await asyncio.sleep(0.1)
 
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
