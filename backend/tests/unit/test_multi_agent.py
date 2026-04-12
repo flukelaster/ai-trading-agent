@@ -357,8 +357,8 @@ class TestAgentEntrypointMultiMode:
             patch.dict(os.environ, {"CLAUDE_OAUTH_TOKEN": "test", "AGENT_MODE": "multi"}),
             patch("app.runner.agent_entrypoint._MULTI_AGENT_AVAILABLE", True),
             patch("app.runner.agent_entrypoint._AGENT_AVAILABLE", True),
-            patch("app.runner.agent_entrypoint.run_multi_agent", AsyncMock(return_value=mock_result)),
-            patch("app.runner.agent_entrypoint.init_broker"),
+            patch("app.runner.agent_entrypoint.run_multi_agent", create=True, new=AsyncMock(return_value=mock_result)),
+            patch("app.runner.agent_entrypoint.init_broker", create=True),
         ):
             result = await execute_job(1, "candle_analysis", {"symbol": "GOLD"}, 1)
             assert result["decision"] == "HOLD"
@@ -373,10 +373,9 @@ class TestAgentEntrypointMultiMode:
         with (
             patch.dict(os.environ, {"CLAUDE_OAUTH_TOKEN": "test"}, clear=False),
             patch("app.runner.agent_entrypoint._AGENT_AVAILABLE", True),
-            patch("app.runner.agent_entrypoint.run_agent", AsyncMock(return_value=mock_result)),
-            patch("app.runner.agent_entrypoint.init_broker"),
+            patch("app.runner.agent_entrypoint.run_agent", create=True, new=AsyncMock(return_value=mock_result)),
+            patch("app.runner.agent_entrypoint.init_broker", create=True),
         ):
-            # Ensure AGENT_MODE is not "multi"
             os.environ.pop("AGENT_MODE", None)
             result = await execute_job(1, "candle_analysis", {"symbol": "GOLD"}, 1)
             assert result["decision"] == "BUY GOLD"
