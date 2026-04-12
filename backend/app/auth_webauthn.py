@@ -269,7 +269,7 @@ async def login_verify(req: LoginVerifyRequest, request: Request, response: Resp
         value=token,
         httponly=True,
         secure=True,
-        samesite="none",  # Required: frontend and backend are on different subdomains
+        samesite="lax",
         max_age=settings.jwt_expire_hours * 3600,
         path="/",
     )
@@ -296,7 +296,7 @@ async def logout(response: Response, session: str | None = Cookie(None),
             )
             await db.commit()
 
-    response.delete_cookie("session", path="/", samesite="none", secure=True)
+    response.delete_cookie("session", path="/")
     return {"status": "logged_out"}
 
 

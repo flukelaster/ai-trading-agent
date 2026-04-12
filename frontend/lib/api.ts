@@ -1,9 +1,11 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  // Use relative URL so requests go through Next.js rewrites (same-origin)
+  // This avoids cross-site cookie issues with Railway subdomains
+  baseURL: "",
   timeout: 10000,
-  withCredentials: true, // Send httpOnly cookies automatically
+  withCredentials: true,
 });
 
 // Auth interceptor: redirect to login on 401

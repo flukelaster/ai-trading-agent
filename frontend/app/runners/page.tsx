@@ -294,9 +294,8 @@ export default function RunnersPage() {
     try {
       const tokenRes = await getWsToken();
       const token = tokenRes.data.token;
-      const wsUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
-        .replace(/^http/, "ws");
-      const ws = new WebSocket(`${wsUrl}/ws/runners/${runnerId}/logs?token=${token}`);
+      const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${wsProto}//${window.location.host}/ws/runners/${runnerId}/logs?token=${token}`);
 
       ws.onmessage = (event) => {
         try {
