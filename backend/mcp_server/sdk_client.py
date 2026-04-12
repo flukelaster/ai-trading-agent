@@ -161,8 +161,14 @@ async def sdk_agent_loop(
 
     except Exception as e:
         logger.error(f"SDK agent error: {e}")
+        # Log all available error details
         if stderr_lines:
             logger.error(f"SDK stderr: {''.join(stderr_lines[-10:])}")
+        if hasattr(e, "error_output"):
+            logger.error(f"SDK error_output: {e.error_output}")
+        if hasattr(e, "__cause__") and e.__cause__:
+            logger.error(f"SDK cause: {e.__cause__}")
+        logger.error(f"SDK error type: {type(e).__name__}, attrs: {vars(e) if hasattr(e, '__dict__') else 'N/A'}")
         return {
             "response": f"Agent error: {e}",
             "tool_calls": tool_calls,
