@@ -248,7 +248,7 @@ async def login_verify(req: LoginVerifyRequest, request: Request, response: Resp
 
     # Update sign count
     stored_cred.sign_count = verification.new_sign_count
-    stored_cred.last_used_at = datetime.now(timezone.utc)
+    stored_cred.last_used_at = datetime.utcnow()
 
     # Create session
     jti = secrets.token_urlsafe(32)
@@ -257,7 +257,7 @@ async def login_verify(req: LoginVerifyRequest, request: Request, response: Resp
         jwt_jti=jti,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.jwt_expire_hours),
+        expires_at=datetime.utcnow() + timedelta(hours=settings.jwt_expire_hours),
     )
     db.add(session)
     await db.commit()
@@ -337,7 +337,7 @@ async def list_sessions(session: str | None = Cookie(None), db: AsyncSession = D
     """List all active sessions."""
     result = await db.execute(
         select(AuthSession)
-        .where(AuthSession.revoked_at.is_(None), AuthSession.expires_at > datetime.now(timezone.utc))
+        .where(AuthSession.revoked_at.is_(None), AuthSession.expires_at > datetime.utcnow())
         .order_by(AuthSession.created_at.desc())
     )
     sessions = result.scalars().all()
