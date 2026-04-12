@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Bell,
   KeyRound,
+  Server,
   LogOut,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -34,6 +35,7 @@ const navItems = [
   { href: "/macro", label: "Macro Data", icon: Globe },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/secrets", label: "Secrets", icon: KeyRound },
+  { href: "/runners", label: "Runners", icon: Server },
 ];
 
 function ThemeToggle() {

@@ -153,6 +153,9 @@ export const getSymbols = () => api.get("/api/market-data/symbols");
 // Health
 export const getHealth = () => api.get("/health");
 
+// Auth (WS token)
+export const getWsToken = () => api.get("/api/auth/ws-token");
+
 // Secrets Vault
 export const getVaultStatus = () => api.get("/api/secrets/vault-status");
 export const getSecrets = () => api.get("/api/secrets");
@@ -163,5 +166,45 @@ export const upsertSecret = (key: string, data: {
 export const deleteSecret = (key: string) => api.delete(`/api/secrets/${key}`);
 export const testSecret = (key: string) => api.post(`/api/secrets/${key}/test`, null, { timeout: 15000 });
 export const getSecretHistory = (key: string) => api.get(`/api/secrets/${key}/history`);
+
+// Rollout
+export const getRolloutMode = () => api.get("/api/rollout/mode");
+export const setRolloutMode = (mode: string) => api.put("/api/rollout/mode", { mode });
+export const getDeployReadiness = () => api.get("/api/rollout/readiness");
+
+// Runners
+export const listRunners = () => api.get("/api/runners");
+export const getRunner = (id: number) => api.get(`/api/runners/${id}`);
+export const createRunner = (data: {
+  name: string; image?: string; max_concurrent_jobs?: number; tags?: string[]; resource_limits?: Record<string, string>;
+}) => api.post("/api/runners", data);
+export const updateRunner = (id: number, data: {
+  name?: string; image?: string; max_concurrent_jobs?: number; tags?: string[]; resource_limits?: Record<string, string>;
+}) => api.put(`/api/runners/${id}`, data);
+export const deleteRunner = (id: number) => api.delete(`/api/runners/${id}`);
+export const startRunner = (id: number) => api.post(`/api/runners/${id}/start`);
+export const stopRunner = (id: number) => api.post(`/api/runners/${id}/stop`);
+export const restartRunner = (id: number) => api.post(`/api/runners/${id}/restart`);
+export const killRunner = (id: number) => api.post(`/api/runners/${id}/kill`);
+export const getRunnerLogs = (id: number, params?: {
+  level?: string; since?: string; limit?: number; offset?: number;
+}) => api.get(`/api/runners/${id}/logs`, { params });
+export const getRunnerMetrics = (id: number, params?: {
+  since?: string; limit?: number;
+}) => api.get(`/api/runners/${id}/metrics`, { params });
+export const getRunnerJobs = (id: number, params?: {
+  status?: string; limit?: number;
+}) => api.get(`/api/runners/${id}/jobs`, { params });
+
+// Jobs
+export const createJob = (data: {
+  job_type: string; input?: Record<string, unknown>; runner_id?: number;
+}) => api.post("/api/jobs", data);
+export const listJobs = (params?: {
+  status?: string; runner_id?: number; job_type?: string; limit?: number; offset?: number;
+}) => api.get("/api/jobs", { params });
+export const getJob = (id: number) => api.get(`/api/jobs/${id}`);
+export const cancelJob = (id: number) => api.post(`/api/jobs/${id}/cancel`);
+export const retryJob = (id: number) => api.post(`/api/jobs/${id}/retry`);
 
 export default api;

@@ -262,3 +262,85 @@ class Secret(Base):
     last_rotated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+# ─── Docker Sandbox Runner ───────────────────────────────────────────────────
+
+class RunnerStatus(str, enum.Enum):
+    STOPPED = "stopped"
+    STARTING = "starting"
+    ONLINE = "online"
+    DEGRADED = "degraded"
+    ERROR = "error"
+
+
+class JobStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Runner(Base):
+    """Docker sandbox runner — executes Claude AI Agent tasks."""
+    __tablename__ = "runners"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    container_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    image: Mapped[str] = mapped_column(String(200))
+    status: Mapped[RunnerStatus] = mapped_column(
+        Enum(RunnerStatus), default=RunnerStatus.STOPPED
+    )
+    max_concurrent_jobs: Mapped[int] = mapped_column(Integer, default=3)
+    tags: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    resource_limits: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    last_heartbeat_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class RunnerJob(Base):
+    """Job executed by a runner — tracks input, output, and agent reasoning."""
+    __tablename__ = "runner_jobs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    runner_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    job_type: Mapped[str] = mapped_column(String(50))
+    status: Mapped[JobStatus] = mapped_column(
+        Enum(JobStatus), default=JobStatus.PENDING
+    )
+    input: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    output: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RunnerLog(Base):
+    """Log entry from a runner — persisted for history, streamed via WebSocket."""
+    __tablename__ = "runner_logs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    runner_id: Mapped[int] = mapped_column(BigInteger)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    level: Mapped[str] = mapped_column(String(10))
+    message: Mapped[str] = mapped_column(Text)
+    log_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
+
+
+class RunnerMetric(Base):
+    """Resource usage snapshot from a runner."""
+    __tablename__ = "runner_metrics"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    runner_id: Mapped[int] = mapped_column(BigInteger)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    cpu_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    memory_mb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    memory_limit_mb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    network_rx_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    network_tx_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)

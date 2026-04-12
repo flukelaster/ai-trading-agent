@@ -1,0 +1,52 @@
+FROM python:3.11-slim
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash agent
+WORKDIR /app
+
+# Install Python dependencies
+COPY backend/requirements.txt /app/requirements-backend.txt
+RUN pip install --no-cache-dir \
+    anthropic>=0.94.0 \
+    mcp>=1.0.0 \
+    httpx \
+    pandas \
+    numpy \
+    redis \
+    loguru \
+    pydantic-settings \
+    sqlalchemy[asyncio] \
+    && pip install --no-cache-dir -r /app/requirements-backend.txt || true
+
+# Copy application code
+COPY mcp_server/ /app/mcp_server/
+COPY backend/app/strategy/ /app/backend/app/strategy/
+COPY backend/app/risk/ /app/backend/app/risk/
+COPY backend/app/mt5/ /app/backend/app/mt5/
+COPY backend/app/ai/ /app/backend/app/ai/
+COPY backend/app/config.py /app/backend/app/config.py
+COPY backend/app/constants.py /app/backend/app/constants.py
+COPY backend/app/__init__.py /app/backend/app/__init__.py
+COPY backend/app/runner/agent_entrypoint.py /app/backend/app/runner/agent_entrypoint.py
+COPY backend/app/runner/__init__.py /app/backend/app/runner/__init__.py
+
+# Switch to non-root
+USER agent
+
+# Health check endpoint (served by agent_entrypoint.py)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8090/health || exit 1
+
+# Secrets injected at runtime via Runner Manager (not baked into image)
+# CLAUDE_OAUTH_TOKEN → injected from Vault
+# MT5_BRIDGE_URL → injected from Vault
+# REDIS_URL → injected from Vault
+
+EXPOSE 8090
+ENV PYTHONPATH=/app/backend:/app
+
+CMD ["python", "-m", "app.runner.agent_entrypoint"]

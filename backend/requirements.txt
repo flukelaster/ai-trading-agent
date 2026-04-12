@@ -8,7 +8,7 @@ alembic==1.14.1
 redis==5.2.1
 python-dotenv==1.0.1
 websockets==14.1
-anthropic==0.42.0
+anthropic>=0.94.0
 httpx==0.28.1
 feedparser==6.0.11
 apscheduler==3.10.4
@@ -21,3 +21,4 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 webauthn==2.7.1
+psutil==6.1.1

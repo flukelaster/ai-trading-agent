@@ -160,6 +160,21 @@ class Settings(BaseSettings):
     ml_rollback_accuracy_floor: float = 0.30  # rollback if accuracy drops below this
     ml_rollback_min_predictions: int = 50     # minimum predictions before rollback check
 
+    # Runner
+    runner_backend: str = "process"  # "process" or "docker"
+    docker_host: str = ""  # e.g. "tcp://vps:2376" for remote Docker
+    docker_tls_ca: str = ""
+    docker_tls_cert: str = ""
+    docker_tls_key: str = ""
+    runner_default_image: str = "trading-agent:latest"
+    runner_heartbeat_interval: int = 30  # seconds
+    runner_heartbeat_max_misses: int = 3
+    runner_max_concurrent_jobs: int = 3
+
+    # Agent
+    agent_mode: str = "single"  # "single" (Phase C) or "multi" (Phase D: orchestrator + specialists)
+    rollout_mode: str = "shadow"  # "shadow" | "paper" | "micro" | "live" (Phase F gradual rollout)
+
     # Logging
     log_format: str = "text"  # "json" for production, "text" for development
     log_dir: str = "logs"

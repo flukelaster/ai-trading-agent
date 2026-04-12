@@ -1,0 +1,250 @@
+"""
+Orchestrator agent — coordinates specialist agents and makes final trading decisions.
+
+Workflow:
+1. Receive job (candle close, manual analysis, etc.)
+2. Run specialist agents in parallel (technical, fundamental, risk)
+3. Synthesize their reports into a final decision
+4. Execute trades if warranted (via broker tools + guardrails)
+5. Log all decisions with reasoning
+
+Model: Sonnet (best reasoning for synthesis and final decisions).
+"""
+
+import asyncio
+import json
+import time
+from typing import Any
+
+from loguru import logger
+
+from mcp_server.agents import technical_analyst, fundamental_analyst, risk_analyst, reflector
+from mcp_server.agents.base import (
+    run_agent_loop,
+    filter_tools,
+    MODEL_ORCHESTRATOR,
+)
+
+SYSTEM_PROMPT = """You are the Orchestrator of a multi-agent trading system for GOLD, OILCash, BTCUSD, and USDJPY.
+
+## Your Role
+You receive analysis reports from three specialist agents and make the final trading decision. You are the ONLY agent with execution authority.
+
+## Specialist Reports
+You will receive three reports in the user message:
+1. **Technical Analyst**: Price action, indicators, trend, momentum
+2. **Fundamental Analyst**: Sentiment, performance history, session context
+3. **Risk Analyst**: Portfolio exposure, risk limits, position sizing
+
+## Your Decision Framework
+1. Read all three reports carefully
+2. Look for AGREEMENT between technical + fundamental signals (confluence)
+3. Only trade when Risk Analyst says APPROVED or CAUTION (never on REJECTED)
+4. If signals conflict, default to HOLD
+5. If confidence is low (<0.5 from any analyst), prefer HOLD
+6. If trading: use the Risk Analyst's recommended lot size and SL/TP
+
+## Execution
+If you decide to trade:
+1. Use `place_order` with the calculated parameters
+2. The order passes through non-bypassable guardrails automatically
+3. Use `log_decision` to record the full reasoning (MANDATORY)
+
+If you decide to HOLD:
+1. Use `log_decision` to record why you held (MANDATORY)
+
+## Rules
+- NEVER trade against the Risk Analyst's REJECTED verdict
+- NEVER skip logging — every decision must be journaled
+- ALWAYS include all three analyst reports in your reasoning
+- Prefer HOLD when uncertain — missing a trade is better than a bad trade
+- Maximum 3 trades per analysis cycle"""
+
+# Orchestrator has access to execution tools + journal
+ORCHESTRATOR_TOOL_NAMES = [
+    "place_order",
+    "modify_position",
+    "close_position",
+    "log_decision",
+    "log_reasoning",
+]
+
+
+async def run_multi_agent(
+    job_type: str,
+    job_input: dict | None,
+    oauth_token: str | None = None,
+) -> dict:
+    """Run the full multi-agent pipeline for a job.
+
+    1. Run specialists in parallel
+    2. Feed their reports to the orchestrator
+    3. Orchestrator makes final decision
+
+    Args:
+        job_type: Job type (candle_analysis, manual_analysis, etc.)
+        job_input: Job parameters
+        oauth_token: OAuth token
+
+    Returns:
+        Combined result with all agent reports and final decision.
+    """
+    start_time = time.time()
+    symbol = (job_input or {}).get("symbol", "GOLD")
+    timeframe = (job_input or {}).get("timeframe", "M15")
+
+    logger.info(f"[Orchestrator] Starting multi-agent analysis: {symbol} {timeframe}")
+
+    results: dict[str, dict] = {}
+    specialist_errors: dict[str, str] = {}
+
+    # ─── Phase 0: Reflection (Phase E) ──────────────────────────────────
+    # Reflector reviews past trades and provides context before analysis
+
+    reflection_report = ""
+    if reflector:
+        try:
+            logger.info("[Orchestrator] Phase 0: Running reflector")
+            reflection_result = await reflector.reflect(symbol, timeframe)
+            reflection_report = reflection_result.get("response", "")
+            results["reflector"] = reflection_result
+            logger.info(f"[Orchestrator] Reflection completed ({reflection_result.get('turns', 0)} turns)")
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Reflector failed (non-critical): {e}")
+            specialist_errors["reflector"] = str(e)
+            results["reflector"] = {"response": f"ERROR: {e}", "tool_calls": [], "turns": 0}
+
+    # ─── Phase 1: Run specialists in parallel ────────────────────────────
+
+    specialist_tasks = {
+        "technical": technical_analyst.analyze(symbol, timeframe),
+        "fundamental": fundamental_analyst.analyze(symbol, timeframe),
+        "risk": risk_analyst.analyze(symbol, timeframe=timeframe),
+    }
+
+    # Run all specialists concurrently
+    tasks = {name: asyncio.create_task(coro) for name, coro in specialist_tasks.items()}
+
+    for name, task in tasks.items():
+        try:
+            results[name] = await task
+        except Exception as e:
+            logger.error(f"[Orchestrator] {name} analyst failed: {e}")
+            specialist_errors[name] = str(e)
+            results[name] = {"response": f"ERROR: {e}", "tool_calls": [], "turns": 0}
+
+    specialist_duration = round(time.time() - start_time, 1)
+    logger.info(f"[Orchestrator] Specialists completed in {specialist_duration}s")
+
+    # ─── Phase 2: Synthesize with Orchestrator ───────────────────────────
+
+    synthesis_message = _build_synthesis_message(
+        job_type=job_type,
+        job_input=job_input,
+        symbol=symbol,
+        timeframe=timeframe,
+        technical_report=results["technical"]["response"],
+        fundamental_report=results["fundamental"]["response"],
+        risk_report=results["risk"]["response"],
+        reflection_report=reflection_report,
+    )
+
+    orchestrator_tools = filter_tools(ORCHESTRATOR_TOOL_NAMES)
+
+    orchestrator_result = await run_agent_loop(
+        system_prompt=SYSTEM_PROMPT,
+        user_message=synthesis_message,
+        tools=orchestrator_tools,
+        model=MODEL_ORCHESTRATOR,
+        max_turns=10,
+        timeout=120,
+        oauth_token=oauth_token,
+    )
+
+    total_duration = round(time.time() - start_time, 1)
+
+    # ─── Combine Results ─────────────────────────────────────────────────
+
+    all_tool_calls = []
+    for name, r in results.items():
+        for tc in r.get("tool_calls", []):
+            all_tool_calls.append({**tc, "agent": name})
+    for tc in orchestrator_result.get("tool_calls", []):
+        all_tool_calls.append({**tc, "agent": "orchestrator"})
+
+    # Build specialists dict
+    specialists_output: dict = {}
+    for agent_name in ("technical", "fundamental", "risk", "reflector"):
+        if agent_name in results:
+            specialists_output[agent_name] = {
+                "report": results[agent_name]["response"],
+                "turns": results[agent_name].get("turns", 0),
+                "tool_calls": len(results[agent_name].get("tool_calls", [])),
+            }
+
+    return {
+        "decision": orchestrator_result.get("response", "No decision"),
+        "specialists": specialists_output,
+        "orchestrator_turns": orchestrator_result.get("turns", 0),
+        "total_tool_calls": len(all_tool_calls),
+        "tool_calls": all_tool_calls,
+        "specialist_duration_s": specialist_duration,
+        "total_duration_s": total_duration,
+        "errors": specialist_errors if specialist_errors else None,
+    }
+
+
+def _build_synthesis_message(
+    job_type: str,
+    job_input: dict | None,
+    symbol: str,
+    timeframe: str,
+    technical_report: str,
+    fundamental_report: str,
+    risk_report: str,
+    reflection_report: str = "",
+) -> str:
+    """Build the user message for the orchestrator with all specialist reports."""
+    job_context = ""
+    if job_type == "candle_analysis":
+        job_context = f"A new {timeframe} candle has closed for {symbol}."
+    elif job_type == "manual_analysis":
+        job_context = f"The owner has requested a manual analysis of {symbol}."
+    elif job_type == "weekly_review":
+        job_context = "Perform a weekly trading review."
+    else:
+        job_context = f"Job: {job_type}"
+
+    reflection_section = ""
+    if reflection_report:
+        reflection_section = f"""
+---
+
+## Reflection & Session Context (from past trade review)
+{reflection_report}
+"""
+
+    return f"""{job_context}
+{reflection_section}
+Your specialist analysts have completed their assessments:
+
+---
+
+## Technical Analysis Report
+{technical_report}
+
+---
+
+## Fundamental Analysis Report
+{fundamental_report}
+
+---
+
+## Risk Assessment Report
+{risk_report}
+
+---
+
+Based on these three reports, make your trading decision for {symbol}.
+Remember: you MUST log your decision with `log_decision`, whether you trade or hold.
+Input context: {json.dumps(job_input, default=str) if job_input else '{}'}"""

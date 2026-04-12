@@ -5,7 +5,7 @@ When auth_password_hash is empty, auth is disabled (backward compat).
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 from pydantic import BaseModel
@@ -133,6 +133,35 @@ async def login(req: LoginRequest):
     token = create_access_token(req.username)
     logger.info(f"User '{req.username}' logged in")
     return TokenResponse(access_token=token)
+
+
+@router.get("/ws-token")
+async def get_ws_token(request: Request):
+    """Issue a short-lived token for WebSocket connections.
+
+    Reads the JWT from the httpOnly 'session' cookie (set by WebAuthn login)
+    and returns a short-lived token the frontend can pass as a query param.
+    """
+    if not _auth_enabled():
+        return {"token": "__noauth__"}
+
+    jwt_mod = _get_jwt()
+    session_token = request.cookies.get("session")
+    if not session_token:
+        raise HTTPException(status_code=401, detail="No session cookie")
+
+    username = verify_token(session_token)
+    if not username:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    # Short-lived token (30 seconds) for WS handshake only
+    expire = datetime.now(timezone.utc) + timedelta(seconds=30)
+    ws_token = jwt_mod.encode(
+        {"sub": username, "exp": expire, "purpose": "ws"},
+        settings.secret_key,
+        algorithm="HS256",
+    )
+    return {"token": ws_token}
 
 
 @router.get("/me")

@@ -21,15 +21,19 @@ from app.api.routes import (
     bot,
     data,
     history,
+    jobs,
     macro,
     market_data,
     ml,
     positions,
+    rollout,
+    runners,
     secrets,
     strategy,
 )
 from app.api.routes import metrics as metrics_routes
 from app.api.websocket import router as ws_router
+from app.api.ws_runners import router as ws_runners_router
 from app.auth import router as auth_router
 from app.auth_webauthn import router as webauthn_router
 from app.bot.manager import BotManager
@@ -132,6 +136,41 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("FRED macro data disabled (no FRED_API_KEY)")
 
+    # Initialize Runner Manager
+    from app.runner.backend import ProcessRunnerBackend
+    from app.runner.heartbeat import RunnerHeartbeatMonitor
+    from app.runner.job_queue import JobQueue
+    from app.runner.manager import RunnerManager
+    from app.vault import vault
+
+    runner_backend = ProcessRunnerBackend()
+    runner_db_session = async_session()
+    runner_manager = RunnerManager(runner_db_session, redis_client, runner_backend, vault)
+    job_queue = JobQueue(runner_db_session, redis_client)
+    heartbeat_monitor = RunnerHeartbeatMonitor(
+        runner_manager,
+        interval_seconds=settings.runner_heartbeat_interval,
+        max_misses=settings.runner_heartbeat_max_misses,
+    )
+
+    # Rebuild job queue from DB on startup
+    await job_queue.rebuild_from_db()
+
+    # Add heartbeat check to scheduler
+    scheduler.scheduler.add_job(
+        heartbeat_monitor.check_all,
+        "interval",
+        seconds=settings.runner_heartbeat_interval,
+        id="runner_heartbeat",
+        replace_existing=True,
+    )
+
+    app.state.runner_manager = runner_manager
+    app.state.job_queue = job_queue
+    app.state.heartbeat_monitor = heartbeat_monitor
+
+    logger.info("Runner manager initialized")
+
     symbols = manager.get_symbols()
     logger.info(f"Trading Bot initialized — symbols: {symbols}")
 
@@ -139,6 +178,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down...")
+    await runner_manager.shutdown()
+    await runner_db_session.close()
     scheduler.stop()
     await manager.stop()
     await connector.close()
@@ -194,7 +235,11 @@ app.include_router(macro.router)
 app.include_router(analytics.router)
 app.include_router(metrics_routes.router)
 app.include_router(secrets.router)
+app.include_router(runners.router)
+app.include_router(jobs.router)
+app.include_router(rollout.router)
 app.include_router(ws_router)
+app.include_router(ws_runners_router)
 
 
 @app.get("/health")
