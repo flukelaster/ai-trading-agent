@@ -200,8 +200,7 @@ class BotEngine:
         await self._log_event(BotEventType.STARTED, "Bot started")
         logger.info(f"Bot started: strategy={self.strategy.name}, symbol={self.symbol}")
         if self.notifier:
-            mode = "AI Autonomous" if self.strategy.name == "ai_autonomous" else self.strategy.name.replace("_", " ").title()
-            await self._notify(self.notifier.send_start_alert(self.symbol, self.timeframe, mode))
+            await self._notify(self.notifier.send_start_alert(self.symbol, self.timeframe, "AI Autonomous"))
 
     async def stop(self):
         self.state = BotState.STOPPED
