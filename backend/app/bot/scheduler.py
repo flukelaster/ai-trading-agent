@@ -292,7 +292,7 @@ class BotScheduler:
 
                 # Store last AI decision for dashboard display
                 engine._last_ai_decision = {
-                    "decision": decision[:500],
+                    "decision": decision[:3000],
                     "strategy": result.get("strategy_used", "ai_autonomous"),
                     "turns": result.get("turns", 0),
                     "tool_calls": len(result.get("tool_calls", [])),
@@ -303,7 +303,7 @@ class BotScheduler:
                 await engine._push_event("bot_event", {
                     "type": "AI_DECISION",
                     "symbol": sym,
-                    "decision": decision[:300],
+                    "decision": decision[:3000],
                     "strategy": result.get("strategy_used", "ai_autonomous"),
                     "turns": result.get("turns", 0),
                 })

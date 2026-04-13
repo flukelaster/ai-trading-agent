@@ -40,42 +40,14 @@ import { useBotStore } from "@/store/botStore";
 import { SymbolTabs } from "@/components/ui/symbol-tabs";
 import { TimeframeSelector, TIMEFRAMES } from "@/components/ui/timeframe-selector";
 
-const PREVIEW_LEN = 200;
-
-function AiDecisionCard({ decision }: { decision: { decision: string; strategy: string; turns: number; tool_calls: number; duration_s: number } }) {
-  const [expanded, setExpanded] = useState(false);
-  const text = decision.decision || "";
-  const isLong = text.length > PREVIEW_LEN;
-
-  return (
-    <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 space-y-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-primary">AI Decision</span>
-        <span className="text-xs text-muted-foreground">{decision.duration_s}s</span>
-      </div>
-      <div
-        className={`text-xs text-foreground leading-relaxed max-w-none prose-compact [&_h2]:text-[11px] [&_h2]:font-bold [&_h2]:mt-1.5 [&_h2]:mb-0.5 [&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:mt-1 [&_h3]:mb-0.5 [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:pl-3 [&_ul]:list-disc [&_li]:my-0 [&_strong]:text-primary ${!expanded && isLong ? "max-h-24 overflow-hidden relative" : ""}`}
-      >
-        <Markdown>{expanded || !isLong ? text : text.slice(0, PREVIEW_LEN) + "..."}</Markdown>
-        {!expanded && isLong && (
-          <div className="absolute bottom-0 left-0 right-0 h-8 bg-linear-to-t from-primary/5 to-transparent" />
-        )}
-      </div>
-      {isLong && (
-        <button type="button" onClick={() => setExpanded(!expanded)} className="text-[11px] text-primary hover:underline font-medium">
-          {expanded ? "Show less" : "Show more"}
-        </button>
-      )}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="bg-primary/10 px-1.5 py-0.5 rounded text-primary font-medium">
-          {decision.strategy?.replace(/_/g, " ")}
-        </span>
-        <span>{decision.tool_calls} tools</span>
-        <span>{decision.turns} turns</span>
-      </div>
-    </div>
-  );
-}
+const STRATEGY_TH: Record<string, string> = {
+  trend_following: "ตามเทรนด์",
+  momentum: "โมเมนตัม",
+  mean_reversion: "กลับตัว",
+  breakout: "ทะลุแนวรับ/ต้าน",
+  ai_autonomous: "AI อัตโนมัติ",
+  scalping: "สแคลป์ปิง",
+};
 
 export default function DashboardPage() {
   const {
@@ -418,11 +390,6 @@ export default function DashboardPage() {
               </p>
             )}
 
-            {/* AI Decision Display */}
-            {status?.ai_decision && (
-              <AiDecisionCard decision={status.ai_decision} />
-            )}
-
             <div className="space-y-2 text-xs text-muted-foreground">
               <div className="flex items-center justify-between">
                 <span className="font-medium">Mode</span>
@@ -510,8 +477,35 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* News + Positions + Events — single column for readability */}
+      {/* AI Decision + News + Positions + Events — single column */}
       <div className="space-y-4 xl:space-y-6 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+        {/* AI Decision */}
+        {status?.ai_decision && (
+          <Card>
+            <CardHeader className="p-3 sm:p-6">
+              <CardTitle className="text-sm font-bold flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="size-4 text-primary" />
+                  AI วิเคราะห์ล่าสุด
+                </div>
+                <div className="flex items-center gap-3 text-xs font-normal text-muted-foreground">
+                  <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                    {STRATEGY_TH[status.ai_decision.strategy] || status.ai_decision.strategy?.replace(/_/g, " ")}
+                  </span>
+                  <span>{status.ai_decision.tool_calls} เครื่องมือ</span>
+                  <span>{status.ai_decision.turns} รอบ</span>
+                  <span>{status.ai_decision.duration_s}วิ</span>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+              <div className="text-sm text-foreground leading-relaxed max-w-none [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_p]:my-1 [&_ul]:my-1 [&_ul]:pl-4 [&_ul]:list-disc [&_li]:my-0.5 [&_strong]:text-primary">
+                <Markdown>{status.ai_decision.decision}</Markdown>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* News Feed */}
         <Card>
           <CardHeader className="p-3 sm:p-6">
