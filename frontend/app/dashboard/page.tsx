@@ -314,7 +314,7 @@ export default function DashboardPage() {
             ))
           ) : (
             <div className="flex items-center gap-3">
-              <img src="/coin.svg" alt="Balance" className="size-5" />
+              <img src="/coin.svg" alt="Balance" className="size-7" />
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Balance</p>
                 <p className="text-sm font-bold font-mono"><AnimatedCounter value={account.balance} prefix="$" /></p>
