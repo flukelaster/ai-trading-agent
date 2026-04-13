@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 _challenges: dict[str, bytes] = {}
 
 RP_ID = settings.webauthn_rp_id if hasattr(settings, "webauthn_rp_id") else "localhost"
-RP_NAME = "Gold Trading Bot"
+RP_NAME = "AI Trading Agent"
 ORIGIN = settings.webauthn_origin if hasattr(settings, "webauthn_origin") else "http://localhost:3000"
 
 

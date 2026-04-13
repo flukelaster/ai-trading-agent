@@ -1,5 +1,5 @@
 """
-Shared test fixtures for gold-trading-bot backend.
+Shared test fixtures for ai-trading-agent backend.
 """
 
 import asyncio

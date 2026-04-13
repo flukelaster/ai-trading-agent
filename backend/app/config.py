@@ -92,8 +92,8 @@ class Settings(BaseSettings):
     mt5_bridge_api_key: str = ""
 
     # Database
-    database_url: str = "postgresql+asyncpg://goldbot:goldbot_dev@localhost:5432/goldbot"
-    database_url_sync: str = "postgresql://goldbot:goldbot_dev@localhost:5432/goldbot"
+    database_url: str = "postgresql+asyncpg://user:password@localhost:5432/goldbot"
+    database_url_sync: str = "postgresql://user:password@localhost:5432/goldbot"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

@@ -18,7 +18,7 @@
 ## 5. Deploy MT5 Bridge
 ```powershell
 git clone <your-repo-url>
-cd gold-trading-bot/mt5_bridge
+cd ai-trading-agent/mt5_bridge
 pip install -r requirements.txt
 copy .env.example .env
 # Edit .env with MT5 credentials and BRIDGE_API_KEY
@@ -46,6 +46,6 @@ curl http://YOUR_VPS_IP:8001/health
 ## 9. Auto-start on Boot (Optional)
 Use NSSM to register as Windows service:
 ```powershell
-nssm install MT5Bridge "C:\Python311\python.exe" "C:\gold-trading-bot\mt5_bridge\watchdog.py"
+nssm install MT5Bridge "C:\Python311\python.exe" "C:\ai-trading-agent\mt5_bridge\watchdog.py"
 nssm start MT5Bridge
 ```

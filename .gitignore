@@ -39,6 +39,13 @@ Thumbs.db
 backend/models/
 *.pkl
 
+# Backups
+backups/
+*.sql.gz
+
+# Coverage
+.coverage
+
 # Logs
 *.log
 logs/

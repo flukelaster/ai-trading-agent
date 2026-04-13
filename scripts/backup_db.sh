@@ -1,12 +1,12 @@
 #!/bin/bash
 # Database backup script — daily pg_dump with 7-day rotation
 # Usage: ./scripts/backup_db.sh
-# Schedule via cron: 0 2 * * * /path/to/gold-trading-bot/scripts/backup_db.sh
+# Schedule via cron: 0 2 * * * /path/to/ai-trading-agent/scripts/backup_db.sh
 
 set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
-DB_URL="${DATABASE_URL_SYNC:-postgresql://goldbot:goldbot_dev@localhost:5434/goldbot}"
+DB_URL="${DATABASE_URL_SYNC:?DATABASE_URL_SYNC must be set}"
 RETENTION_DAYS=7
 DATE=$(date +%Y-%m-%d_%H%M%S)
 FILENAME="goldbot_${DATE}.sql.gz"

@@ -1,4 +1,4 @@
-# Gold Trading Bot
+# AI Trading Agent
 
 Multi-symbol autonomous trading platform powered by Claude AI agents.
 Trades GOLD (XAUUSD), OILCash, BTCUSD, USDJPY via MetaTrader 5.

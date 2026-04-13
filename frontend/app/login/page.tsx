@@ -41,7 +41,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm space-y-6 p-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">Gold Trading Bot</h1>
+          <h1 className="text-2xl font-bold">AI Trading Agent</h1>
           <p className="text-sm text-muted-foreground mt-1">Sign in to your dashboard</p>
         </div>
 

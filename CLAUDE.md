@@ -1,4 +1,4 @@
-# Gold Trading Bot — Claude Code Guide
+# AI Trading Agent — Claude Code Guide
 
 ## Project Overview
 

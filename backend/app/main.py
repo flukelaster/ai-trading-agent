@@ -1,5 +1,5 @@
 """
-Gold Trading Bot — FastAPI Main Application (multi-symbol)
+AI Trading Agent — FastAPI Main Application (multi-symbol)
 """
 
 from contextlib import asynccontextmanager

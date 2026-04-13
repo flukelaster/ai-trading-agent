@@ -6,8 +6,8 @@ services:
     container_name: goldbot-postgres
     environment:
       POSTGRES_DB: goldbot
-      POSTGRES_USER: goldbot
-      POSTGRES_PASSWORD: goldbot_dev
+      POSTGRES_USER: ${POSTGRES_USER:-goldbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
       - "5434:5432"
     volumes:

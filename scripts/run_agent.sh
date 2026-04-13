@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BACKEND_DIR="$PROJECT_DIR/backend"
 
-echo "=== Gold Trading Bot — AI Agent Runner ==="
+echo "=== AI Trading Agent — Agent Runner ==="
 echo "Starting agent runner on local Mac..."
 echo ""
 
