@@ -459,9 +459,7 @@ export default function DashboardPage() {
               <CardTitle className="text-sm font-bold flex items-center justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
                   <span>{activeSymbolInfo?.display_name || activeSymbol}</span>
-                  {sentiment && (
-                    <SentimentBadge label={sentiment.label} score={sentiment.score} size="sm" />
-                  )}
+                  <SentimentBadge label={sentiment?.label || "neutral"} score={sentiment?.score || 0} size="sm" />
                 </div>
                 <TimeframeSelector value={chartTimeframe} onChange={setChartTimeframe} />
               </CardTitle>
