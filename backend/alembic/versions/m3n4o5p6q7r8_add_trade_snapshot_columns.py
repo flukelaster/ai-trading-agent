@@ -17,9 +17,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('trades', sa.Column('trade_reason', sa.String(255), nullable=True))
-    op.add_column('trades', sa.Column('pre_trade_snapshot', sa.JSON(), nullable=True))
-    op.add_column('trades', sa.Column('post_trade_analysis', sa.JSON(), nullable=True))
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing = [c['name'] for c in inspector.get_columns('trades')]
+
+    if 'trade_reason' not in existing:
+        op.add_column('trades', sa.Column('trade_reason', sa.String(255), nullable=True))
+    if 'pre_trade_snapshot' not in existing:
+        op.add_column('trades', sa.Column('pre_trade_snapshot', sa.JSON(), nullable=True))
+    if 'post_trade_analysis' not in existing:
+        op.add_column('trades', sa.Column('post_trade_analysis', sa.JSON(), nullable=True))
 
 
 def downgrade() -> None:
