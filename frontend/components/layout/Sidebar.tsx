@@ -54,6 +54,7 @@ const navGroups: NavGroup[] = [
   {
     label: "System",
     items: [
+      { href: "/agent-prompts", label: "Agent Prompts", icon: Settings2 },
       { href: "/integration", label: "Integration", icon: Plug },
       { href: "/notifications", label: "Notifications", icon: Bell },
     ],

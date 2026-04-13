@@ -16,6 +16,7 @@ from app.ai.news_sentiment import NewsSentimentAnalyzer
 from app.ai.strategy_optimizer import StrategyOptimizer
 from app.api.routes import (
     activity,
+    agent_prompts,
     ai_insights,
     memory as memory_routes,
     analytics,
@@ -136,6 +137,12 @@ async def lifespan(app: FastAPI):
             logger.info("MCP tools initialized for AI agent")
         except Exception as e:
             logger.error(f"MCP tools init failed: {e} — AI agent trading may not work")
+        try:
+            from mcp_server.agents.prompt_registry import init_prompt_registry
+            init_prompt_registry(redis_client)
+            logger.info("Prompt registry initialized")
+        except Exception as e:
+            logger.warning(f"Prompt registry init failed: {e}")
 
     # Start scheduler
     scheduler = BotScheduler(manager)
@@ -260,6 +267,7 @@ app.include_router(jobs.router)
 app.include_router(rollout.router)
 app.include_router(integration.router)
 app.include_router(activity.router)
+app.include_router(agent_prompts.router)
 app.include_router(memory_routes.router)
 app.include_router(ws_router)
 app.include_router(ws_runners_router)

@@ -34,7 +34,8 @@ async def run_agent(
     model: str = MODEL_ORCHESTRATOR,
 ) -> dict:
     """Run single-agent loop."""
-    system_prompt = _load_system_prompt()
+    from mcp_server.agents.prompt_registry import get_active_prompt
+    system_prompt = await get_active_prompt("single_agent") or _load_system_prompt()
     user_message = _build_user_message(job_type, job_input)
 
     result = await run_agent_loop(

@@ -131,6 +131,13 @@ export const runWalkForward = (params: {
   count?: number;
 }) => api.post("/api/backtest/walk-forward", params, { timeout: 180000 });
 
+// Agent Prompts
+export const getAgentPrompts = () => api.get("/api/agent-prompts");
+export const updateAgentPrompt = (agentId: string, prompt: string) =>
+  api.put(`/api/agent-prompts/${agentId}`, { prompt });
+export const resetAgentPrompt = (agentId: string) =>
+  api.delete(`/api/agent-prompts/${agentId}`);
+
 // Historical Data
 export const collectData = (params: {
   symbol?: string;

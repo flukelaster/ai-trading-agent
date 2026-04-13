@@ -54,8 +54,10 @@ async def analyze(symbol: str, timeframe: str = "M15") -> dict:
         f"Analyze {symbol} on the {timeframe} timeframe. "
         f"Use run_full_analysis to get all indicators, then provide your technical assessment."
     )
+    from mcp_server.agents.prompt_registry import get_active_prompt
+    active_prompt = await get_active_prompt("technical_analyst")
     return await run_agent_loop(
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=active_prompt,
         user_message=user_message,
         tool_names=TOOL_NAMES,
         model=MODEL_SPECIALIST,

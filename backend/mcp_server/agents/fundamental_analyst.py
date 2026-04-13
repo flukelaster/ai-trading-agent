@@ -51,8 +51,10 @@ async def analyze(symbol: str, timeframe: str = "M15") -> dict:
         f"Provide a fundamental analysis for {symbol}. "
         f"Check current sentiment, recent performance, and today's P&L to form a directional bias."
     )
+    from mcp_server.agents.prompt_registry import get_active_prompt
+    active_prompt = await get_active_prompt("fundamental_analyst")
     return await run_agent_loop(
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=active_prompt,
         user_message=user_message,
         tool_names=TOOL_NAMES,
         model=MODEL_SPECIALIST,

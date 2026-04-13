@@ -74,8 +74,10 @@ async def analyze(
             f"Check account state, current exposure, and any risk concerns."
         )
 
+    from mcp_server.agents.prompt_registry import get_active_prompt
+    active_prompt = await get_active_prompt("risk_analyst")
     return await run_agent_loop(
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=active_prompt,
         user_message=user_message,
         tool_names=TOOL_NAMES,
         model=MODEL_SPECIALIST,
