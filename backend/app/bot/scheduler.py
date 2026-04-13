@@ -190,8 +190,21 @@ class BotScheduler:
             max_instances=1,
         )
 
+        # Economic calendar refresh every hour
+        self.scheduler.add_job(
+            self._refresh_economic_calendar,
+            "interval",
+            hours=1,
+            id="economic_calendar_refresh",
+            max_instances=1,
+            coalesce=True,
+        )
+
         self.scheduler.start()
         logger.info("Scheduler started")
+
+        # Initial calendar refresh
+        asyncio.create_task(self._refresh_economic_calendar())
 
     def _schedule_candle_jobs(self):
         """Create one cron job per unique timeframe across all engines."""
@@ -377,6 +390,16 @@ class BotScheduler:
                 except Exception as e:
                     logger.error(f"Macro collection error: {e}")
                 break
+
+    async def _refresh_economic_calendar(self):
+        """Refresh economic calendar from API for all engines."""
+        for engine in self._engines.values():
+            try:
+                count = await engine._event_calendar.refresh()
+                logger.debug(f"Economic calendar refreshed: {count} events")
+                break  # Only need to refresh once (shared cache)
+            except Exception as e:
+                logger.warning(f"Economic calendar refresh failed: {e}")
 
     async def _daily_reset_job(self):
         logger.info("Daily reset triggered")

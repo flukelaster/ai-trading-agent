@@ -269,6 +269,30 @@ async def get_integration_config(db: AsyncSession = Depends(get_db)):
                     {"name": "send_notification", "description": "Send trade alert to Telegram channel"},
                 ],
             },
+            {
+                "id": "economic_calendar",
+                "name": "Economic Calendar",
+                "description": "Forex Factory economic events — auto-fetched hourly, reduces lot before high-impact events",
+                "status": "connected",
+                "config": {},
+                "tools": [
+                    {"name": "get_upcoming_events", "description": "Get upcoming high-impact USD events"},
+                    {"name": "is_near_event", "description": "Check if near a high-impact event"},
+                ],
+            },
+            {
+                "id": "tradingview",
+                "name": "TradingView",
+                "description": "Receive webhook alerts from TradingView Pine Script strategies",
+                "status": "configured" if os.environ.get("TRADINGVIEW_WEBHOOK_KEY") else "not_configured",
+                "config": {
+                    "Webhook URL": f"{os.environ.get('FRONTEND_URL', 'https://your-domain')}/api/webhooks/tradingview",
+                    "Webhook Key": _mask(os.environ.get("TRADINGVIEW_WEBHOOK_KEY", "")),
+                },
+                "tools": [
+                    {"name": "webhook_receiver", "description": "Receive BUY/SELL signals from TradingView alerts"},
+                ],
+            },
         ]
     }
 

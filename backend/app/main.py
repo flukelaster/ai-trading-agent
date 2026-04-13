@@ -36,6 +36,7 @@ from app.api.routes import (
     strategy,
 )
 from app.api.routes import metrics as metrics_routes
+from app.api.routes import webhooks
 from app.api.websocket import router as ws_router
 from app.api.ws_runners import router as ws_runners_router
 from app.auth import router as auth_router
@@ -122,6 +123,7 @@ async def lifespan(app: FastAPI):
 
     # Set up routes with manager reference
     bot.set_manager(manager)
+    webhooks.init_webhooks(manager)
     backtest.set_market_data(first_engine.market_data)
     backtest.set_collector(hist_collector)
     data.set_collector(hist_collector)
@@ -285,6 +287,7 @@ app.include_router(runners.router)
 app.include_router(jobs.router)
 app.include_router(rollout.router)
 app.include_router(integration.router)
+app.include_router(webhooks.router)
 app.include_router(activity.router)
 app.include_router(agent_prompts.router)
 app.include_router(memory_routes.router)

@@ -148,7 +148,7 @@ class BotEngine:
 
         # Regime-aware risk + event filter
         from app.data.macro_events import MacroEventCalendar
-        self._event_calendar = MacroEventCalendar()
+        self._event_calendar = MacroEventCalendar(redis_client)
         self._last_regime = "normal"
         self._multi_tf_regime = None  # MultiTFRegime, set in process_candle
 
