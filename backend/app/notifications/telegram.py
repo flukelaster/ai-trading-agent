@@ -124,3 +124,50 @@ class TelegramNotifier:
     async def send_stop_alert(self, symbol: str = ""):
         sym_name = f" {self._sym(symbol)}" if symbol else ""
         await self._send(f"⏹ <b>หยุดเทรด{sym_name}</b>")
+
+    async def send_daily_summary(self, symbol_stats: list[dict], total_pnl: float, total_trades: int, total_win_rate: float):
+        icon = "📈" if total_pnl >= 0 else "📉"
+        lines = [
+            f"{icon} <b>สรุปประจำวัน</b>",
+            f"💰 P&L: <b>${total_pnl:+.2f}</b>  |  เทรด: {total_trades}  |  ชนะ: {total_win_rate:.0%}",
+            "",
+        ]
+        for s in symbol_stats:
+            regime_icon = {"trending_high_vol": "🔥", "trending_low_vol": "📊", "ranging": "↔️", "normal": "⚖️"}.get(s.get("regime", ""), "⚖️")
+            pnl_str = f"${s['pnl']:+.2f}" if s.get("pnl") is not None else "—"
+            lines.append(f"{regime_icon} {self._sym(s['symbol'])}: {pnl_str} ({s.get('trades', 0)} trades, regime: {s.get('regime', 'unknown')})")
+        await self._send("\n".join(lines))
+
+    async def send_losing_streak_alert(self, symbol: str, count: int, lot_factor: float):
+        sym_name = self._sym(symbol)
+        lines = [
+            "🔴 <b>แจ้งเตือนขาดทุนติดต่อกัน</b>",
+            f"📉 {sym_name}: ขาดทุน <b>{count} ครั้งติด</b>",
+            f"⚙️ ปรับลด lot เหลือ {lot_factor:.0%} อัตโนมัติ",
+        ]
+        await self._send("\n".join(lines))
+
+    async def send_trade_close_with_analysis(self, symbol: str, close_price: float, lot: float, profit: float, analysis: dict):
+        icon = "📈" if profit >= 0 else "📉"
+        outcome = "กำไร" if profit >= 0 else "ขาดทุน"
+        summary = analysis.get("summary_th", "")
+        exit_map = {"stop_loss": "🛑 SL", "take_profit": "🎯 TP", "manual_close": "👤 Manual"}
+        exit_label = exit_map.get(analysis.get("exit_reason", ""), "❓")
+        lines = [
+            f"🏁 <b>ปิดสถานะ {self._sym(symbol)}</b>",
+            f"💰 ราคา: {close_price:.2f}  |  Lot: {lot}",
+            f"{icon} {outcome}: <b>${abs(profit):.2f}</b>",
+            f"📋 {exit_label} | {summary}",
+        ]
+        if analysis.get("entry_regime"):
+            lines.append(f"📊 Regime: {analysis['entry_regime']} → {analysis.get('exit_regime', '?')}")
+        await self._send("\n".join(lines))
+
+    async def send_regime_change(self, symbol: str, old_regime: str, new_regime: str):
+        sym_name = self._sym(symbol)
+        regime_th = {"trending_high_vol": "เทรนด์+ผันผวนสูง 🔥", "trending_low_vol": "เทรนด์+ผันผวนต่ำ", "ranging": "ไซด์เวย์ ↔️", "normal": "ปกติ ⚖️"}
+        lines = [
+            "🔄 <b>Regime เปลี่ยน</b>",
+            f"📊 {sym_name}: {regime_th.get(old_regime, old_regime)} → {regime_th.get(new_regime, new_regime)}",
+        ]
+        await self._send("\n".join(lines))

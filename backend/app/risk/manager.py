@@ -16,6 +16,7 @@ from app.constants import (
     LOW_VOL_LOT_FACTOR,
     LOW_VOL_THRESHOLD,
     MIN_LOT,
+    REGIME_LOT_MULTIPLIERS,
     STREAK_2_FACTOR,
     STREAK_3_FACTOR,
     AI_MAX_THRESHOLD,
@@ -53,6 +54,17 @@ class RiskManager:
         self.price_decimals = price_decimals
         self.sl_atr_mult = sl_atr_mult
         self.tp_atr_mult = tp_atr_mult
+        # Regime-aware risk
+        self.current_regime = "normal"
+        self.regime_lot_multiplier = 1.0
+
+    def set_regime(self, regime: str) -> None:
+        """Update current regime and apply corresponding lot multiplier."""
+        old = self.current_regime
+        self.current_regime = regime
+        self.regime_lot_multiplier = REGIME_LOT_MULTIPLIERS.get(regime, 1.0)
+        if old != regime:
+            logger.info(f"Regime changed: {old} → {regime} (lot mult: {self.regime_lot_multiplier})")
 
     def calculate_lot_size(
         self, balance: float, sl_pips: float, pip_value: float | None = None,
@@ -77,6 +89,9 @@ class RiskManager:
                 lot *= HIGH_VOL_LOT_FACTOR
             elif atr_pct < LOW_VOL_THRESHOLD:
                 lot *= LOW_VOL_LOT_FACTOR
+
+        # Regime adjustment
+        lot *= self.regime_lot_multiplier
 
         lot = round(min(lot, self.max_lot), 2)
         return max(lot, MIN_LOT)
@@ -119,8 +134,13 @@ class RiskManager:
         self, entry_price: float, signal: int, atr: float,
         sl_mult: float | None = None, tp_mult: float | None = None,
     ) -> SLTPResult:
+        from app.strategy.regime import REGIME_ADJUSTMENTS
         sl_m = sl_mult if sl_mult is not None else self.sl_atr_mult
         tp_m = tp_mult if tp_mult is not None else self.tp_atr_mult
+        # Apply regime SL/TP adjustments
+        adj = REGIME_ADJUSTMENTS.get(self.current_regime, {})
+        sl_m *= adj.get("sl_atr_mult_factor", 1.0)
+        tp_m *= adj.get("tp_atr_mult_factor", 1.0)
         if signal == 1:  # BUY
             sl = entry_price - (atr * sl_m)
             tp = entry_price + (atr * tp_m)
@@ -132,6 +152,42 @@ class RiskManager:
             tp=round(tp, self.price_decimals),
         )
 
+    def compute_effective_confidence(
+        self,
+        session_boost: float = 0.0,
+        regime: str = "normal",
+        recent_win_rate: float | None = None,
+        drawdown_pct: float = 0.0,
+    ) -> float:
+        """Dynamic confidence threshold based on market conditions + performance."""
+        from app.constants import (
+            CONFIDENCE_DRAWDOWN_5_BOOST,
+            CONFIDENCE_DRAWDOWN_10_BOOST,
+            CONFIDENCE_RANGING_BOOST,
+            CONFIDENCE_TRENDING_HV_DISCOUNT,
+            CONFIDENCE_LOW_WINRATE_BOOST,
+            CONFIDENCE_LOW_WINRATE_THRESHOLD,
+        )
+        threshold = self.ai_confidence_threshold + session_boost
+
+        # Drawdown-based tightening
+        if drawdown_pct > 0.10:
+            threshold += CONFIDENCE_DRAWDOWN_10_BOOST
+        elif drawdown_pct > 0.05:
+            threshold += CONFIDENCE_DRAWDOWN_5_BOOST
+
+        # Regime adjustment
+        if regime == "ranging":
+            threshold += CONFIDENCE_RANGING_BOOST
+        elif regime == "trending_high_vol":
+            threshold -= CONFIDENCE_TRENDING_HV_DISCOUNT
+
+        # Recent performance
+        if recent_win_rate is not None and recent_win_rate < CONFIDENCE_LOW_WINRATE_THRESHOLD:
+            threshold += CONFIDENCE_LOW_WINRATE_BOOST
+
+        return min(max(threshold, self.ai_confidence_threshold * 0.8), AI_MAX_THRESHOLD)
+
     def can_open_trade(
         self,
         current_positions: int,
@@ -140,6 +196,7 @@ class RiskManager:
         signal: int = 0,
         ai_sentiment: dict | None = None,
         trade_patterns: dict | None = None,
+        effective_threshold: float | None = None,
     ) -> tuple[bool, str]:
         # Check max concurrent trades
         if current_positions >= self.max_concurrent_trades:
@@ -150,21 +207,24 @@ class RiskManager:
         if daily_pnl <= -max_loss:
             return False, f"Daily loss limit reached ({daily_pnl:.2f} <= -{max_loss:.2f})"
 
-        # Adjust confidence threshold based on trade patterns
-        effective_threshold = self.ai_confidence_threshold
-        if trade_patterns:
-            from datetime import datetime, timezone
-            current_hour = datetime.now(timezone.utc).hour
-            worst_hours = trade_patterns.get("worst_hours", [])
-            if current_hour in worst_hours:
-                effective_threshold = min(effective_threshold + AI_WORST_HOUR_THRESHOLD_BOOST, AI_MAX_THRESHOLD)
+        # Use adaptive threshold if provided, otherwise fallback to existing logic
+        if effective_threshold is not None:
+            eff_threshold = effective_threshold
+        else:
+            eff_threshold = self.ai_confidence_threshold
+            if trade_patterns:
+                from datetime import datetime, timezone
+                current_hour = datetime.now(timezone.utc).hour
+                worst_hours = trade_patterns.get("worst_hours", [])
+                if current_hour in worst_hours:
+                    eff_threshold = min(eff_threshold + AI_WORST_HOUR_THRESHOLD_BOOST, AI_MAX_THRESHOLD)
 
         # AI sentiment filter (optional)
         if self.use_ai_filter and ai_sentiment and signal != 0:
             confidence = ai_sentiment.get("confidence", 0)
             label = ai_sentiment.get("label", "neutral")
 
-            if confidence >= effective_threshold:
+            if confidence >= eff_threshold:
                 if signal == 1 and label == "bearish":
                     return False, f"AI sentiment bearish (confidence: {confidence:.0%}) — BUY signal filtered"
                 if signal == -1 and label == "bullish":

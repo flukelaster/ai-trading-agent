@@ -33,6 +33,8 @@ type BotStatus = {
   paper_trade: boolean;
   max_lot?: number;
   fixed_lot?: number | null;
+  regime?: string;
+  multi_tf_regime?: { m15: string; h1: string; h4: string; composite: string; style: string; agreement: number } | null;
   sentiment?: Sentiment;
   ai_decision?: {
     decision: string;

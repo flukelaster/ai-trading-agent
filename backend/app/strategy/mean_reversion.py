@@ -33,6 +33,10 @@ class MeanReversionStrategy(BaseStrategy):
     def min_bars_required(self) -> int:
         return max(self._bb_period, self._rsi_period) + 10
 
+    @property
+    def worst_case(self) -> str:
+        return "Strong trending market — price breaks through bands without reverting, losses compound"
+
     def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["signal"] = 0

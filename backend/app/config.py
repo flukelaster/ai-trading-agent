@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     max_daily_loss: float = 0.03
     max_concurrent_trades: int = 3
     max_lot: float = 1.0
+    max_drawdown_from_peak: float = 0.15  # 15% absolute drawdown → halt
     use_ai_filter: bool = True
     ai_confidence_threshold: float = 0.7
     paper_trade: bool = False
@@ -172,6 +173,7 @@ class Settings(BaseSettings):
 
     # Agent
     agent_mode: str = "single"  # "single" (Phase C) or "multi" (Phase D: orchestrator + specialists)
+    trading_mode: str = "strategy"  # "strategy" (strategy-first, AI filter) | "ai_autonomous" (AI decides)
     rollout_mode: str = "shadow"  # "shadow" | "paper" | "micro" | "live" (Phase F gradual rollout)
 
     # Logging

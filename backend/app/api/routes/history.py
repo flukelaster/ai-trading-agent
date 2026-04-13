@@ -59,6 +59,9 @@ async def get_trades(
             "strategy_name": t.strategy_name,
             "ai_sentiment_label": t.ai_sentiment_label,
             "ai_sentiment_score": t.ai_sentiment_score,
+            "trade_reason": t.trade_reason,
+            "pre_trade_snapshot": t.pre_trade_snapshot,
+            "post_trade_analysis": t.post_trade_analysis,
             "source": "bot",
         }
         for t in db_trades

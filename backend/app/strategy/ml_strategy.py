@@ -102,6 +102,10 @@ class MLStrategy(BaseStrategy):
     def min_bars_required(self) -> int:
         return 200
 
+    @property
+    def worst_case(self) -> str:
+        return "Model trained on past regime that no longer exists — overfitting to historical patterns, confident but wrong"
+
     def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
         """Sync wrapper — actual work in _calculate_async called from engine."""
         df = df.copy()

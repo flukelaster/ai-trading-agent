@@ -33,6 +33,10 @@ class RSIFilterStrategy(BaseStrategy):
     def min_bars_required(self) -> int:
         return max(self.ema_slow, self.rsi_period) + 5
 
+    @property
+    def worst_case(self) -> str:
+        return "Extended overbought/oversold in strong trends — RSI stays extreme while price continues"
+
     def get_params(self) -> dict:
         return {
             "ema_fast": self.ema_fast,

@@ -25,6 +25,9 @@ type Trade = {
   open_price: number; close_price: number | null; sl: number; tp: number;
   open_time: string; close_time: string | null; profit: number | null;
   strategy_name: string; ai_sentiment_label: string | null; ai_sentiment_score: number | null;
+  trade_reason: string | null;
+  pre_trade_snapshot: Record<string, unknown> | null;
+  post_trade_analysis: { exit_reason: string; duration_hours: number | null; outcome: string; profit_usd: number; entry_regime: string; exit_regime: string | null; summary_th: string } | null;
 };
 
 export default function HistoryPage() {
@@ -140,6 +143,7 @@ export default function HistoryPage() {
                         <TableHead className="text-right">Close</TableHead>
                         <TableHead className="text-right">P&L</TableHead>
                         <TableHead>Strategy</TableHead>
+                        <TableHead>Reason</TableHead>
                         <TableHead className="text-center">AI</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -157,7 +161,7 @@ export default function HistoryPage() {
                             >
                               {total >= 0 ? "+" : ""}{total.toFixed(2)}
                             </TableCell>
-                            <TableCell colSpan={2} />
+                            <TableCell colSpan={3} />
                           </TableRow>
                         ) : null;
                       })()}
@@ -183,6 +187,9 @@ export default function HistoryPage() {
                             {t.profit !== null ? `${t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}` : "—"}
                           </TableCell>
                           <TableCell className="text-muted-foreground font-medium">{t.strategy_name}</TableCell>
+                          <TableCell className="text-muted-foreground text-xs max-w-[200px] truncate" title={t.trade_reason || undefined}>
+                            {t.trade_reason || "—"}
+                          </TableCell>
                           <TableCell className="text-center">
                             {t.ai_sentiment_label ? (
                               <SentimentBadge label={t.ai_sentiment_label} score={t.ai_sentiment_score || 0} size="sm" />

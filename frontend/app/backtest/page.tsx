@@ -33,6 +33,11 @@ const STRATEGIES = [
   { value: "breakout", label: "Breakout" },
   { value: "mean_reversion", label: "Mean Reversion" },
   { value: "ml_signal", label: "ML Signal" },
+  { value: "dca", label: "DCA (ถัวเฉลี่ย)" },
+  { value: "grid", label: "Grid Trading" },
+  { value: "risk_parity", label: "Risk Parity" },
+  { value: "momentum_rank", label: "Momentum Rank" },
+  { value: "pair_spread", label: "Pair Spread" },
 ];
 
 
@@ -68,6 +73,27 @@ const STRATEGY_PARAMS: Record<string, ParamDef[]> = {
     { key: "min_bandwidth", label: "Min Bandwidth", defaults: [0.003, 0.005, 0.01] },
   ],
   ml_signal: [],
+  dca: [
+    { key: "interval_bars", label: "Interval (bars)", defaults: [10, 15, 20, 30, 50] },
+  ],
+  grid: [
+    { key: "grid_spacing_pips", label: "Grid Spacing (pips)", defaults: [3, 5, 8, 10] },
+    { key: "grid_levels", label: "Grid Levels", defaults: [3, 5, 7, 10] },
+    { key: "sma_period", label: "SMA Period", defaults: [15, 20, 30] },
+  ],
+  risk_parity: [
+    { key: "ema_fast", label: "EMA Fast", defaults: [15, 20, 25] },
+    { key: "ema_slow", label: "EMA Slow", defaults: [40, 50, 60] },
+    { key: "vol_lookback", label: "Vol Lookback", defaults: [30, 50, 80] },
+  ],
+  momentum_rank: [
+    { key: "lookback", label: "Momentum Lookback", defaults: [10, 15, 20, 30] },
+  ],
+  pair_spread: [
+    { key: "z_entry", label: "Z-Score Entry", defaults: [1.5, 2.0, 2.5, 3.0] },
+    { key: "z_exit", label: "Z-Score Exit", defaults: [0.3, 0.5, 0.8] },
+    { key: "lookback", label: "Lookback", defaults: [30, 50, 80] },
+  ],
 };
 
 function buildDefaultGridInputs(strat: string): Record<string, string> {

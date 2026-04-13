@@ -35,6 +35,10 @@ class EnsembleStrategy(BaseStrategy):
     def min_bars_required(self) -> int:
         return max(s.min_bars_required for s, _ in self._strategies)
 
+    @property
+    def worst_case(self) -> str:
+        return "All sub-strategies agree on wrong signal — correlated errors amplify losses"
+
     def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["signal"] = 0

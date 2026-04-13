@@ -107,3 +107,36 @@ MIN_TTL_SECONDS = 60  # minimum Redis TTL for daily PnL keys
 KELLY_RECENT_TRADES = 50
 # Streak detection: recent trades to check
 STREAK_RECENT_TRADES = 5
+
+# ─── Regime-Aware Risk ──────────────────────────────────────────────────────
+
+REGIME_LOT_MULTIPLIERS = {
+    "trending_high_vol": 0.7,
+    "trending_low_vol": 1.0,
+    "ranging": 0.5,
+    "normal": 1.0,
+}
+
+# ─── Event Filter ───────────────────────────────────────────────────────────
+
+EVENT_LOT_FACTOR = 0.5       # halve lot size near high-impact events
+EVENT_BLOCK_HOURS = 2        # hours before event to reduce exposure
+
+# ─── Notifications ──────────────────────────────────────────────────────────
+
+LOSING_STREAK_ALERT_THRESHOLD = 3  # consecutive losses before Telegram alert
+PREDICTION_FEEDBACK_HOURS = 4      # match predictions within N hours of trade close
+
+# ─── Absolute Drawdown ──────────────────────────────────────────────────────
+
+DEFAULT_MAX_DRAWDOWN_FROM_PEAK = 0.15  # 15% drawdown from peak → halt all trading
+
+# ─── Adaptive Confidence Policy ─────────────────────────────────────────────
+
+CONFIDENCE_DRAWDOWN_5_BOOST = 0.05     # stricter when drawdown > 5%
+CONFIDENCE_DRAWDOWN_10_BOOST = 0.10    # much stricter when drawdown > 10%
+CONFIDENCE_RANGING_BOOST = 0.05        # stricter in ranging (false signals common)
+CONFIDENCE_TRENDING_HV_DISCOUNT = 0.05 # looser in clear high-vol trend
+CONFIDENCE_LOW_WINRATE_BOOST = 0.10    # stricter when recent win rate < 40%
+CONFIDENCE_LOW_WINRATE_THRESHOLD = 0.40
+CONFIDENCE_RECENT_TRADES_WINDOW = 20

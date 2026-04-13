@@ -148,9 +148,24 @@ async def get_account():
 
     # Primary balance = first account (MT5) for backward compat
     primary = accounts[0] if accounts else {"balance": 0, "equity": 0, "margin": 0, "free_margin": 0, "profit": 0}
+
+    # Peak balance + drawdown from peak
+    peak_balance = 0.0
+    drawdown_pct = 0.0
+    try:
+        from app.risk.circuit_breaker import CircuitBreaker
+        balance = primary.get("balance", 0)
+        peak_balance = await CircuitBreaker.update_peak_balance(first_engine.redis, balance)
+        if peak_balance > 0:
+            drawdown_pct = (peak_balance - balance) / peak_balance
+    except Exception:
+        pass
+
     return {
         **primary,
         "accounts": accounts,
+        "peak_balance": round(peak_balance, 2),
+        "drawdown_pct": round(drawdown_pct, 4),
     }
 
 

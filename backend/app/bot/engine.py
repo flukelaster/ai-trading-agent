@@ -6,7 +6,7 @@ import enum
 import json
 import random
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.constants import (
     BREAKEVEN_ATR_MULT,
@@ -146,6 +146,12 @@ class BotEngine:
         # Lot sizing mode: None = auto (AI/Kelly/risk-based), float = fixed lot
         self.fixed_lot: float | None = None
 
+        # Regime-aware risk + event filter
+        from app.data.macro_events import MacroEventCalendar
+        self._event_calendar = MacroEventCalendar()
+        self._last_regime = "normal"
+        self._multi_tf_regime = None  # MultiTFRegime, set in process_candle
+
         # Paper trade mode
         self.paper_trade = settings.paper_trade
         self._paper_positions: list[dict] = []
@@ -227,7 +233,7 @@ class BotEngine:
         sentiment = getattr(self, "_last_sentiment", None)
         return {
             "state": self.state.value,
-            "strategy": "ai_autonomous",
+            "strategy": self.strategy.name if self.strategy else "ai_autonomous",
             "strategy_params": {},
             "symbol": self.symbol,
             "timeframe": self.timeframe,
@@ -239,6 +245,8 @@ class BotEngine:
             "max_concurrent_trades": self.risk_manager.max_concurrent_trades,
             "max_lot": self.risk_manager.max_lot,
             "fixed_lot": self.fixed_lot,
+            "regime": self._last_regime,
+            "multi_tf_regime": self._multi_tf_regime.to_dict() if self._multi_tf_regime else None,
             "ai_decision": ai_decision,
             "sentiment": sentiment,
         }
@@ -265,8 +273,28 @@ class BotEngine:
                 return
             balance = account["data"]["balance"]
 
+            # Track peak balance for absolute drawdown detection
+            await CircuitBreaker.update_peak_balance(self.redis, balance)
+
             if await self._check_circuit_breakers(balance):
                 return
+
+            # 1b. Multi-timeframe regime detection
+            try:
+                from app.strategy.regime import detect_multi_tf_regime
+                self._multi_tf_regime = await detect_multi_tf_regime(self.market_data, self.symbol)
+                self.risk_manager.set_regime(self._multi_tf_regime.composite)
+                self._last_regime = self._multi_tf_regime.composite
+                # Cache for dashboard
+                await self.redis.setex(f"mtf_regime:{self.symbol}", 300, json.dumps(self._multi_tf_regime.to_dict()))
+            except Exception as e:
+                logger.warning(f"Multi-TF regime detection failed: {e}")
+
+            # 1c. Check macro event proximity — reduce exposure or skip
+            from app.constants import EVENT_BLOCK_HOURS
+            near_event = self._event_calendar.is_near_event(hours_before=EVENT_BLOCK_HOURS)
+            if near_event:
+                logger.info(f"Near macro event [{self.symbol}]: {near_event.get('event', 'unknown')} — reducing exposure")
 
             # 2. Generate trading signal
             result = await self._generate_signal()
@@ -281,7 +309,7 @@ class BotEngine:
                 return
 
             # 4. Size position and place order
-            await self._size_and_place_order(signal, signal_label, df, balance, ai_sentiment)
+            await self._size_and_place_order(signal, signal_label, df, balance, ai_sentiment, near_event=near_event)
 
         except Exception as e:
             logger.error(f"Bot engine error: {e}")
@@ -314,6 +342,19 @@ class BotEngine:
                 await self._notify(self.notifier.send_error_alert("⚡ Portfolio circuit breaker — ALL symbols paused"))
             return True
 
+        # Absolute drawdown from peak balance
+        drawdown_halted = await CircuitBreaker.is_drawdown_halted(
+            self.redis, balance, settings.max_drawdown_from_peak,
+        )
+        if drawdown_halted:
+            self.state = BotState.PAUSED
+            await self._log_event(BotEventType.CIRCUIT_BREAKER, "Absolute drawdown limit reached — trading halted")
+            if self.notifier:
+                await self._notify(self.notifier.send_error_alert(
+                    f"🛑 DRAWDOWN HALT: Balance dropped >{settings.max_drawdown_from_peak:.0%} from peak"
+                ))
+            return True
+
         return False
 
     async def _generate_signal(self) -> tuple[int, str, "pd.DataFrame"] | None:
@@ -325,6 +366,10 @@ class BotEngine:
         # Lazy-load ML model from DB if strategy supports it
         if hasattr(self.strategy, "_ensure_model"):
             await self.strategy._ensure_model()
+
+        # Fetch cross-symbol data for quant strategies (risk parity, momentum rank, pair spread)
+        if hasattr(self.strategy, "_prepare_cross_data"):
+            await self.strategy._prepare_cross_data(self.market_data)
 
         df = self.strategy.calculate(df)
         if len(df) < 2:
@@ -381,6 +426,46 @@ class BotEngine:
         if self._ai_context:
             trade_patterns = self.context_builder.get_trade_patterns_for_risk(self._ai_context)
 
+        # Adaptive confidence: compute effective threshold
+        eff_threshold = None
+        try:
+            from app.config import SESSION_PROFILES
+            current_hour = datetime.now(timezone.utc).hour
+            session_boost = 0.0
+            for prof in SESSION_PROFILES.values():
+                h_start, h_end = prof["hours"]
+                if h_start <= current_hour < h_end:
+                    session_boost = prof.get("confidence_boost", 0.0)
+                    break
+
+            # Recent win rate
+            recent_wr = None
+            from app.constants import CONFIDENCE_RECENT_TRADES_WINDOW
+            from sqlalchemy import select as _sel2
+            stmt = (_sel2(Trade).where(Trade.symbol == self.symbol, Trade.profit.isnot(None))
+                    .order_by(Trade.id.desc()).limit(CONFIDENCE_RECENT_TRADES_WINDOW))
+            result = await self.db.execute(stmt)
+            recent = result.scalars().all()
+            if len(recent) >= 10:
+                recent_wr = sum(1 for t in recent if t.profit > 0) / len(recent)
+
+            # Drawdown
+            dd_pct = 0.0
+            peak_raw = await self.redis.get("circuit:peak_balance")
+            if peak_raw and balance > 0:
+                peak = float(peak_raw)
+                if peak > 0:
+                    dd_pct = (peak - balance) / peak
+
+            regime = self._multi_tf_regime.composite if self._multi_tf_regime else self._last_regime
+            eff_threshold = self.risk_manager.compute_effective_confidence(
+                session_boost=session_boost, regime=regime,
+                recent_win_rate=recent_wr, drawdown_pct=dd_pct,
+            )
+            self._last_effective_threshold = eff_threshold
+        except Exception:
+            pass
+
         can_trade, reason = self.risk_manager.can_open_trade(
             current_positions=len(positions),
             daily_pnl=daily_pnl,
@@ -388,6 +473,7 @@ class BotEngine:
             signal=signal,
             ai_sentiment=ai_sentiment,
             trade_patterns=trade_patterns,
+            effective_threshold=eff_threshold,
         )
         if not can_trade:
             logger.info(f"Trade blocked: {reason}")
@@ -421,6 +507,7 @@ class BotEngine:
 
     async def _size_and_place_order(
         self, signal: int, signal_label: str, df, balance: float, ai_sentiment: dict | None,
+        near_event: dict | None = None,
     ) -> None:
         """Calculate lot size, apply adjustments, and place order (real or paper)."""
         atr = df.iloc[-2].get("atr", DEFAULT_ATR_FALLBACK)
@@ -429,9 +516,25 @@ class BotEngine:
             return
 
         entry_price = tick["ask"] if signal == 1 else tick["bid"]
+        atr_pct = atr / entry_price if entry_price > 0 else 0
+
+        # Detect regime and apply to risk manager
+        from app.strategy.regime import detect_regime as _detect_regime
+        adx_value = df.iloc[-2].get("adx", 20)
+        regime = _detect_regime(atr_pct, adx_value)
+        self.risk_manager.set_regime(regime)
+
+        # Notify on regime change
+        if regime != self._last_regime:
+            old_regime = self._last_regime
+            self._last_regime = regime
+            await self._log_event(BotEventType.SIGNAL_DETECTED, f"Regime: {old_regime} → {regime}")
+            if self.notifier:
+                import asyncio as _asyncio
+                _asyncio.create_task(self.notifier.send_regime_change(self.symbol, old_regime, regime))
+
         sl_tp = self.risk_manager.calculate_sl_tp(entry_price, signal, atr)
         sl_pips = abs(entry_price - sl_tp.sl)
-        atr_pct = atr / entry_price if entry_price > 0 else 0
 
         # Position sizing: fixed lot or AI-calculated (Kelly/risk-based)
         if self.fixed_lot is not None:
@@ -443,6 +546,13 @@ class BotEngine:
             lot = self._apply_warmup(lot)
             # Apply consecutive loss streak reduction
             lot = await self._apply_streak_adjustment(lot)
+
+        # Event filter: reduce lot near high-impact events
+        if near_event:
+            from app.constants import EVENT_LOT_FACTOR
+            lot = round(lot * EVENT_LOT_FACTOR, 2)
+            lot = max(lot, MIN_LOT)
+            logger.info(f"Event filter [{self.symbol}]: lot reduced to {lot} (event: {near_event.get('event', 'unknown')})")
 
         # Place order (real or paper)
         order_type = "BUY" if signal == 1 else "SELL"
@@ -482,6 +592,25 @@ class BotEngine:
         if slippage_price > 0:
             logger.info(f"Slippage [{self.symbol}]: expected={entry_price}, fill={actual_fill}, diff={slippage_price:.{self.risk_manager.price_decimals}f}")
 
+        # Pre-trade snapshot — complete decision context for tracing
+        snapshot = {
+            "balance": balance,
+            "regime": self._multi_tf_regime.to_dict() if self._multi_tf_regime else {"composite": self._last_regime},
+            "indicators": {
+                "atr": round(atr, 4),
+                "atr_pct": round(atr_pct, 6),
+                "adx": round(float(df.iloc[-2].get("adx", 0)), 2) if "adx" in df.columns else None,
+            },
+            "risk": {
+                "effective_confidence": getattr(self, "_last_effective_threshold", None),
+                "lot_final": lot,
+                "near_event": bool(near_event),
+            },
+            "ai_sentiment": ai_sentiment,
+            "strategy": self.strategy.name,
+            "strategy_reason": self.strategy.last_reason,
+        }
+
         trade = Trade(
             ticket=result["data"]["ticket"],
             symbol=self.symbol,
@@ -495,6 +624,8 @@ class BotEngine:
             strategy_name=self.strategy.name,
             ai_sentiment_score=sentiment_data.get("confidence"),
             ai_sentiment_label=sentiment_data.get("label"),
+            trade_reason=self.strategy.last_reason or None,
+            pre_trade_snapshot=snapshot,
         )
         await self._save_trade(trade)
 
@@ -552,6 +683,12 @@ class BotEngine:
             if consecutive_losses >= 2:
                 lot = self.risk_manager.adjust_for_streak(lot, consecutive_losses, 0)
                 logger.info(f"Loss streak [{self.symbol}]: {consecutive_losses} consecutive → lot={lot}")
+                # Alert on significant losing streak
+                from app.constants import LOSING_STREAK_ALERT_THRESHOLD
+                if consecutive_losses >= LOSING_STREAK_ALERT_THRESHOLD and self.notifier:
+                    factor = STREAK_3_FACTOR if consecutive_losses >= 3 else STREAK_2_FACTOR
+                    import asyncio as _asyncio
+                    _asyncio.create_task(self.notifier.send_losing_streak_alert(self.symbol, consecutive_losses, factor))
         except Exception:
             pass
         return lot
@@ -679,6 +816,9 @@ class BotEngine:
                 trade.close_price = close_price
                 trade.close_time = close_time
                 trade.profit = profit
+                # Post-trade analysis
+                analysis = self._build_post_trade_analysis(trade, deal, self._multi_tf_regime)
+                trade.post_trade_analysis = analysis
                 await self.db.commit()
 
             # Log event
@@ -695,12 +835,101 @@ class BotEngine:
                 "profit": profit,
             })
 
-            # Telegram notification
+            # Telegram notification (enhanced with analysis)
             if self.notifier:
-                await self._notify(self.notifier.send_trade_alert(
-                    "CLOSE", self.symbol, close_price, 0, 0, deal.get("lot", 0) if deal else 0,
-                    extra=profit_str,
+                if trade and trade.post_trade_analysis:
+                    await self._notify(self.notifier.send_trade_close_with_analysis(
+                        self.symbol, close_price, deal.get("lot", 0) if deal else 0,
+                        profit, trade.post_trade_analysis,
+                    ))
+                else:
+                    await self._notify(self.notifier.send_trade_alert(
+                        "CLOSE", self.symbol, close_price, 0, 0, deal.get("lot", 0) if deal else 0,
+                        extra=profit_str,
+                    ))
+
+            # ML prediction feedback: link closed trade outcome to recent prediction
+            await self._update_prediction_feedback(profit)
+
+    @staticmethod
+    def _build_post_trade_analysis(trade, deal: dict | None, mtf_regime) -> dict:
+        """Generate post-trade analysis: exit reason, duration, outcome summary."""
+        exit_reason = "unknown"
+        if trade.close_price and trade.sl and trade.tp:
+            sl_dist = abs(trade.close_price - trade.sl)
+            tp_dist = abs(trade.close_price - trade.tp)
+            entry_to_sl = abs(trade.open_price - trade.sl) or 1
+            entry_to_tp = abs(trade.open_price - trade.tp) or 1
+            if sl_dist < entry_to_sl * 0.2:
+                exit_reason = "stop_loss"
+            elif tp_dist < entry_to_tp * 0.2:
+                exit_reason = "take_profit"
+            else:
+                exit_reason = "manual_close"
+
+        duration_hours = None
+        if trade.open_time and trade.close_time:
+            delta = trade.close_time - trade.open_time
+            duration_hours = round(delta.total_seconds() / 3600, 2)
+
+        profit = trade.profit or 0
+        outcome = "win" if profit > 0 else ("breakeven" if profit == 0 else "loss")
+
+        parts = []
+        if exit_reason == "stop_loss":
+            parts.append("SL ถูกชน")
+        elif exit_reason == "take_profit":
+            parts.append("ถึง TP สำเร็จ")
+        else:
+            parts.append("ปิดด้วยตนเอง/ระบบ")
+        if duration_hours is not None:
+            parts.append(f"ถือ {int(duration_hours * 60)} นาที" if duration_hours < 1 else f"ถือ {duration_hours:.1f} ชม.")
+
+        snap = trade.pre_trade_snapshot or {}
+        entry_regime = snap.get("regime", {}).get("composite", "unknown")
+
+        return {
+            "exit_reason": exit_reason,
+            "duration_hours": duration_hours,
+            "outcome": outcome,
+            "profit_usd": round(profit, 2),
+            "entry_regime": entry_regime,
+            "exit_regime": mtf_regime.composite if mtf_regime else None,
+            "summary_th": " | ".join(parts),
+        }
+
+    async def _update_prediction_feedback(self, profit: float) -> None:
+        """Find matching MLPredictionLog and set was_correct + actual_outcome."""
+        try:
+            from app.db.models import MLPredictionLog
+            from app.constants import PREDICTION_FEEDBACK_HOURS
+            from sqlalchemy import select, and_
+            cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=PREDICTION_FEEDBACK_HOURS)
+            stmt = (
+                select(MLPredictionLog)
+                .where(and_(
+                    MLPredictionLog.symbol == self.symbol,
+                    MLPredictionLog.was_correct.is_(None),
+                    MLPredictionLog.created_at >= cutoff,
                 ))
+                .order_by(MLPredictionLog.created_at.desc())
+                .limit(1)
+            )
+            result = await self.db.execute(stmt)
+            pred = result.scalar_one_or_none()
+            if pred:
+                actual = 1 if profit > 0 else -1
+                pred.actual_outcome = actual
+                # BUY prediction (+1) correct if profit > 0, SELL (-1) correct if profit > 0
+                pred.was_correct = (pred.predicted_signal == actual) or (pred.predicted_signal == 0 and abs(profit) < 1)
+                await self.db.commit()
+                logger.info(f"ML feedback [{self.symbol}]: prediction={pred.predicted_signal}, outcome={actual}, correct={pred.was_correct}")
+        except Exception as e:
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
+            logger.warning(f"ML feedback update failed: {e}")
 
     async def _sync_paper_positions(self) -> list[dict]:
         """Update paper positions with current prices, close if SL/TP hit."""

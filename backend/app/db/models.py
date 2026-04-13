@@ -127,6 +127,9 @@ class Trade(Base):
     strategy_name: Mapped[str] = mapped_column(String(50))
     ai_sentiment_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     ai_sentiment_label: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    trade_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    pre_trade_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    post_trade_analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

@@ -10,6 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
 from app.bot.engine import BotEngine
+from app.config import settings
 
 # Timeframe → cron schedule mapping
 TIMEFRAME_CRON = {
@@ -179,6 +180,16 @@ class BotScheduler:
             coalesce=True,
         )
 
+        # Daily trading summary: 22:00 UTC (forex market close)
+        self.scheduler.add_job(
+            self._daily_summary_job,
+            "cron",
+            hour=22,
+            minute=0,
+            id="daily_summary",
+            max_instances=1,
+        )
+
         self.scheduler.start()
         logger.info("Scheduler started")
 
@@ -241,8 +252,23 @@ class BotScheduler:
 
     async def _candle_job(self, symbols: list[str]):
         logger.debug(f"Candle job triggered for {symbols}")
-        # AI Agent is the primary decision-maker (no rule-based strategies)
-        await self._run_ai_agent(symbols)
+
+        trading_mode = getattr(settings, "trading_mode", "strategy")
+
+        if trading_mode == "strategy":
+            # Strategy-first: rule-based strategies generate signals, AI is filter only
+            for sym in symbols:
+                engine = self._engines.get(sym)
+                if engine and engine.state.value == "RUNNING":
+                    try:
+                        await engine.process_candle()
+                    except Exception as e:
+                        logger.error(f"process_candle error [{sym}]: {e}")
+            # AI analysis in parallel (for dashboard display, not trading)
+            asyncio.create_task(self._run_ai_agent(symbols))
+        else:
+            # AI autonomous: AI agent is the primary decision-maker
+            await self._run_ai_agent(symbols)
 
     async def _sentiment_job(self):
         """Fetch news sentiment regardless of bot state — news comes out 24/7.
@@ -356,6 +382,53 @@ class BotScheduler:
         logger.info("Daily reset triggered")
         tasks = [e.circuit_breaker.reset() for e in self._engines.values()]
         await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _daily_summary_job(self):
+        """Daily trading summary at market close — sends Telegram report."""
+        logger.info("Daily summary triggered")
+        try:
+            from sqlalchemy import select, and_, func
+            from app.db.models import Trade
+            from datetime import datetime, timezone, timedelta
+
+            symbol_stats = []
+            total_pnl = 0.0
+            total_trades = 0
+            total_wins = 0
+
+            for symbol, engine in self._engines.items():
+                # Get today's closed trades
+                today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+                stmt = select(Trade).where(and_(
+                    Trade.symbol == symbol,
+                    Trade.close_time >= today_start,
+                    Trade.profit.isnot(None),
+                ))
+                result = await engine.db.execute(stmt)
+                trades = result.scalars().all()
+
+                pnl = sum(t.profit for t in trades)
+                wins = sum(1 for t in trades if t.profit > 0)
+                total_pnl += pnl
+                total_trades += len(trades)
+                total_wins += wins
+
+                symbol_stats.append({
+                    "symbol": symbol,
+                    "pnl": round(pnl, 2),
+                    "trades": len(trades),
+                    "regime": engine.risk_manager.current_regime,
+                })
+
+            total_win_rate = total_wins / total_trades if total_trades > 0 else 0
+
+            # Send via first engine's notifier
+            notifier = next((e.notifier for e in self._engines.values() if e.notifier), None)
+            if notifier:
+                await notifier.send_daily_summary(symbol_stats, round(total_pnl, 2), total_trades, total_win_rate)
+                logger.info(f"Daily summary sent: PnL=${total_pnl:.2f}, trades={total_trades}")
+        except Exception as e:
+            logger.error(f"Daily summary failed: {e}")
 
     async def _ml_retrain_job(self):
         """Weekly ML retrain — trains per-symbol on last 6 months of data."""

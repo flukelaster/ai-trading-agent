@@ -57,7 +57,7 @@ class TestBotEngine:
     async def test_get_status(self, engine):
         status = engine.get_status()
         assert status["state"] == "STOPPED"
-        assert status["strategy"] == "ai_autonomous"
+        assert status["strategy"] == "ema_crossover"
         assert status["symbol"] == "GOLD"
         assert "max_risk_per_trade" in status
 

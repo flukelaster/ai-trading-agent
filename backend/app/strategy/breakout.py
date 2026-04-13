@@ -30,6 +30,10 @@ class BreakoutStrategy(BaseStrategy):
     def min_bars_required(self) -> int:
         return self.lookback + self.atr_period + 5
 
+    @property
+    def worst_case(self) -> str:
+        return "False breakouts in ranging markets — price spikes then immediately reverses"
+
     def get_params(self) -> dict:
         return {
             "lookback": self.lookback,

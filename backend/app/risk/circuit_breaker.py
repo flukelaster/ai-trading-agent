@@ -10,7 +10,7 @@ import redis.asyncio as redis
 from loguru import logger
 
 from app.config import settings
-from app.constants import DEFAULT_PORTFOLIO_MAX_LOSS, MIN_TTL_SECONDS
+from app.constants import DEFAULT_MAX_DRAWDOWN_FROM_PEAK, DEFAULT_PORTFOLIO_MAX_LOSS, MIN_TTL_SECONDS
 
 # Market hours reset time (UTC) per symbol type
 # Forex/metals reset at 17:00 EST = 22:00 UTC (21:00 during DST)
@@ -126,6 +126,35 @@ class CircuitBreaker:
         if triggered:
             logger.warning(f"GLOBAL circuit breaker TRIGGERED: total_pnl={total_pnl:.2f}, limit=-{max_loss:.2f}")
         return triggered
+
+    @staticmethod
+    async def update_peak_balance(redis_client, balance: float) -> float:
+        """Track peak balance in Redis (no TTL — persists across restarts)."""
+        key = "circuit:peak_balance"
+        current = await redis_client.get(key)
+        peak = float(current) if current else 0.0
+        if balance > peak:
+            peak = balance
+            await redis_client.set(key, str(peak))
+        return peak
+
+    @staticmethod
+    async def is_drawdown_halted(
+        redis_client, balance: float,
+        max_drawdown_pct: float = DEFAULT_MAX_DRAWDOWN_FROM_PEAK,
+    ) -> bool:
+        """Check if balance dropped > X% from peak. Returns True to halt trading."""
+        peak = await CircuitBreaker.update_peak_balance(redis_client, balance)
+        if peak <= 0:
+            return False
+        drawdown_pct = (peak - balance) / peak
+        if drawdown_pct >= max_drawdown_pct:
+            logger.warning(
+                f"ABSOLUTE DRAWDOWN HALT: balance={balance:.2f}, peak={peak:.2f}, "
+                f"drawdown={drawdown_pct:.1%} >= limit={max_drawdown_pct:.1%}"
+            )
+            return True
+        return False
 
     @staticmethod
     def _seconds_until_reset(symbol: str) -> int:

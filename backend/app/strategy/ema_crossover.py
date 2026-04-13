@@ -21,6 +21,10 @@ class EMACrossoverStrategy(BaseStrategy):
     def min_bars_required(self) -> int:
         return self.slow_period + 5
 
+    @property
+    def worst_case(self) -> str:
+        return "Choppy/ranging markets cause repeated false crossovers and whipsaw losses"
+
     def get_params(self) -> dict:
         return {"fast_period": self.fast_period, "slow_period": self.slow_period}
 

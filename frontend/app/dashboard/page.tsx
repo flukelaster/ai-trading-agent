@@ -48,6 +48,14 @@ const STRATEGY_TH: Record<string, string> = {
   breakout: "ทะลุแนวรับ/ต้าน",
   ai_autonomous: "AI อัตโนมัติ",
   scalping: "สแคลป์ปิง",
+  ema_crossover: "EMA Crossover",
+  rsi_filter: "RSI Filter",
+  dca: "DCA ถัวเฉลี่ย",
+  grid: "Grid เทรด",
+  risk_parity: "Risk Parity",
+  momentum_rank: "Momentum Rank",
+  pair_spread: "Pair Spread",
+  ml_signal: "ML Signal",
 };
 
 export default function DashboardPage() {
@@ -56,7 +64,7 @@ export default function DashboardPage() {
     setActiveSymbol, setSymbols, setStatus, setSymbolStatuses, setPositions, setSentiment, setTick, addEvent,
   } = useBotStore();
   const [loading, setLoading] = useState(true);
-  const [account, setAccount] = useState<{ balance: number; equity: number; margin: number; free_margin: number; profit: number; accounts?: { connector: string; balance: number; equity: number; currency: string }[] } | null>(null);
+  const [account, setAccount] = useState<{ balance: number; equity: number; margin: number; free_margin: number; profit: number; peak_balance?: number; drawdown_pct?: number; accounts?: { connector: string; balance: number; equity: number; currency: string }[] } | null>(null);
   const [dailyPnl, setDailyPnl] = useState<{ daily_pnl: number; trade_count: number; wins: number; losses: number } | null>(null);
   const [news, setNews] = useState<
     { headline: string; source: string; sentiment_label: string; sentiment_score: number; created_at: string }[]
@@ -326,7 +334,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in" style={{ animationDelay: "0.05s" }}>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in" style={{ animationDelay: "0.05s" }}>
         <StatCard
           icon={TrendingUp}
           label="Unrealized P&L"
@@ -350,6 +358,18 @@ export default function DashboardPage() {
           label="Bot Status"
           value={status?.state || "UNKNOWN"}
           variant={isRunning ? "success" : "warning"}
+        />
+        <StatCard
+          icon={ShieldAlert}
+          label="Drawdown"
+          value={account?.drawdown_pct != null ? `${(account.drawdown_pct * 100).toFixed(1)}%` : "—"}
+          subtitle={account?.peak_balance ? `Peak: $${account.peak_balance.toFixed(0)}` : undefined}
+          variant={
+            !account?.drawdown_pct ? "default"
+            : account.drawdown_pct < 0.05 ? "success"
+            : account.drawdown_pct < 0.10 ? "warning"
+            : "danger"
+          }
         />
       </div>
 
@@ -416,6 +436,35 @@ export default function DashboardPage() {
                 <span className="font-medium">Symbol</span>
                 <span className="text-foreground font-semibold">{activeSymbol}</span>
               </div>
+              {(status?.multi_tf_regime || status?.regime) && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">Regime</span>
+                    <Badge variant="outline" className={`text-[10px] ${
+                      (status.multi_tf_regime?.composite || status.regime) === "trending_high_vol" ? "border-red-500/30 text-red-400" :
+                      (status.multi_tf_regime?.composite || status.regime) === "ranging" ? "border-blue-500/30 text-blue-400" :
+                      (status.multi_tf_regime?.composite || status.regime) === "trending_low_vol" ? "border-green-500/30 text-green-400" :
+                      "border-border text-muted-foreground"
+                    }`}>
+                      {(status.multi_tf_regime?.composite || status.regime) === "trending_high_vol" ? "🔥 Trend+HV" :
+                       (status.multi_tf_regime?.composite || status.regime) === "trending_low_vol" ? "📊 Trend+LV" :
+                       (status.multi_tf_regime?.composite || status.regime) === "ranging" ? "↔️ Ranging" :
+                       "⚖️ Normal"}
+                      {status.multi_tf_regime?.style && ` · ${status.multi_tf_regime.style}`}
+                    </Badge>
+                  </div>
+                  {status.multi_tf_regime && (
+                    <div className="flex gap-1 justify-end">
+                      {(["m15", "h1", "h4"] as const).map((tf) => {
+                        const r = status.multi_tf_regime?.[tf];
+                        const short = r === "trending_high_vol" ? "T↑" : r === "trending_low_vol" ? "T↓" : r === "ranging" ? "R" : "N";
+                        const color = r === "trending_high_vol" ? "text-red-400" : r === "ranging" ? "text-blue-400" : r === "trending_low_vol" ? "text-green-400" : "text-muted-foreground";
+                        return <span key={tf} className={`text-[9px] font-mono ${color}`}>{tf.toUpperCase()}:{short}</span>;
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="font-medium">Timeframe</span>
                 <Select

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
-  getBotStatus, updateSettings, getRolloutMode, setRolloutMode, getRolloutReadiness,
+  getBotStatus, updateSettings, updateStrategy, getRolloutMode, setRolloutMode, getRolloutReadiness, getAvailableStrategies,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,7 @@ type Check = { name: string; status: string; detail: string };
 type SymbolStatus = {
   symbol: string;
   state: string;
+  strategy: string;
   timeframe: string;
   paper_trade: boolean;
   max_lot: number;
@@ -69,13 +70,15 @@ export default function SettingsPage() {
   const [checks, setChecks] = useState<Check[]>([]);
   const [readiness, setReadiness] = useState<{ ready: boolean; errors: number; warnings: number } | null>(null);
   const [confirmLive, setConfirmLive] = useState(false);
+  const [strategies, setStrategies] = useState<{ name: string; worst_case: string }[]>([]);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [rolloutRes, statusRes, readinessRes] = await Promise.all([
+      const [rolloutRes, statusRes, readinessRes, stratRes] = await Promise.all([
         getRolloutMode().catch(() => null),
         getBotStatus().catch(() => null),
         getRolloutReadiness().catch(() => null),
+        getAvailableStrategies().catch(() => null),
       ]);
 
       if (rolloutRes?.data) {
@@ -91,6 +94,9 @@ export default function SettingsPage() {
           errors: readinessRes.data.errors,
           warnings: readinessRes.data.warnings,
         });
+      }
+      if (stratRes?.data?.strategies) {
+        setStrategies(stratRes.data.strategies);
       }
     } catch {
       /* handled */
@@ -143,12 +149,34 @@ export default function SettingsPage() {
     <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 max-w-4xl">
       <PageHeader title="Settings" subtitle="Trading mode, risk parameters, and system health" />
 
-      {/* ── Trading Mode ─────────────────────────────────────── */}
+      {/* ── Decision Mode ────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Info className="size-4" />
+            Decision Mode
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-4">
+            <p className="text-sm font-bold text-green-400">Strategy-First (AI Filter)</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Rule-based strategies (DCA, Grid, EMA, etc.) generate trade signals.
+              AI analyzes market conditions and provides context on the dashboard — it does NOT execute trades.
+            </p>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Strategy สร้าง signal → AI filter ดูข่าว/event → Risk manager ตรวจ regime/drawdown → เปิด trade
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Rollout Mode ──────────────────────────────────────── */}
       <Card>
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <Shield className="size-4" />
-            Trading Mode
+            Rollout Mode
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0 space-y-4">
@@ -249,6 +277,43 @@ export default function SettingsPage() {
               </div>
 
               <Separator />
+
+              {/* Strategy selector + worst case */}
+              {strategies.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-3">
+                    <div className="space-y-1 flex-1">
+                      <label className="text-xs text-muted-foreground font-medium">Strategy</label>
+                      <Select
+                        value={st.strategy || "ai_autonomous"}
+                        onValueChange={async (v) => {
+                          if (!v) return;
+                          await updateStrategy(v, undefined, symbol || undefined);
+                          const res = await getBotStatus().catch(() => null);
+                          if (res?.data?.symbols) setSymbolStatuses(res.data.symbols);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ai_autonomous">AI Autonomous</SelectItem>
+                          {strategies.map((s) => (
+                            <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {(() => {
+                    const selected = strategies.find((s) => s.name === st.strategy);
+                    return selected?.worst_case ? (
+                      <p className="text-[11px] text-amber-500/80 leading-snug">
+                        <AlertTriangle className="size-3 inline mr-1" />
+                        Worst case: {selected.worst_case}
+                      </p>
+                    ) : null;
+                  })()}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-xs">
                 {/* Lot Mode */}
