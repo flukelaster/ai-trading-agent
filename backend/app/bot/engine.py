@@ -189,6 +189,14 @@ class BotEngine:
         except Exception as e:
             logger.warning(f"Could not seed known tickets: {e}")
 
+        # Load cached sentiment from Redis
+        try:
+            cached = await self.sentiment_analyzer.get_latest_sentiment(symbol=self.symbol)
+            if cached and cached.label != "neutral":
+                self._last_sentiment = cached.to_dict()
+        except Exception:
+            pass
+
         await self._log_event(BotEventType.STARTED, "Bot started")
         logger.info(f"Bot started: strategy={self.strategy.name}, symbol={self.symbol}")
         if self.notifier:
@@ -211,6 +219,7 @@ class BotEngine:
 
     def get_status(self) -> dict:
         ai_decision = getattr(self, "_last_ai_decision", None)
+        sentiment = getattr(self, "_last_sentiment", None)
         return {
             "state": self.state.value,
             "strategy": "ai_autonomous",
@@ -225,6 +234,7 @@ class BotEngine:
             "max_concurrent_trades": self.risk_manager.max_concurrent_trades,
             "max_lot": self.risk_manager.max_lot,
             "ai_decision": ai_decision,
+            "sentiment": sentiment,
         }
 
     async def process_candle(self):
@@ -580,6 +590,7 @@ class BotEngine:
             if news:
                 result = await self.sentiment_analyzer.analyze(news, context=self._ai_context, symbol=self.symbol)
                 logger.info(f"Sentiment: {result.label} (score={result.score}, confidence={result.confidence})")
+                self._last_sentiment = result.to_dict()
                 await self._push_event("sentiment_update", {**result.to_dict(), "symbol": self.symbol})
                 if self.notifier:
                     await self._notify(self.notifier.send_sentiment_alert(
