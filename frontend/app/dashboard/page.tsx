@@ -13,7 +13,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Wallet, TrendingUp, Layers, Activity, Play, Square, ShieldAlert, Wifi, WifiOff, DollarSign,
+  TrendingUp, Layers, Activity, Play, Square, ShieldAlert, Wifi, WifiOff, DollarSign,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -314,7 +314,7 @@ export default function DashboardPage() {
             ))
           ) : (
             <div className="flex items-center gap-3">
-              <Wallet className="size-4 text-muted-foreground" />
+              <img src="/coin.svg" alt="Balance" className="size-5" />
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Balance</p>
                 <p className="text-sm font-bold font-mono"><AnimatedCounter value={account.balance} prefix="$" /></p>
