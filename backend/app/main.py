@@ -60,6 +60,25 @@ async def lifespan(app: FastAPI):
 
     logger.info("Starting Trading Bot (multi-symbol)...")
 
+    # Auto-add missing columns (safe for production — ALTER TABLE IF NOT EXISTS equivalent)
+    try:
+        from sqlalchemy import text
+        _tmp_session = async_session()
+        for col_sql in [
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_reason VARCHAR(255)",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pre_trade_snapshot JSON",
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS post_trade_analysis JSON",
+        ]:
+            try:
+                await _tmp_session.execute(text(col_sql))
+            except Exception:
+                pass
+        await _tmp_session.commit()
+        await _tmp_session.close()
+        logger.info("DB schema check complete")
+    except Exception as e:
+        logger.warning(f"DB schema auto-migration skipped: {e}")
+
     # Initialize shared components
     connector = MT5BridgeConnector()
     redis_client = redis_lib.from_url(settings.redis_url)
