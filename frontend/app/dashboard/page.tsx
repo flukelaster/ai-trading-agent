@@ -110,8 +110,9 @@ export default function DashboardPage() {
       if (posRes?.data?.positions) setPositions(posRes.data.positions);
       if (sentRes?.data) setSentiment(sentRes.data);
       if (newsRes?.data?.history) setNews(newsRes.data.history.slice(0, 5));
-      if (accRes?.data) setAccount(accRes.data);
-      if (pnlRes?.data) setDailyPnl(pnlRes.data);
+      // Only update if data actually returned (prevent clearing on API failure)
+      if (accRes?.data?.balance !== undefined) setAccount(accRes.data);
+      if (pnlRes?.data?.daily_pnl !== undefined) setDailyPnl(pnlRes.data);
       if (analyticsRes?.data) setAnalytics(analyticsRes.data);
 
       // Load persisted events from DB (survives page refresh)
@@ -430,7 +431,11 @@ export default function DashboardPage() {
             <div className="space-y-2 text-xs text-muted-foreground">
               <div className="flex items-center justify-between">
                 <span className="font-medium">Mode</span>
-                <span className="font-semibold text-primary">AI Autonomous</span>
+                <span className="font-semibold text-green-400">Strategy-First</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">Strategy</span>
+                <span className="text-foreground font-semibold">{status?.strategy || "ema_crossover"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-medium">Symbol</span>

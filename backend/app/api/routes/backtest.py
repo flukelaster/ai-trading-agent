@@ -218,3 +218,68 @@ async def _load_data(symbol: str, source: str, timeframe: str, count: int, from_
         if _market_data is None:
             raise HTTPException(status_code=503, detail="Market data service not available")
         return await _market_data.get_ohlcv(symbol, timeframe, count)
+
+
+# ─── Statistical Validation Endpoints ────────────────────────────────────────
+
+
+from fastapi import Query
+
+
+@router.get("/cointegration", dependencies=[Depends(require_auth)])
+async def run_cointegration_test(
+    symbol_a: str = Query("GOLD"),
+    symbol_b: str = Query("USDJPY"),
+    timeframe: str = Query("M15"),
+    count: int = Query(2000, ge=100, le=10000),
+    source: str = Query("mt5"),
+):
+    """Test if two symbols are cointegrated (pair spread validity)."""
+    from app.backtest.statistical_tests import cointegration_test
+
+    df_a = await _load_data(symbol_a, source, timeframe, count, None, None)
+    df_b = await _load_data(symbol_b, source, timeframe, count, None, None)
+
+    if df_a.empty or df_b.empty:
+        return {"error": "Insufficient data for one or both symbols"}
+
+    result = cointegration_test(df_a["close"], df_b["close"])
+    return {**result.to_dict(), "symbol_a": symbol_a, "symbol_b": symbol_b}
+
+
+class PermutationTestRequest(BaseModel):
+    strategy: str = "ema_crossover"
+    params: dict | None = None
+    symbol: str = "GOLD"
+    timeframe: str = "M15"
+    source: str = "mt5"
+    count: int = Field(5000, ge=200)
+    from_date: str | None = None
+    to_date: str | None = None
+    initial_balance: float = 10000.0
+    n_permutations: int = Field(500, ge=50, le=2000)
+    include_costs: bool = True
+
+
+@router.post("/permutation-test", dependencies=[Depends(require_auth)])
+async def run_permutation_test_endpoint(req: PermutationTestRequest):
+    """Test if strategy signals are significantly better than random."""
+    import asyncio
+    from app.backtest.statistical_tests import permutation_test
+
+    df = await _load_data(req.symbol, req.source, req.timeframe, req.count, req.from_date, req.to_date)
+    if df.empty:
+        return {"error": "No OHLCV data available"}
+
+    strategy = get_strategy(req.strategy, req.params, symbol=req.symbol)
+    risk_manager = RiskManager()
+
+    # Run in thread to avoid blocking event loop (CPU-heavy)
+    result = await asyncio.to_thread(
+        permutation_test,
+        df, strategy, risk_manager,
+        initial_balance=req.initial_balance,
+        n_permutations=req.n_permutations,
+        include_costs=req.include_costs,
+    )
+    return {**result.to_dict(), "symbol": req.symbol, "strategy": req.strategy}

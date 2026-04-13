@@ -11,6 +11,7 @@ from loguru import logger
 
 from app.strategy.base import BaseStrategy
 from app.risk.manager import RiskManager
+from app.constants import DEFAULT_COMMISSION_PCT, DEFAULT_SLIPPAGE_PIPS
 
 
 @dataclass
@@ -19,6 +20,7 @@ class BacktestResult:
     total_trades: int = 0
     win_rate: float = 0.0
     total_profit: float = 0.0
+    total_gross_profit: float = 0.0
     max_drawdown: float = 0.0
     sharpe_ratio: float = 0.0
     profit_factor: float = 0.0
@@ -30,12 +32,13 @@ class BacktestResult:
             "total_trades": self.total_trades,
             "win_rate": round(self.win_rate, 4),
             "total_profit": round(self.total_profit, 2),
+            "total_gross_profit": round(self.total_gross_profit, 2),
             "max_drawdown": round(self.max_drawdown, 4),
             "sharpe_ratio": round(self.sharpe_ratio, 4),
             "profit_factor": round(self.profit_factor, 4),
             "equity_curve": self.equity_curve,
             "ai_filtered_trades": self.ai_filtered_trades,
-            "trades": self.trades[:100],  # Limit for response size
+            "trades": self.trades[:100],
         }
 
 
@@ -45,16 +48,23 @@ class BacktestEngine:
         strategy: BaseStrategy,
         risk_manager: RiskManager,
         initial_balance: float = 10000.0,
+        include_costs: bool = False,
+        spread_pips: float = DEFAULT_SLIPPAGE_PIPS,
+        commission_pct: float = DEFAULT_COMMISSION_PCT,
     ):
         self.strategy = strategy
         self.risk_manager = risk_manager
         self.initial_balance = initial_balance
+        self.include_costs = include_costs
+        self.spread_pips = spread_pips
+        self.commission_pct = commission_pct
 
     def run(
         self,
         df: pd.DataFrame,
         use_ai_filter: bool = False,
         sentiment_data: list[dict] | None = None,
+        signals_override: pd.Series | None = None,
     ) -> BacktestResult:
         if len(df) < self.strategy.min_bars_required:
             logger.warning(f"Not enough bars: {len(df)} < {self.strategy.min_bars_required}")
@@ -62,6 +72,10 @@ class BacktestEngine:
 
         # Calculate signals on full dataset
         df = self.strategy.calculate(df)
+
+        # Override signals (used by permutation test)
+        if signals_override is not None:
+            df["signal"] = signals_override.values
 
         # Pre-sort sentiment data for binary search lookup
         sorted_sentiments: list[dict] = []
@@ -116,6 +130,13 @@ class BacktestEngine:
                     continue
 
                 entry_price = row["open"]
+                # Apply spread cost: BUY at ask (higher), SELL at bid (lower)
+                if self.include_costs:
+                    half_spread = self.spread_pips * 0.5
+                    if signal == 1:
+                        entry_price += half_spread
+                    else:
+                        entry_price -= half_spread
                 sl_tp = self.risk_manager.calculate_sl_tp(entry_price, signal, atr)
                 sl_pips = abs(entry_price - sl_tp.sl)
                 lot = self.risk_manager.calculate_lot_size(balance, sl_pips)
@@ -169,13 +190,16 @@ class BacktestEngine:
                 return {"close_price": trade["tp"], "profit": self._calc_profit(trade, trade["tp"])}
         return None
 
-    @staticmethod
-    def _calc_profit(trade: dict, close_price: float) -> float:
+    def _calc_profit(self, trade: dict, close_price: float) -> float:
         if trade["type"] == "BUY":
             pips = close_price - trade["entry_price"]
         else:
             pips = trade["entry_price"] - close_price
-        return round(pips * trade["lot"] * 100, 2)
+        gross = pips * trade["lot"] * 100
+        if self.include_costs:
+            commission = abs(close_price * trade["lot"] * 100) * self.commission_pct
+            return round(gross - commission, 2)
+        return round(gross, 2)
 
     def _unrealized_pnl(self, trade: dict, row) -> float:
         return self._calc_profit(trade, row["close"])
@@ -216,6 +240,7 @@ class BacktestEngine:
             total_trades=len(trades),
             win_rate=len(wins) / len(trades) if trades else 0,
             total_profit=total_profit,
+            total_gross_profit=gross_profit,
             max_drawdown=max_dd,
             sharpe_ratio=sharpe,
             profit_factor=gross_profit / gross_loss if gross_loss > 0 else float("inf"),

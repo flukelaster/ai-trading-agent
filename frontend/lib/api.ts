@@ -178,6 +178,17 @@ export const runMonteCarlo = (params: {
   count?: number; params?: Record<string, unknown>;
 }) => api.post("/api/backtest/monte-carlo", params, { timeout: 120000 });
 
+// Statistical Validation
+export const runCointegration = (params: {
+  symbol_a: string; symbol_b: string; timeframe?: string; count?: number; source?: string;
+}) => api.get("/api/backtest/cointegration", { params, timeout: 30000 });
+export const runPermutationTest = (params: {
+  strategy: string; params?: Record<string, unknown>;
+  symbol?: string; timeframe?: string; n_permutations?: number;
+  source?: string; from_date?: string; to_date?: string; count?: number;
+  include_costs?: boolean;
+}) => api.post("/api/backtest/permutation-test", params, { timeout: 300000 });
+
 // Macro Data
 export const getMacroLatest = () => api.get("/api/macro/latest");
 export const getMacroCorrelations = (days?: number) =>

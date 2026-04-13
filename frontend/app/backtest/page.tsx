@@ -19,7 +19,7 @@ import { PageInstructions } from "@/components/layout/PageInstructions";
 import { StatCard } from "@/components/ui/stat-card";
 import { TIMEFRAMES } from "@/components/ui/timeframe-selector";
 import {
-  runBacktest, runOptimize, runWalkForward, runMonteCarlo, getCurrentStrategy, getDataStatus, getSymbols,
+  runBacktest, runOptimize, runWalkForward, runMonteCarlo, runCointegration, runPermutationTest, getCurrentStrategy, getDataStatus, getSymbols,
 } from "@/lib/api";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -135,6 +135,11 @@ export default function BacktestPage() {
   // Monte Carlo state
   const [mcResult, setMcResult] = useState<Record<string, unknown> | null>(null);
   const [mcRunning, setMcRunning] = useState(false);
+  // Significance state
+  const [cointResult, setCointResult] = useState<Record<string, unknown> | null>(null);
+  const [cointRunning, setCointRunning] = useState(false);
+  const [permResult, setPermResult] = useState<Record<string, unknown> | null>(null);
+  const [permRunning, setPermRunning] = useState(false);
 
   const currentParams: ParamDef[] = STRATEGY_PARAMS[strategy] ?? [];
 
@@ -215,6 +220,31 @@ export default function BacktestPage() {
       const res = await runMonteCarlo(params as Parameters<typeof runMonteCarlo>[0]);
       setMcResult(res.data);
     } catch { /* handled */ } finally { setMcRunning(false); }
+  };
+
+  const handleCointegration = async () => {
+    setCointRunning(true);
+    setCointResult(null);
+    try {
+      const pairMap: Record<string, string> = { GOLD: "USDJPY", USDJPY: "GOLD" };
+      const symbolB = pairMap[symbol] || "USDJPY";
+      const res = await runCointegration({ symbol_a: symbol, symbol_b: symbolB, timeframe, source });
+      setCointResult(res.data);
+    } catch { /* handled */ } finally { setCointRunning(false); }
+  };
+
+  const handlePermutation = async () => {
+    setPermRunning(true);
+    setPermResult(null);
+    try {
+      const params: Record<string, unknown> = {
+        strategy, symbol, timeframe, source, n_permutations: 500, include_costs: true,
+      };
+      if (source === "db") { params.from_date = fromDate; params.to_date = toDate; }
+      else { params.count = count; }
+      const res = await runPermutationTest(params as Parameters<typeof runPermutationTest>[0]);
+      setPermResult(res.data);
+    } catch { /* handled */ } finally { setPermRunning(false); }
   };
 
   const equityCurve = (result?.equity_curve as number[] || []).map((v, i) => ({ bar: i, equity: v }));
@@ -309,11 +339,12 @@ export default function BacktestPage() {
       />
 
       <Tabs defaultValue="backtest" className="space-y-5">
-        <TabsList className="grid w-full grid-cols-4 max-w-lg">
+        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
           <TabsTrigger value="backtest"><FlaskConical className="size-3.5 mr-1.5" />Backtest</TabsTrigger>
           <TabsTrigger value="optimize"><Zap className="size-3.5 mr-1.5" />Optimizer</TabsTrigger>
           <TabsTrigger value="walk-forward"><Footprints className="size-3.5 mr-1.5" />Walk Forward</TabsTrigger>
           <TabsTrigger value="monte-carlo"><Dice5 className="size-3.5 mr-1.5" />Monte Carlo</TabsTrigger>
+          <TabsTrigger value="significance"><CheckCircle className="size-3.5 mr-1.5" />Significance</TabsTrigger>
         </TabsList>
 
         {/* ── Backtest Tab ─────────────────────────────────────── */}
@@ -758,6 +789,87 @@ export default function BacktestPage() {
               <p className="text-sm text-red-400">{String(mcResult.error)}</p>
             </div>
           )}
+        </TabsContent>
+
+        {/* ── Significance Tab ───────────────────────────────── */}
+        <TabsContent value="significance" className="space-y-4 mt-0">
+          {configForm}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Cointegration Test */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cointegration (ADF)</h3>
+                <Button onClick={handleCointegration} disabled={cointRunning} variant="outline" size="sm" className="h-7 text-xs rounded-lg">
+                  {cointRunning ? <Loader2 className="size-3 mr-1 animate-spin" /> : <Search className="size-3 mr-1" />}
+                  {cointRunning ? "Testing..." : "Test Pair"}
+                </Button>
+              </div>
+
+              {cointResult && !cointResult.error && (
+                <div className={`rounded-lg border p-3 ${
+                  cointResult.is_cointegrated
+                    ? "border-green-500/30 bg-green-500/5"
+                    : "border-red-500/30 bg-red-500/5"
+                }`}>
+                  <p className={`text-sm font-bold ${cointResult.is_cointegrated ? "text-green-400" : "text-red-400"}`}>
+                    {cointResult.verdict as string}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-muted-foreground">
+                    <span>p-value: <strong className="text-foreground">{(cointResult.p_value as number).toFixed(4)}</strong></span>
+                    <span>Hedge ratio: <strong className="text-foreground">{(cointResult.hedge_ratio as number).toFixed(4)}</strong></span>
+                    <span>Test stat: {(cointResult.test_statistic as number).toFixed(4)}</span>
+                    <span>Observations: {cointResult.n_observations as number}</span>
+                  </div>
+                </div>
+              )}
+              {cointResult && Boolean(cointResult.error) && (
+                <p className="text-xs text-red-400">{String(cointResult.error)}</p>
+              )}
+              {!cointResult && (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Tests if {symbol} and its pair are cointegrated (p &lt; 0.05 = valid for pair spread)
+                </p>
+              )}
+            </div>
+
+            {/* Permutation Test */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Permutation Test</h3>
+                <Button onClick={handlePermutation} disabled={permRunning} variant="outline" size="sm" className="h-7 text-xs rounded-lg">
+                  {permRunning ? <Loader2 className="size-3 mr-1 animate-spin" /> : <Zap className="size-3 mr-1" />}
+                  {permRunning ? "Testing..." : "Test Significance"}
+                </Button>
+              </div>
+
+              {permResult && !permResult.error && (
+                <div className={`rounded-lg border p-3 ${
+                  permResult.is_significant
+                    ? "border-green-500/30 bg-green-500/5"
+                    : "border-red-500/30 bg-red-500/5"
+                }`}>
+                  <p className={`text-sm font-bold ${permResult.is_significant ? "text-green-400" : "text-red-400"}`}>
+                    {permResult.verdict as string}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-muted-foreground">
+                    <span>p-value: <strong className="text-foreground">{(permResult.p_value as number).toFixed(4)}</strong></span>
+                    <span>Real Sharpe: <strong className="text-foreground">{(permResult.real_sharpe as number).toFixed(4)}</strong></span>
+                    <span>Shuffled mean: {(permResult.shuffled_mean as number).toFixed(4)}</span>
+                    <span>Shuffled std: {(permResult.shuffled_std as number).toFixed(4)}</span>
+                  </div>
+                </div>
+              )}
+              {permResult && Boolean(permResult.error) && (
+                <p className="text-xs text-red-400">{String(permResult.error)}</p>
+              )}
+              {!permResult && (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Shuffles signals 500 times to test if strategy beats random (p &lt; 0.05 = real edge)
+                </p>
+              )}
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

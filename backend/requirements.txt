@@ -16,6 +16,7 @@ loguru==0.7.3
 pydantic-settings==2.7.1
 lightgbm==4.5.0
 scikit-learn==1.5.2
+statsmodels>=0.14.0
 joblib==1.4.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
