@@ -1,8 +1,8 @@
 """add trade_reason, pre_trade_snapshot, post_trade_analysis to trades
 
-Revision ID: g7h8i9j0k1l2
-Revises: f6g7h8i9j0k1
-Create Date: 2026-04-13 20:00:00.000000
+Revision ID: m3n4o5p6q7r8
+Revises: l2m3n4o5p6q7
+Create Date: 2026-04-13 21:26:00.000000
 """
 from typing import Sequence, Union
 
@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'g7h8i9j0k1l2'
-down_revision: Union[str, None] = 'f6g7h8i9j0k1'
+revision: str = 'm3n4o5p6q7r8'
+down_revision: Union[str, None] = 'l2m3n4o5p6q7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
