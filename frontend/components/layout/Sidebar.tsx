@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   LayoutDashboard,
+  Settings,
   Settings2,
   BarChart3,
   History,
@@ -57,6 +58,7 @@ const navGroups: NavGroup[] = [
       { href: "/agent-prompts", label: "Agent Prompts", icon: Settings2 },
       { href: "/integration", label: "Integration", icon: Plug },
       { href: "/notifications", label: "Notifications", icon: Bell },
+      { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
 ];

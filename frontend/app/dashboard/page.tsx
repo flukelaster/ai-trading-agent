@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -431,6 +432,53 @@ export default function DashboardPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Lot Size</span>
+                  <Select
+                    value={status?.fixed_lot != null ? "fixed" : "auto"}
+                    onValueChange={async (v) => {
+                      if (v === "auto") {
+                        await updateSettings({ symbol: activeSymbol, lot_mode: "auto" });
+                      } else {
+                        const lot = status?.fixed_lot ?? activeSymbolInfo?.default_lot ?? 0.1;
+                        await updateSettings({ symbol: activeSymbol, lot_mode: "fixed", fixed_lot: lot });
+                      }
+                      fetchData();
+                    }}
+                  >
+                    <SelectTrigger className="w-24 h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto (AI)</SelectItem>
+                      <SelectItem value="fixed">Fixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {status?.fixed_lot != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-muted-foreground/70">Fixed Lot</span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max={status?.max_lot ?? 100}
+                      className="w-24 h-7 text-xs text-right font-mono"
+                      defaultValue={status.fixed_lot}
+                      key={`${activeSymbol}-fixed-${status.fixed_lot}`}
+                      onBlur={async (e) => {
+                        const v = parseFloat(e.target.value);
+                        if (v >= 0.01 && v <= (status?.max_lot ?? 100)) {
+                          await updateSettings({ symbol: activeSymbol, lot_mode: "fixed", fixed_lot: v });
+                          fetchData();
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -526,7 +574,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-bold">News Feed</CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="space-y-2">
+            <div>
               {news.length > 0 ? (
                 news.map((n, i) => (
                   <NewsCard

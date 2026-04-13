@@ -494,7 +494,7 @@ export default function BacktestPage() {
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={handleWalkForward} disabled={wfRunning || currentParams.length === 0} className="rounded-lg font-medium min-w-35">
+            <Button onClick={handleWalkForward} disabled={wfRunning} className="rounded-lg font-medium min-w-35">
               {wfRunning ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Footprints className="size-4 mr-1.5" />}
               {wfRunning ? "Running..." : "Run Walk Forward"}
             </Button>

@@ -31,6 +31,8 @@ type BotStatus = {
   started_at: string | null;
   use_ai_filter: boolean;
   paper_trade: boolean;
+  max_lot?: number;
+  fixed_lot?: number | null;
   sentiment?: Sentiment;
   ai_decision?: {
     decision: string;

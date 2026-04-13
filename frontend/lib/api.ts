@@ -51,6 +51,8 @@ export const updateSettings = (data: {
   max_daily_loss?: number;
   max_concurrent_trades?: number;
   max_lot?: number;
+  fixed_lot?: number;
+  lot_mode?: "fixed" | "auto";
 }) => api.put("/api/bot/settings", data);
 export const getAccount = () => api.get("/api/bot/account");
 export const getBotEvents = (params?: { days?: number; event_type?: string; limit?: number }) =>
@@ -181,6 +183,11 @@ export const getAnalytics = (symbol?: string, days?: number) =>
 export const getOHLCV = (symbol: string = "GOLD", timeframe: string = "M15", count: number = 200) =>
   api.get("/api/market-data/ohlcv", { params: { symbol, timeframe, count } });
 export const getSymbols = () => api.get("/api/market-data/symbols");
+
+// Rollout
+export const getRolloutMode = () => api.get("/api/rollout/mode");
+export const setRolloutMode = (mode: string) => api.put("/api/rollout/mode", { mode });
+export const getRolloutReadiness = () => api.get("/api/rollout/readiness");
 
 // Health
 export const getHealth = () => api.get("/health");

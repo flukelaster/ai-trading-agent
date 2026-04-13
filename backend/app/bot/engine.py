@@ -84,6 +84,9 @@ from app.strategy import get_strategy
 from app.strategy.base import BaseStrategy
 
 
+_UNSET = object()  # Sentinel for "parameter not passed" (distinct from None)
+
+
 class BotState(str, enum.Enum):
     STOPPED = "STOPPED"
     RUNNING = "RUNNING"
@@ -139,6 +142,9 @@ class BotEngine:
         self.state = BotState.STOPPED
         self._manager = None  # BotManager ref (set in manager.py)
         self._known_tickets: set[int] = set()  # Track open tickets for close detection
+
+        # Lot sizing mode: None = auto (AI/Kelly/risk-based), float = fixed lot
+        self.fixed_lot: float | None = None
 
         # Paper trade mode
         self.paper_trade = settings.paper_trade
@@ -232,6 +238,7 @@ class BotEngine:
             "max_daily_loss": self.risk_manager.max_daily_loss,
             "max_concurrent_trades": self.risk_manager.max_concurrent_trades,
             "max_lot": self.risk_manager.max_lot,
+            "fixed_lot": self.fixed_lot,
             "ai_decision": ai_decision,
             "sentiment": sentiment,
         }
@@ -426,14 +433,16 @@ class BotEngine:
         sl_pips = abs(entry_price - sl_tp.sl)
         atr_pct = atr / entry_price if entry_price > 0 else 0
 
-        # Position sizing: Kelly Criterion if enough history, otherwise fixed risk
-        lot = await self._calculate_position_size(balance, sl_pips, atr_pct)
-
-        # Apply warmup ramp-in
-        lot = self._apply_warmup(lot)
-
-        # Apply consecutive loss streak reduction
-        lot = await self._apply_streak_adjustment(lot)
+        # Position sizing: fixed lot or AI-calculated (Kelly/risk-based)
+        if self.fixed_lot is not None:
+            lot = round(min(self.fixed_lot, self.risk_manager.max_lot), 2)
+            lot = max(lot, MIN_LOT)
+        else:
+            lot = await self._calculate_position_size(balance, sl_pips, atr_pct)
+            # Apply warmup ramp-in
+            lot = self._apply_warmup(lot)
+            # Apply consecutive loss streak reduction
+            lot = await self._apply_streak_adjustment(lot)
 
         # Place order (real or paper)
         order_type = "BUY" if signal == 1 else "SELL"
@@ -946,7 +955,7 @@ class BotEngine:
         self.strategy = get_strategy(name, params, symbol=self.symbol)
         logger.info(f"Strategy updated [{self.symbol}]: {name} params={params}")
 
-    async def update_settings(self, use_ai_filter: bool | None = None, ai_confidence_threshold: float | None = None, paper_trade: bool | None = None, timeframe: str | None = None, max_risk_per_trade: float | None = None, max_daily_loss: float | None = None, max_concurrent_trades: int | None = None, max_lot: float | None = None):
+    async def update_settings(self, use_ai_filter: bool | None = None, ai_confidence_threshold: float | None = None, paper_trade: bool | None = None, timeframe: str | None = None, max_risk_per_trade: float | None = None, max_daily_loss: float | None = None, max_concurrent_trades: int | None = None, max_lot: float | None = None, fixed_lot: float | None | object = _UNSET):
         if use_ai_filter is not None:
             self.risk_manager.use_ai_filter = use_ai_filter
         if ai_confidence_threshold is not None:
@@ -973,6 +982,9 @@ class BotEngine:
         if max_lot is not None:
             self.risk_manager.max_lot = max_lot
             logger.info(f"Max lot: {max_lot}")
+        if fixed_lot is not _UNSET:
+            self.fixed_lot = fixed_lot if fixed_lot is None else float(fixed_lot)
+            logger.info(f"Lot sizing: {'fixed ' + str(self.fixed_lot) if self.fixed_lot else 'auto (AI)'}")
 
     async def _log_event(self, event_type: BotEventType, message: str):
         try:

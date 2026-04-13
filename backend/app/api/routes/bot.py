@@ -4,6 +4,8 @@ Bot control API routes (multi-symbol).
 
 from datetime import datetime, timedelta
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -59,6 +61,8 @@ class SettingsUpdate(BaseModel):
     max_daily_loss: float | None = Field(None, ge=0.01, le=0.20)
     max_concurrent_trades: int | None = Field(None, ge=1, le=20)
     max_lot: float | None = Field(None, ge=0.01, le=100.0)
+    fixed_lot: float | None = Field(None, ge=0.01, le=100.0)
+    lot_mode: Literal["fixed", "auto"] | None = None
 
 
 @router.post("/start", dependencies=[Depends(require_auth)])
@@ -162,6 +166,14 @@ async def update_strategy(data: StrategyUpdate):
 
 @router.put("/settings", dependencies=[Depends(require_auth)])
 async def update_settings(data: SettingsUpdate):
+    # Resolve fixed_lot from lot_mode: "auto" → None, "fixed" → use fixed_lot value
+    from app.bot.engine import _UNSET
+    resolved_fixed_lot = _UNSET
+    if data.lot_mode == "auto":
+        resolved_fixed_lot = None
+    elif data.lot_mode == "fixed" and data.fixed_lot is not None:
+        resolved_fixed_lot = data.fixed_lot
+
     if data.symbol:
         engine = _get_engine(data.symbol)
         await engine.update_settings(
@@ -173,6 +185,7 @@ async def update_settings(data: SettingsUpdate):
             max_daily_loss=data.max_daily_loss,
             max_concurrent_trades=data.max_concurrent_trades,
             max_lot=data.max_lot,
+            fixed_lot=resolved_fixed_lot,
         )
     else:
         mgr = get_manager()
@@ -186,6 +199,7 @@ async def update_settings(data: SettingsUpdate):
                 max_daily_loss=data.max_daily_loss,
                 max_concurrent_trades=data.max_concurrent_trades,
                 max_lot=data.max_lot,
+                fixed_lot=resolved_fixed_lot,
             )
     return {"status": "updated"}
 
