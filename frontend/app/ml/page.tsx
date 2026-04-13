@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database, CheckCircle2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database, CheckCircle2, XCircle, ChevronDown, ChevronUp, AlertTriangle, Activity, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
-import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData, getSymbols } from "@/lib/api";
+import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData, getSymbols, getDriftReport, getCalibration } from "@/lib/api";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
 import { SymbolTabs } from "@/components/ui/symbol-tabs";
 import { TIMEFRAMES } from "@/components/ui/timeframe-selector";
 
@@ -32,6 +33,10 @@ export default function MLPage() {
   const [collectResult, setCollectResult] = useState<{ total_bars_fetched: number; new_bars_inserted: number } | null>(null);
   const [collectError, setCollectError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [driftReport, setDriftReport] = useState<Record<string, unknown> | null>(null);
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [calibration, setCalibration] = useState<Record<string, unknown> | null>(null);
+  const [calibLoading, setCalibLoading] = useState(false);
 
   const [collectTimeframe, setCollectTimeframe] = useState("M15");
   const [trainTimeframe, setTrainTimeframe] = useState("M15");
@@ -133,6 +138,24 @@ export default function MLPage() {
       setPrediction(res.data);
     } catch { /* handled */ }
     finally { setPredicting(false); }
+  };
+
+  const handleDrift = async () => {
+    setDriftLoading(true);
+    try {
+      const res = await getDriftReport(activeSymbol);
+      setDriftReport(res.data);
+    } catch { /* handled */ }
+    finally { setDriftLoading(false); }
+  };
+
+  const handleCalibration = async () => {
+    setCalibLoading(true);
+    try {
+      const res = await getCalibration(activeSymbol);
+      setCalibration(res.data);
+    } catch { /* handled */ }
+    finally { setCalibLoading(false); }
   };
 
   if (loading) {
@@ -389,6 +412,144 @@ export default function MLPage() {
                 <p className="text-xs text-muted-foreground text-center py-4">
                   Run a prediction to see the model&apos;s current signal
                 </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─── Step 4: Model Health ─────────────────────────────────── */}
+      {hasModel && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center size-7 rounded-full bg-primary/10 text-primary text-xs font-bold">4</div>
+            <h2 className="text-sm font-bold">Model Health</h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Drift Panel */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Feature Drift (PSI)</h3>
+                <Button onClick={handleDrift} disabled={driftLoading} variant="outline" size="sm" className="h-7 text-xs rounded-lg">
+                  {driftLoading ? <Loader2 className="size-3 mr-1 animate-spin" /> : <Activity className="size-3 mr-1" />}
+                  {driftLoading ? "Checking..." : "Check Drift"}
+                </Button>
+              </div>
+
+              {driftReport && !driftReport.error && (
+                <>
+                  {/* Summary banner */}
+                  <div className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+                    driftReport.alert
+                      ? "border-red-500/30 bg-red-500/5 text-red-400"
+                      : (driftReport.drifted_features as string[])?.length > 0
+                        ? "border-amber-500/30 bg-amber-500/5 text-amber-400"
+                        : "border-green-500/30 bg-green-500/5 text-green-400"
+                  }`}>
+                    {Boolean(driftReport.alert) && <AlertTriangle className="size-3 inline mr-1" />}
+                    {driftReport.summary as string}
+                  </div>
+
+                  {/* PSI bar chart */}
+                  {Object.keys(driftReport.feature_drift as Record<string, number> || {}).length > 0 && (
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={Object.entries(driftReport.feature_drift as Record<string, number>)
+                            .sort(([, a], [, b]) => b - a)
+                            .slice(0, 12)
+                            .map(([name, psi]) => ({ name: name.replace(/_/g, " ").slice(0, 12), psi }))}
+                          layout="vertical"
+                          margin={{ left: 70, right: 10, top: 5, bottom: 5 }}
+                        >
+                          <XAxis type="number" tick={{ fontSize: 10 }} domain={[0, "auto"]} />
+                          <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={65} />
+                          <Tooltip contentStyle={{ fontSize: 11, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+                          <ReferenceLine x={0.25} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "0.25", fontSize: 9, fill: "#ef4444" }} />
+                          <Bar dataKey="psi" radius={[0, 4, 4, 0]}>
+                            {Object.entries(driftReport.feature_drift as Record<string, number>)
+                              .sort(([, a], [, b]) => b - a)
+                              .slice(0, 12)
+                              .map(([, psi], i) => (
+                                <Cell key={i} fill={psi > 0.25 ? "#ef4444" : psi > 0.1 ? "#f59e0b" : "#22c55e"} />
+                              ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Prediction drift */}
+                  {Object.keys(driftReport.prediction_drift as Record<string, unknown> || {}).length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase">Prediction Drift</p>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {Object.entries(driftReport.prediction_drift as Record<string, { expected: number; actual: number; shift: number }>).map(([label, d]) => (
+                          <div key={label} className="rounded-lg border border-border p-2 text-center">
+                            <p className="font-semibold capitalize">{label}</p>
+                            <p className="text-muted-foreground">{(d.expected * 100).toFixed(0)}% → {(d.actual * 100).toFixed(0)}%</p>
+                            <p className={d.shift > 0.05 ? "text-amber-400" : d.shift < -0.05 ? "text-red-400" : "text-green-400"}>
+                              {d.shift > 0 ? "+" : ""}{(d.shift * 100).toFixed(1)}%
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {driftReport && Boolean(driftReport.error) && (
+                <p className="text-xs text-red-400">{String(driftReport.error)}</p>
+              )}
+              {!driftReport && (
+                <p className="text-xs text-muted-foreground text-center py-6">Check drift to compare live features against training distribution</p>
+              )}
+            </div>
+
+            {/* Calibration Panel */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Confidence Calibration</h3>
+                <Button onClick={handleCalibration} disabled={calibLoading} variant="outline" size="sm" className="h-7 text-xs rounded-lg">
+                  {calibLoading ? <Loader2 className="size-3 mr-1 animate-spin" /> : <Target className="size-3 mr-1" />}
+                  {calibLoading ? "Loading..." : "Load"}
+                </Button>
+              </div>
+
+              {calibration && !calibration.error && (calibration.buckets as { bucket: string; predicted_confidence: number; actual_win_rate: number; count: number; well_calibrated: boolean }[])?.length > 0 && (
+                <div className="space-y-3">
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={(calibration.buckets as { bucket: string; predicted_confidence: number; actual_win_rate: number; count: number; well_calibrated: boolean }[]).map(b => ({
+                          bucket: b.bucket,
+                          predicted: +(b.predicted_confidence * 100).toFixed(0),
+                          actual: +(b.actual_win_rate * 100).toFixed(0),
+                        }))}
+                        margin={{ left: 5, right: 5, top: 5, bottom: 5 }}
+                      >
+                        <XAxis dataKey="bucket" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} />
+                        <Tooltip contentStyle={{ fontSize: 11, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+                        <Bar dataKey="predicted" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Predicted %" />
+                        <Bar dataKey="actual" fill="#22c55e" radius={[4, 4, 0, 0]} name="Actual Win %" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    {calibration.total_predictions as number} predictions | Blue=predicted confidence, Green=actual win rate
+                  </p>
+                </div>
+              )}
+              {calibration && Boolean(calibration.error) && (
+                <p className="text-xs text-red-400">{String(calibration.error)}</p>
+              )}
+              {calibration && !calibration.error && ((calibration.buckets as unknown[])?.length || 0) === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-6">Not enough prediction data yet. Run predictions to build calibration history.</p>
+              )}
+              {!calibration && (
+                <p className="text-xs text-muted-foreground text-center py-6">Load calibration to compare predicted confidence vs actual outcomes</p>
               )}
             </div>
           </div>

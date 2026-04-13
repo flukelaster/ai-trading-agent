@@ -165,6 +165,18 @@ export const getModelStatus = (symbol?: string) =>
   api.get("/api/ml/status", { params: symbol ? { symbol } : {} });
 export const mlPredict = (symbol?: string) =>
   api.post("/api/ml/predict", null, { params: symbol ? { symbol } : {} });
+export const getDriftReport = (symbol?: string) =>
+  api.get("/api/ml/drift", { params: symbol ? { symbol } : {} });
+export const getCalibration = (symbol?: string) =>
+  api.get("/api/ml/calibration", { params: symbol ? { symbol } : {} });
+
+// Monte Carlo
+export const runMonteCarlo = (params: {
+  strategy: string; symbol?: string; timeframe?: string;
+  n_simulations?: number; initial_balance?: number;
+  source?: string; from_date?: string; to_date?: string;
+  count?: number; params?: Record<string, unknown>;
+}) => api.post("/api/backtest/monte-carlo", params, { timeout: 120000 });
 
 // Macro Data
 export const getMacroLatest = () => api.get("/api/macro/latest");

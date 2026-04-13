@@ -26,6 +26,8 @@ class TrainingResult:
     class_distribution: dict
     model_path: str
     walk_forward_results: list | None = None
+    feature_stats: dict | None = None
+    label_distribution: dict | None = None
 
     def to_dict(self) -> dict:
         d = {
@@ -43,6 +45,10 @@ class TrainingResult:
             d["walk_forward_avg_accuracy"] = round(
                 sum(f["accuracy"] for f in self.walk_forward_results) / len(self.walk_forward_results), 4
             )
+        if self.feature_stats:
+            d["feature_stats"] = self.feature_stats
+        if self.label_distribution:
+            d["label_distribution"] = self.label_distribution
         return d
 
 
@@ -167,6 +173,10 @@ class ModelTrainer:
             "BUY(1)": int((y == 1).sum()),
         }
 
+        # Feature stats for drift detection
+        feat_stats = self._compute_feature_stats(X_train)
+        label_dist = self._compute_label_distribution(y_train)
+
         logger.info(f"Model trained: accuracy={accuracy:.4f}, "
                      f"train={len(X_train)}, test={len(X_test)}")
 
@@ -179,7 +189,32 @@ class ModelTrainer:
             test_size=len(X_test),
             class_distribution=class_dist,
             model_path="",  # Set by caller after save
+            feature_stats=feat_stats,
+            label_distribution=label_dist,
         )
+
+    @staticmethod
+    def _compute_feature_stats(X_train: pd.DataFrame) -> dict:
+        """Compute per-feature statistics for drift detection."""
+        stats = {}
+        for col in X_train.columns:
+            stats[col] = {
+                "mean": float(X_train[col].mean()),
+                "std": float(X_train[col].std()),
+                "min": float(X_train[col].min()),
+                "max": float(X_train[col].max()),
+            }
+        return stats
+
+    @staticmethod
+    def _compute_label_distribution(y: pd.Series) -> dict:
+        """Compute label distribution as proportions."""
+        total = len(y)
+        return {
+            "sell": float((y == -1).sum() / total) if total > 0 else 0.0,
+            "hold": float((y == 0).sum() / total) if total > 0 else 0.0,
+            "buy": float((y == 1).sum() / total) if total > 0 else 0.0,
+        }
 
     def _get_params(self) -> dict:
         return {
@@ -311,6 +346,10 @@ class ModelTrainer:
             "BUY(1)": int((y == 1).sum()),
         }
 
+        # Feature stats for drift detection (use full training set 0-80%)
+        feat_stats = self._compute_feature_stats(X.iloc[:split_idx])
+        label_dist = self._compute_label_distribution(y.iloc[:split_idx])
+
         avg_acc = sum(f["accuracy"] for f in fold_results) / len(fold_results) if fold_results else accuracy
         logger.info(f"Walk-forward complete: avg_accuracy={avg_acc:.4f}, best_fold_accuracy={best_accuracy:.4f}")
 
@@ -324,6 +363,8 @@ class ModelTrainer:
             class_distribution=class_dist,
             model_path="",
             walk_forward_results=fold_results,
+            feature_stats=feat_stats,
+            label_distribution=label_dist,
         )
 
     def save_model(self, path: str):

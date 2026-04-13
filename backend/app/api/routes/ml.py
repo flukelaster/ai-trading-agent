@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import joblib
 from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger
 
 from app.auth import require_auth
 from pydantic import BaseModel, Field
@@ -122,7 +123,7 @@ async def train_model(req: TrainRequest):
                 train_end=df.index[split_idx].to_pydatetime(),
                 test_start=df.index[split_idx].to_pydatetime(),
                 test_end=df.index[-1].to_pydatetime(),
-                metrics=json.dumps(result.report),
+                metrics=json.dumps(result.to_dict()),
                 feature_importance=json.dumps(result.feature_importance),
                 model_path=model_path,
                 model_binary=model_bytes,
@@ -256,6 +257,28 @@ async def predict_now(symbol: str = Query("GOLD")):
     signal, confidence = predictor.predict(df_recent)
 
     signal_label = {1: "BUY", -1: "SELL", 0: "HOLD"}[signal]
+
+    # Log prediction to DB for calibration analysis
+    try:
+        from app.db.models import MLPredictionLog, MLModelLog
+        model_result = await _db_session.execute(
+            select(MLModelLog).where(
+                MLModelLog.is_active == True,
+                MLModelLog.model_name.like(f"{model_prefix}%"),
+            ).limit(1)
+        )
+        model_log = model_result.scalar_one_or_none()
+        pred_log = MLPredictionLog(
+            model_id=model_log.id if model_log else None,
+            symbol=symbol,
+            predicted_signal=signal,
+            confidence=confidence,
+        )
+        _db_session.add(pred_log)
+        await _db_session.commit()
+    except Exception:
+        await _db_session.rollback()
+
     return {
         "signal": signal_label,
         "signal_value": signal,
@@ -299,9 +322,26 @@ async def get_drift_report(symbol: str = Query("GOLD")):
     predictions = pred_result.scalars().all()
     recent_signals = [p.predicted_signal for p in predictions]
 
+    # Build live features for feature drift comparison
+    live_features = None
+    if training_stats and _collector is not None:
+        try:
+            from app.ml.features import build_features
+            from app.config import SYMBOL_PROFILES, settings as app_settings
+            tf = SYMBOL_PROFILES.get(symbol, {}).get("ml_timeframe", app_settings.timeframe)
+            df = await _collector.load_from_db(symbol, tf)
+            if not df.empty and len(df) >= 200:
+                features = build_features(df.tail(300))
+                available = [c for c in training_stats.keys() if c in features.columns]
+                if available:
+                    live_features = features[available].dropna()
+        except Exception as e:
+            logger.warning(f"Failed to build live features for drift: {e}")
+
     report = check_drift(
         training_stats=training_stats,
         training_label_dist=training_label_dist,
+        live_features=live_features,
         recent_predictions=recent_signals if recent_signals else None,
     )
     return report.to_dict()

@@ -5,6 +5,7 @@ Detects overfitting by comparing in-sample vs out-of-sample performance.
 
 from dataclasses import dataclass, field
 
+import numpy as np
 import pandas as pd
 from loguru import logger
 
@@ -26,9 +27,12 @@ class WalkForwardResult:
     overfitting_ratio: float = 0.0  # OOS sharpe / IS sharpe
     likely_overfit: bool = False
     best_params_stability: list[dict] = field(default_factory=list)
+    oos_sharpe_ci: tuple[float, float] | None = None  # 95% bootstrap CI
+    param_stability_score: float | None = None  # avg coefficient of variation (lower=better)
+    param_stability_detail: dict = field(default_factory=dict)  # per-param CV
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "n_splits": self.n_splits,
             "windows": self.windows,
             "aggregate_oos_sharpe": round(self.aggregate_oos_sharpe, 4),
@@ -40,6 +44,48 @@ class WalkForwardResult:
             "likely_overfit": self.likely_overfit,
             "best_params_stability": self.best_params_stability,
         }
+        if self.oos_sharpe_ci is not None:
+            d["oos_sharpe_ci"] = [round(self.oos_sharpe_ci[0], 4), round(self.oos_sharpe_ci[1], 4)]
+        if self.param_stability_score is not None:
+            d["param_stability_score"] = round(self.param_stability_score, 4)
+            d["param_stability_detail"] = {k: round(v, 4) for k, v in self.param_stability_detail.items()}
+        return d
+
+
+def bootstrap_ci(values: list[float], n_bootstrap: int = 1000, ci: float = 0.95) -> tuple[float, float]:
+    """Compute bootstrap confidence interval for the mean of values."""
+    arr = np.array(values)
+    rng = np.random.default_rng(42)
+    means = [rng.choice(arr, size=len(arr), replace=True).mean() for _ in range(n_bootstrap)]
+    lower = np.percentile(means, (1 - ci) / 2 * 100)
+    upper = np.percentile(means, (1 + ci) / 2 * 100)
+    return float(lower), float(upper)
+
+
+def compute_param_stability(params_list: list[dict]) -> tuple[float, dict[str, float]]:
+    """Compute coefficient of variation per parameter across walk-forward windows.
+    Returns (avg_cv, {param: cv}). Lower CV = more stable = less overfit."""
+    if len(params_list) < 2:
+        return 0.0, {}
+
+    all_keys = set()
+    for p in params_list:
+        all_keys.update(p.keys())
+
+    cvs = {}
+    for key in all_keys:
+        values = [p[key] for p in params_list if key in p and isinstance(p[key], (int, float))]
+        if len(values) < 2:
+            continue
+        arr = np.array(values, dtype=float)
+        mean = arr.mean()
+        if mean == 0:
+            cvs[key] = 0.0
+        else:
+            cvs[key] = float(arr.std() / abs(mean))
+
+    avg_cv = sum(cvs.values()) / len(cvs) if cvs else 0.0
+    return avg_cv, cvs
 
 
 def walk_forward_test(
@@ -149,5 +195,15 @@ def walk_forward_test(
         if result.in_sample_avg_sharpe > 0:
             result.overfitting_ratio = result.aggregate_oos_sharpe / result.in_sample_avg_sharpe
         result.likely_overfit = result.overfitting_ratio < 0.5 and result.in_sample_avg_sharpe > 0
+
+    # Bootstrap 95% CI on OOS Sharpe
+    if len(oos_sharpes) >= 3:
+        result.oos_sharpe_ci = bootstrap_ci(oos_sharpes)
+
+    # Parameter stability score
+    if len(result.best_params_stability) >= 2:
+        result.param_stability_score, result.param_stability_detail = compute_param_stability(
+            result.best_params_stability
+        )
 
     return result

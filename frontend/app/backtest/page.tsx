@@ -12,14 +12,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Play, BarChart3, TrendingUp, DollarSign, Target,
   AlertTriangle, Search, Loader2, FlaskConical, Zap, Footprints,
-  CheckCircle, XCircle,
+  CheckCircle, XCircle, Dice5,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { StatCard } from "@/components/ui/stat-card";
 import { TIMEFRAMES } from "@/components/ui/timeframe-selector";
 import {
-  runBacktest, runOptimize, runWalkForward, getCurrentStrategy, getDataStatus, getSymbols,
+  runBacktest, runOptimize, runWalkForward, runMonteCarlo, getCurrentStrategy, getDataStatus, getSymbols,
 } from "@/lib/api";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -106,6 +106,9 @@ export default function BacktestPage() {
   const [wfRunning, setWfRunning] = useState(false);
   const [wfSplits, setWfSplits] = useState(5);
   const [wfTrainPct, setWfTrainPct] = useState(70);
+  // Monte Carlo state
+  const [mcResult, setMcResult] = useState<Record<string, unknown> | null>(null);
+  const [mcRunning, setMcRunning] = useState(false);
 
   const currentParams: ParamDef[] = STRATEGY_PARAMS[strategy] ?? [];
 
@@ -172,6 +175,20 @@ export default function BacktestPage() {
       const res = await runWalkForward(params as Parameters<typeof runWalkForward>[0]);
       setWfResult(res.data);
     } catch { /* handled */ } finally { setWfRunning(false); }
+  };
+
+  const handleMonteCarlo = async () => {
+    setMcRunning(true);
+    setMcResult(null);
+    try {
+      const params: Record<string, unknown> = {
+        strategy, symbol, timeframe, initial_balance: balance, source,
+      };
+      if (source === "db") { params.from_date = fromDate; params.to_date = toDate; }
+      else { params.count = count; }
+      const res = await runMonteCarlo(params as Parameters<typeof runMonteCarlo>[0]);
+      setMcResult(res.data);
+    } catch { /* handled */ } finally { setMcRunning(false); }
   };
 
   const equityCurve = (result?.equity_curve as number[] || []).map((v, i) => ({ bar: i, equity: v }));
@@ -266,10 +283,11 @@ export default function BacktestPage() {
       />
 
       <Tabs defaultValue="backtest" className="space-y-5">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="backtest"><FlaskConical className="size-3.5 mr-1.5" />Backtest</TabsTrigger>
           <TabsTrigger value="optimize"><Zap className="size-3.5 mr-1.5" />Optimizer</TabsTrigger>
           <TabsTrigger value="walk-forward"><Footprints className="size-3.5 mr-1.5" />Walk Forward</TabsTrigger>
+          <TabsTrigger value="monte-carlo"><Dice5 className="size-3.5 mr-1.5" />Monte Carlo</TabsTrigger>
         </TabsList>
 
         {/* ── Backtest Tab ─────────────────────────────────────── */}
@@ -526,6 +544,12 @@ export default function BacktestPage() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     IS Sharpe: {(wfResult.in_sample_avg_sharpe as number).toFixed(3)} → OOS Sharpe: {(wfResult.aggregate_oos_sharpe as number).toFixed(3)} (ratio: {(wfResult.overfitting_ratio as number).toFixed(2)})
                     {(wfResult.overfitting_ratio as number) < 0.5 ? " — large performance drop out-of-sample" : " — performance holds out-of-sample"}
+                    {(wfResult.oos_sharpe_ci as number[]) && (
+                      <> | 95% CI: [{(wfResult.oos_sharpe_ci as number[])[0].toFixed(3)}, {(wfResult.oos_sharpe_ci as number[])[1].toFixed(3)}]</>
+                    )}
+                    {wfResult.param_stability_score != null && (
+                      <> | Param Stability: {(wfResult.param_stability_score as number).toFixed(3)} ({(wfResult.param_stability_score as number) < 0.3 ? "stable" : (wfResult.param_stability_score as number) < 0.6 ? "moderate" : "unstable"})</>
+                    )}
                   </p>
                 </div>
               </div>
@@ -616,6 +640,96 @@ export default function BacktestPage() {
             <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 flex items-center gap-2">
               <AlertTriangle className="size-4 text-red-400 shrink-0" />
               <p className="text-sm text-red-400">{String(wfResult.error)}</p>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── Monte Carlo Tab ────────────────────────────────── */}
+        <TabsContent value="monte-carlo" className="space-y-4 mt-0">
+          {configForm}
+
+          <div className="flex justify-end">
+            <Button onClick={handleMonteCarlo} disabled={mcRunning} className="rounded-lg font-medium min-w-35">
+              {mcRunning ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Dice5 className="size-4 mr-1.5" />}
+              {mcRunning ? "Simulating..." : "Run Monte Carlo"}
+            </Button>
+          </div>
+
+          {mcResult && !mcResult.error && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <StatCard
+                  icon={Target}
+                  label="P(Profit)"
+                  value={`${((mcResult.probability_of_profit as number) * 100).toFixed(1)}%`}
+                  variant={(mcResult.probability_of_profit as number) > 0.5 ? "success" : "danger"}
+                />
+                <StatCard
+                  icon={AlertTriangle}
+                  label="P(Ruin)"
+                  value={`${((mcResult.probability_of_ruin as number) * 100).toFixed(1)}%`}
+                  variant={(mcResult.probability_of_ruin as number) < 0.1 ? "success" : "danger"}
+                />
+                <StatCard
+                  icon={DollarSign}
+                  label="Median Balance"
+                  value={`$${(mcResult.median_final_balance as number).toFixed(0)}`}
+                  variant={(mcResult.median_final_balance as number) > (balance || 10000) ? "success" : "warning"}
+                />
+                <StatCard
+                  icon={TrendingUp}
+                  label="P95 Drawdown"
+                  value={`${((mcResult.p95_max_drawdown as number) * 100).toFixed(1)}%`}
+                  variant={(mcResult.p95_max_drawdown as number) < 0.3 ? "success" : "danger"}
+                />
+                <StatCard
+                  icon={BarChart3}
+                  label="Simulations"
+                  value={mcResult.n_simulations as number}
+                />
+              </div>
+
+              {/* Balance range */}
+              <div className="rounded-xl border border-border bg-card p-4">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Balance Distribution (1,000 simulations)</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Pessimistic (P5)</p>
+                    <p className="font-bold font-mono text-red-400">${(mcResult.p5_final_balance as number).toFixed(0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Median (P50)</p>
+                    <p className="font-bold font-mono">${(mcResult.median_final_balance as number).toFixed(0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Mean</p>
+                    <p className="font-bold font-mono">${(mcResult.mean_final_balance as number).toFixed(0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Optimistic (P95)</p>
+                    <p className="font-bold font-mono text-green-400">${(mcResult.p95_final_balance as number).toFixed(0)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!mcResult && !mcRunning && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="size-12 rounded-xl bg-muted flex items-center justify-center mb-3">
+                <Dice5 className="size-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-semibold">No Monte Carlo results yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                Monte Carlo shuffles trade order 1,000 times to test if profits depend on lucky sequence or real edge.
+              </p>
+            </div>
+          )}
+
+          {mcResult && "error" in mcResult && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 flex items-center gap-2">
+              <AlertTriangle className="size-4 text-red-400 shrink-0" />
+              <p className="text-sm text-red-400">{String(mcResult.error)}</p>
             </div>
           )}
         </TabsContent>
