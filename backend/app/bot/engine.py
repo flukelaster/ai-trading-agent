@@ -581,7 +581,7 @@ class BotEngine:
             if news:
                 result = await self.sentiment_analyzer.analyze(news, context=self._ai_context, symbol=self.symbol)
                 logger.info(f"Sentiment: {result.label} (score={result.score}, confidence={result.confidence})")
-                await self._push_event("sentiment_update", result.to_dict())
+                await self._push_event("sentiment_update", {**result.to_dict(), "symbol": self.symbol})
                 if self.notifier:
                     await self._notify(self.notifier.send_sentiment_alert(
                         result.label, result.score, result.key_factors, symbol=self.symbol,

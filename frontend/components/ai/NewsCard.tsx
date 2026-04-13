@@ -18,21 +18,30 @@ const borderColorMap: Record<string, string> = {
   neutral: "border-l-muted-foreground/30",
 };
 
+function extractDomain(source: string): string {
+  try {
+    const url = new URL(source);
+    return url.hostname.replace(/^www\./, "");
+  } catch {
+    return source;
+  }
+}
+
 export default function NewsCard({ headline, source, time, sentimentLabel, sentimentScore }: Props) {
   const timeAgo = getTimeAgo(time);
 
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-2xl border border-border border-l-2 p-3 transition-colors hover:bg-muted/50",
+        "flex items-start gap-3 rounded-xl border border-border border-l-2 p-3 transition-colors hover:bg-muted/50",
         borderColorMap[sentimentLabel] || borderColorMap.neutral
       )}
     >
       <Newspaper className="size-4 mt-0.5 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-foreground truncate">{headline}</p>
+        <p className="text-sm font-semibold text-foreground leading-snug">{headline}</p>
         <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-[11px] text-muted-foreground font-medium">{source}</span>
+          <span className="text-[11px] text-muted-foreground font-medium">{extractDomain(source)}</span>
           <span className="text-[11px] text-muted-foreground/40">·</span>
           <span className="text-[11px] text-muted-foreground font-medium">{timeAgo}</span>
         </div>

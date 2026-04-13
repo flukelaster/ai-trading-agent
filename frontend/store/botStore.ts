@@ -74,7 +74,8 @@ type BotStore = {
   symbolStatuses: Record<string, BotStatus>;
   positions: Position[];
   account: AccountInfo | null;
-  sentiment: Sentiment | null;
+  sentiment: Sentiment | null; // active symbol's sentiment (convenience)
+  sentiments: Record<string, Sentiment>;
   ticks: Record<string, Tick>;
   tick: Tick | null; // active symbol's tick (convenience)
   events: BotEvent[];
@@ -84,7 +85,7 @@ type BotStore = {
   setSymbolStatuses: (statuses: Record<string, BotStatus>) => void;
   setPositions: (positions: Position[]) => void;
   setAccount: (account: AccountInfo) => void;
-  setSentiment: (sentiment: Sentiment) => void;
+  setSentiment: (sentiment: Sentiment & { symbol?: string }) => void;
   setTick: (tick: Tick) => void;
   addEvent: (event: BotEvent) => void;
 };
@@ -97,19 +98,25 @@ export const useBotStore = create<BotStore>((set, get) => ({
   positions: [],
   account: null,
   sentiment: null,
+  sentiments: {},
   ticks: {},
   tick: null,
   events: [],
   setActiveSymbol: (symbol) => {
-    const ticks = get().ticks;
-    set({ activeSymbol: symbol, tick: ticks[symbol] || null });
+    const { ticks, sentiments } = get();
+    set({ activeSymbol: symbol, tick: ticks[symbol] || null, sentiment: sentiments[symbol] || null });
   },
   setSymbols: (symbols) => set({ symbols }),
   setStatus: (status) => set({ status }),
   setSymbolStatuses: (statuses) => set({ symbolStatuses: statuses }),
   setPositions: (positions) => set({ positions }),
   setAccount: (account) => set({ account }),
-  setSentiment: (sentiment) => set({ sentiment }),
+  setSentiment: (sentiment) => {
+    const symbol = sentiment.symbol || get().activeSymbol;
+    const sentiments = { ...get().sentiments, [symbol]: sentiment };
+    const isActive = symbol === get().activeSymbol;
+    set({ sentiments, ...(isActive ? { sentiment } : {}) });
+  },
   setTick: (tick) => {
     const symbol = tick.symbol || get().activeSymbol;
     const ticks = { ...get().ticks, [symbol]: tick };

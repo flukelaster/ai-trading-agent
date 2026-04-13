@@ -40,6 +40,43 @@ import { useBotStore } from "@/store/botStore";
 import { SymbolTabs } from "@/components/ui/symbol-tabs";
 import { TimeframeSelector, TIMEFRAMES } from "@/components/ui/timeframe-selector";
 
+const PREVIEW_LEN = 200;
+
+function AiDecisionCard({ decision }: { decision: { decision: string; strategy: string; turns: number; tool_calls: number; duration_s: number } }) {
+  const [expanded, setExpanded] = useState(false);
+  const text = decision.decision || "";
+  const isLong = text.length > PREVIEW_LEN;
+
+  return (
+    <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-primary">AI Decision</span>
+        <span className="text-xs text-muted-foreground">{decision.duration_s}s</span>
+      </div>
+      <div
+        className={`text-xs text-foreground leading-relaxed max-w-none prose-compact [&_h2]:text-[11px] [&_h2]:font-bold [&_h2]:mt-1.5 [&_h2]:mb-0.5 [&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:mt-1 [&_h3]:mb-0.5 [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:pl-3 [&_ul]:list-disc [&_li]:my-0 [&_strong]:text-primary ${!expanded && isLong ? "max-h-24 overflow-hidden relative" : ""}`}
+      >
+        <Markdown>{expanded || !isLong ? text : text.slice(0, PREVIEW_LEN) + "..."}</Markdown>
+        {!expanded && isLong && (
+          <div className="absolute bottom-0 left-0 right-0 h-8 bg-linear-to-t from-primary/5 to-transparent" />
+        )}
+      </div>
+      {isLong && (
+        <button type="button" onClick={() => setExpanded(!expanded)} className="text-[11px] text-primary hover:underline font-medium">
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="bg-primary/10 px-1.5 py-0.5 rounded text-primary font-medium">
+          {decision.strategy?.replace(/_/g, " ")}
+        </span>
+        <span>{decision.tool_calls} tools</span>
+        <span>{decision.turns} turns</span>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const {
     activeSymbol, symbols, status, symbolStatuses, positions, sentiment, tick, ticks, events,
@@ -378,22 +415,7 @@ export default function DashboardPage() {
 
             {/* AI Decision Display */}
             {status?.ai_decision && (
-              <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-primary">AI Decision</span>
-                  <span className="text-xs text-muted-foreground">{status.ai_decision.duration_s}s</span>
-                </div>
-                <div className="text-xs text-foreground leading-relaxed max-w-none [&_h2]:text-[11px] [&_h2]:font-bold [&_h2]:mt-1.5 [&_h2]:mb-0.5 [&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:mt-1 [&_h3]:mb-0.5 [&_p]:my-0.5 [&_ul]:my-0.5 [&_ul]:pl-3 [&_ul]:list-disc [&_li]:my-0 [&_strong]:text-primary">
-                  <Markdown>{status.ai_decision.decision?.slice(0, 300)}</Markdown>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="bg-primary/10 px-1.5 py-0.5 rounded text-primary font-medium">
-                    {status.ai_decision.strategy?.replace(/_/g, " ")}
-                  </span>
-                  <span>{status.ai_decision.tool_calls} tools</span>
-                  <span>{status.ai_decision.turns} turns</span>
-                </div>
-              </div>
+              <AiDecisionCard decision={status.ai_decision} />
             )}
 
             <div className="space-y-2 text-xs text-muted-foreground">
@@ -483,36 +505,36 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* News + Positions + Events */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+      {/* News + Positions + Events — single column for readability */}
+      <div className="space-y-4 xl:space-y-6 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+        {/* News Feed */}
         <Card>
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold">News Feed</CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <ScrollArea className="h-56 sm:h-72">
-              <div className="space-y-2 pr-3">
-                {news.length > 0 ? (
-                  news.map((n, i) => (
-                    <NewsCard
-                      key={i}
-                      headline={n.headline}
-                      source={n.source}
-                      time={n.created_at}
-                      sentimentLabel={n.sentiment_label}
-                      sentimentScore={n.sentiment_score}
-                    />
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8 font-medium">
-                    No recent news
-                  </p>
-                )}
-              </div>
-            </ScrollArea>
+            <div className="space-y-2">
+              {news.length > 0 ? (
+                news.map((n, i) => (
+                  <NewsCard
+                    key={i}
+                    headline={n.headline}
+                    source={n.source}
+                    time={n.created_at}
+                    sentimentLabel={n.sentiment_label}
+                    sentimentScore={n.sentiment_score}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8 font-medium">
+                  No recent news
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
+        {/* Open Positions */}
         <Card>
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold">Open Positions</CardTitle>
@@ -520,47 +542,45 @@ export default function DashboardPage() {
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
             {positions.length > 0 ? (
               <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-                <ScrollArea className="h-56 sm:h-72">
-                  <Table className="min-w-[480px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Symbol</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead className="text-right">Lots</TableHead>
-                        <TableHead className="text-right">Entry</TableHead>
-                        <TableHead className="text-right">SL</TableHead>
-                        <TableHead className="text-right">TP</TableHead>
-                        <TableHead className="text-right">P&L</TableHead>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Symbol</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Lots</TableHead>
+                      <TableHead className="text-right">Entry</TableHead>
+                      <TableHead className="text-right">SL</TableHead>
+                      <TableHead className="text-right">TP</TableHead>
+                      <TableHead className="text-right">P&L</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {positions.map((p) => (
+                      <TableRow key={p.ticket} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-medium text-xs">{p.symbol}</TableCell>
+                        <TableCell
+                          className={`font-semibold ${p.type === "BUY" ? "text-success dark:text-green-400" : "text-destructive"}`}
+                        >
+                          {p.type}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{p.lot}</TableCell>
+                        <TableCell className="text-right font-mono">{p.open_price.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-mono text-muted-foreground">
+                          {p.sl.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-muted-foreground">
+                          {p.tp.toFixed(2)}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right font-mono font-semibold ${p.profit >= 0 ? "text-success dark:text-green-400" : "text-destructive"}`}
+                        >
+                          {p.profit >= 0 ? "+" : ""}
+                          {p.profit.toFixed(2)}
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {positions.map((p) => (
-                        <TableRow key={p.ticket} className="hover:bg-muted/30 transition-colors">
-                          <TableCell className="font-medium text-xs">{p.symbol}</TableCell>
-                          <TableCell
-                            className={`font-semibold ${p.type === "BUY" ? "text-success dark:text-green-400" : "text-destructive"}`}
-                          >
-                            {p.type}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">{p.lot}</TableCell>
-                          <TableCell className="text-right font-mono">{p.open_price.toFixed(2)}</TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground">
-                            {p.sl.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground">
-                            {p.tp.toFixed(2)}
-                          </TableCell>
-                          <TableCell
-                            className={`text-right font-mono font-semibold ${p.profit >= 0 ? "text-success dark:text-green-400" : "text-destructive"}`}
-                          >
-                            {p.profit >= 0 ? "+" : ""}
-                            {p.profit.toFixed(2)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-8 font-medium">
@@ -570,7 +590,8 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="md:col-span-2 lg:col-span-1">
+        {/* Events */}
+        <Card>
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-sm font-bold">Events</CardTitle>
           </CardHeader>
