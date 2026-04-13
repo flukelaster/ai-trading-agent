@@ -99,7 +99,7 @@ Frontend (Next.js 16) → Backend (FastAPI) → MT5 Bridge (Windows VPS)
 | AI | Claude Code SDK (Max subscription) + Anthropic SDK fallback |
 | Auth | JWT Bearer token (username/password) — WebAuthn code exists but disabled |
 | CI/CD | GitHub Actions (ruff, pytest, tsc, build), Railway auto-deploy |
-| DB | PostgreSQL 15, Redis 7 (AOF persistence), 13 Alembic migrations |
+| DB | PostgreSQL 15, Redis 7 (AOF persistence), 14 Alembic migrations |
 | Notifications | Telegram bot alerts |
 
 ## AI Agent Architecture (Phases 0-F — all code complete)
@@ -188,6 +188,9 @@ railway vars set -s backend "KEY=value"  # set env var
 - DB datetime columns: must use `datetime.utcnow()` (naive), NOT `datetime.now(timezone.utc)` (offset-aware) — asyncpg rejects offset-aware for `TIMESTAMP WITHOUT TIME ZONE`
 - Claude Code SDK: `rate_limit_event` parse error on heavy usage — handled gracefully in `base.py`
 - WebAuthn passkey auth: disabled due to cross-origin cookie issues on Railway (`.up.railway.app` is public suffix)
+- Deploy: Railway uses Dockerfile CMD, NOT Procfile — always edit `backend/Dockerfile` line 33 for startup changes
+- Deploy: Alembic migration can hang on table lock during zero-downtime deploy (old instance holds locks) — mitigated with `timeout 30` in CMD + `lock_timeout = 5s` in alembic/env.py and lifespan
+- Alembic: Never reuse revision IDs — each migration file must have a unique revision and correct down_revision chain
 
 ## User Preferences (from memory)
 
