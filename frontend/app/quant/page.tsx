@@ -36,6 +36,13 @@ function MultiTFDisplay({ data }: { data: Record<string, string | number> }) {
 export default function QuantPage() {
   const { symbols } = useBotStore();
   const [activeSymbol, setActiveSymbol] = useState("GOLD");
+
+  useEffect(() => {
+    if (symbols.length > 0 && !symbols.some(s => s.symbol === activeSymbol)) {
+      setActiveSymbol(symbols[0].symbol);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbols]);
   const [loading, setLoading] = useState(true);
   const [var_, setVar] = useState<Record<string, Record<string, unknown>>>({});
   const [regime, setRegime] = useState<Record<string, Record<string, unknown>>>({});

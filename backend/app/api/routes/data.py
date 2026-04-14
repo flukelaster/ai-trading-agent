@@ -32,12 +32,17 @@ class CollectRequest(BaseModel):
 
 @router.post("/collect", dependencies=[Depends(require_auth)])
 async def collect_data(req: CollectRequest):
+    from app.config import resolve_broker_symbol
+    actual_symbol = resolve_broker_symbol(req.symbol)
     collector = get_collector()
-    result = await collector.collect(req.symbol, req.timeframe, req.from_date, req.to_date)
+    result = await collector.collect(actual_symbol, req.timeframe, req.from_date, req.to_date)
     return result
 
 
 @router.get("/status")
 async def data_status(symbol: str | None = None):
+    if symbol:
+        from app.config import resolve_broker_symbol
+        symbol = resolve_broker_symbol(symbol)
     collector = get_collector()
     return await collector.get_data_status(symbol)

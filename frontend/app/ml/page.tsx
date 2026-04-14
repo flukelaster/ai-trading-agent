@@ -50,7 +50,13 @@ export default function MLPage() {
 
   useEffect(() => {
     getSymbols().then(res => {
-      if (res.data?.symbols) setSymbols(res.data.symbols);
+      if (res.data?.symbols) {
+        setSymbols(res.data.symbols);
+        const syms = res.data.symbols as SymbolInfo[];
+        if (syms.length > 0 && !syms.some(s => s.symbol === activeSymbol)) {
+          setActiveSymbol(syms[0].symbol);
+        }
+      }
     }).catch(() => {});
   }, []);
 

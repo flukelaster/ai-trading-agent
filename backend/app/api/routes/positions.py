@@ -18,7 +18,7 @@ async def get_positions(symbol: str | None = Query(None)):
     mgr = get_manager()
     if symbol:
         engine = _get_engine(symbol)
-        positions = await engine.executor.get_open_positions(symbol)
+        positions = await engine.executor.get_open_positions(engine.symbol)
         return {"positions": positions}
 
     # All symbols

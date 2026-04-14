@@ -110,7 +110,16 @@ export const useBotStore = create<BotStore>((set, get) => ({
     const { ticks, sentiments } = get();
     set({ activeSymbol: symbol, tick: ticks[symbol] || null, sentiment: sentiments[symbol] || null });
   },
-  setSymbols: (symbols) => set({ symbols }),
+  setSymbols: (symbols) => {
+    const { activeSymbol, ticks, sentiments } = get();
+    const match = symbols.some((s) => s.symbol === activeSymbol);
+    if (!match && symbols.length > 0) {
+      const first = symbols[0].symbol;
+      set({ symbols, activeSymbol: first, tick: ticks[first] || null, sentiment: sentiments[first] || null });
+    } else {
+      set({ symbols });
+    }
+  },
   setStatus: (status) => set({ status }),
   setSymbolStatuses: (statuses) => set({ symbolStatuses: statuses }),
   setPositions: (positions) => set({ positions }),

@@ -82,9 +82,9 @@ def get_symbol_profile(symbol: str) -> dict:
     profile = SYMBOL_PROFILES.get(canonical, SYMBOL_PROFILES.get(symbol, {}))
     if not profile:
         # Fallback: try stripping common suffixes
-        for suffix in ("micro", "m", ".micro"):
-            base = symbol.replace(suffix, "")
-            if base in SYMBOL_PROFILES:
+        for suffix in ("micro", ".micro", "m"):
+            base = symbol.removesuffix(suffix)
+            if base != symbol and base in SYMBOL_PROFILES:
                 return SYMBOL_PROFILES[base]
     return profile
 
@@ -92,6 +92,18 @@ def get_symbol_profile(symbol: str) -> dict:
 def get_canonical_symbol(symbol: str) -> str:
     """Resolve alias to canonical symbol name (e.g., GOLDmicro → GOLD)."""
     return SYMBOL_ALIASES.get(symbol, symbol)
+
+
+def resolve_broker_symbol(symbol: str) -> str:
+    """Resolve canonical symbol to broker name via live engine (e.g., GOLD → GOLDmicro).
+
+    Falls back to the input symbol if the bot manager is unavailable.
+    """
+    try:
+        from app.api.routes.bot import _get_engine
+        return _get_engine(symbol).symbol
+    except Exception:
+        return symbol
 
 
 # Auto-register aliased profiles so SYMBOL_PROFILES["GOLDmicro"] works directly

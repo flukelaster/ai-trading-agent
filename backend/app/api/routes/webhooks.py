@@ -64,9 +64,11 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     if action not in ("BUY", "SELL"):
         raise HTTPException(status_code=400, detail=f"Invalid action: {action}. Must be BUY or SELL")
 
-    # Get engine for symbol
-    engine = _manager.engines.get(symbol)
-    if not engine:
+    # Get engine for symbol (resolves aliases, e.g., GOLD → GOLDmicro)
+    from app.api.routes.bot import _get_engine
+    try:
+        engine = _get_engine(symbol)
+    except HTTPException:
         available = list(_manager.engines.keys())
         raise HTTPException(status_code=400, detail=f"Symbol {symbol} not active. Available: {available}")
 
@@ -81,7 +83,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         balance = account["data"]["balance"]
 
         # Get market data for ATR/SL/TP calculation
-        df = await engine.market_data.get_ohlcv(symbol, engine.timeframe, 200)
+        df = await engine.market_data.get_ohlcv(engine.symbol, engine.timeframe, 200)
         if df.empty:
             return {"executed": False, "reason": "No market data available"}
 

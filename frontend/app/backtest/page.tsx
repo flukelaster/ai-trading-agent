@@ -151,7 +151,15 @@ export default function BacktestPage() {
   useEffect(() => {
     getCurrentStrategy().then((res) => { if (res.data?.name) handleStrategyChange(res.data.name); }).catch(() => {});
     getDataStatus().then((res) => { if (Array.isArray(res.data) && res.data.length > 0) setHasDbData(true); }).catch(() => {});
-    getSymbols().then((res) => { const syms = res.data?.symbols || res.data; if (Array.isArray(syms) && syms.length > 0) setAvailableSymbols(syms); }).catch(() => {});
+    getSymbols().then((res) => {
+      const syms = res.data?.symbols || res.data;
+      if (Array.isArray(syms) && syms.length > 0) {
+        setAvailableSymbols(syms);
+        if (!syms.some((s: { symbol: string }) => s.symbol === symbol)) {
+          setSymbol(syms[0].symbol);
+        }
+      }
+    }).catch(() => {});
   }, []);
 
   const handleRun = async () => {

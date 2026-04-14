@@ -210,14 +210,16 @@ async def run_comparison(req: CompareRequest):
 
 async def _load_data(symbol: str, source: str, timeframe: str, count: int, from_date: str | None, to_date: str | None):
     """Load OHLCV data from MT5 (live) or DB (historical)."""
+    from app.config import resolve_broker_symbol
+    actual_symbol = resolve_broker_symbol(symbol)
     if source == "db":
         if _collector is None:
             raise HTTPException(status_code=503, detail="Data collector not initialized")
-        return await _collector.load_from_db(symbol, timeframe, from_date, to_date)
+        return await _collector.load_from_db(actual_symbol, timeframe, from_date, to_date)
     else:
         if _market_data is None:
             raise HTTPException(status_code=503, detail="Market data service not available")
-        return await _market_data.get_ohlcv(symbol, timeframe, count)
+        return await _market_data.get_ohlcv(actual_symbol, timeframe, count)
 
 
 # ─── Statistical Validation Endpoints ────────────────────────────────────────

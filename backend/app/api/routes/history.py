@@ -25,6 +25,10 @@ async def get_trades(
     db: AsyncSession = Depends(get_db),
 ):
     from app.api.routes.bot import _manager
+    from app.config import resolve_broker_symbol
+
+    if symbol:
+        symbol = resolve_broker_symbol(symbol)
 
     cutoff = datetime.utcnow() - timedelta(days=days)
 
@@ -56,7 +60,6 @@ async def get_trades(
 
     def _trade_dict(t) -> dict:
         if hasattr(t, "id"):
-            # ORM object
             return {
                 "id": t.id, "ticket": t.ticket, "symbol": t.symbol, "type": t.type,
                 "lot": t.lot, "open_price": t.open_price, "close_price": t.close_price,
@@ -72,7 +75,6 @@ async def get_trades(
                 "source": "bot",
             }
         else:
-            # Raw row fallback
             return {
                 "id": t[0], "ticket": t[1], "symbol": t[2], "type": t[3],
                 "lot": t[4], "open_price": t[5], "close_price": t[6],
@@ -90,14 +92,14 @@ async def get_trades(
     # 2. Merge MT5 history (catches manual trades not in DB)
     if _manager is not None and not strategy:
         try:
-            engine = _manager.get_engine(symbol) if symbol else None
-            engine = engine or next(iter(_manager.engines.values()))
-            mt5_result = await engine.connector.get_history(days=days, symbol=symbol)
+            from app.api.routes.bot import _get_engine
+            engine = _get_engine(symbol) if symbol else next(iter(_manager.engines.values()))
+            mt5_result = await engine.connector.get_history(days=days, symbol=symbol or None)
             if mt5_result.get("success"):
                 for deal in mt5_result.get("data", []):
                     ticket = deal.get("ticket")
                     if ticket in db_tickets:
-                        continue  # already in DB rows
+                        continue
                     try:
                         deal_time = datetime.fromisoformat(deal["time"].replace("Z", ""))
                     except Exception:
@@ -144,6 +146,10 @@ async def get_daily_pnl(
 ):
     """Today's closed trade P&L — merges MT5 live history + DB records."""
     from app.api.routes.bot import _manager
+    from app.config import resolve_broker_symbol
+
+    if symbol:
+        symbol = resolve_broker_symbol(symbol)
 
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -151,9 +157,9 @@ async def get_daily_pnl(
     mt5_deals: list[dict] = []
     if _manager is not None:
         try:
-            engine = _manager.get_engine(symbol) if symbol else None
-            engine = engine or next(iter(_manager.engines.values()))
-            result = await engine.connector.get_history(days=1, symbol=symbol)
+            from app.api.routes.bot import _get_engine
+            engine = _get_engine(symbol) if symbol else next(iter(_manager.engines.values()))
+            result = await engine.connector.get_history(days=1, symbol=symbol or None)
             if result.get("success"):
                 for deal in result.get("data", []):
                     try:
@@ -204,6 +210,10 @@ async def get_performance(
     symbol: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    if symbol:
+        from app.config import resolve_broker_symbol
+        symbol = resolve_broker_symbol(symbol)
+
     cutoff = datetime.utcnow() - timedelta(days=days)
     query = select(Trade).where(Trade.open_time >= cutoff, Trade.profit.isnot(None))
     if symbol:
