@@ -369,6 +369,7 @@ class BotScheduler:
                     "turns": result.get("turns", 0),
                     "tool_calls": len(tool_calls),
                     "duration_s": duration,
+                    "timestamp": datetime.utcnow().isoformat(),
                 }
 
                 # Log AI analysis to DB for activity page

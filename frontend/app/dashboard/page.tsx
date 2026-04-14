@@ -564,7 +564,7 @@ export default function DashboardPage() {
                   })()}
                 </div>
                 <div className="flex items-center gap-3 text-xs font-normal text-muted-foreground">
-                  <span>{new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" })}</span>
+                  <span>{(status.ai_decision as Record<string, unknown>).timestamp ? new Date((status.ai_decision as Record<string, unknown>).timestamp as string).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) : "—"}</span>
                   <span>{status.ai_decision.tool_calls} tools</span>
                   <span>{status.ai_decision.turns} turns</span>
                   <span>{status.ai_decision.duration_s}s</span>

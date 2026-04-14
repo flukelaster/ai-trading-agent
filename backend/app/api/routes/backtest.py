@@ -100,8 +100,9 @@ async def run_backtest(req: BacktestRequest, db: AsyncSession = Depends(get_db))
     if req.use_ai_filter:
         sentiment_data = await _load_sentiment(db, req.from_date, req.to_date)
 
+    import asyncio
     engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
-    result = engine.run(df, use_ai_filter=req.use_ai_filter, sentiment_data=sentiment_data)
+    result = await asyncio.to_thread(engine.run, df, use_ai_filter=req.use_ai_filter, sentiment_data=sentiment_data)
 
     resp = result.to_dict()
     if req.use_ai_filter:
@@ -115,7 +116,9 @@ async def run_optimization(req: OptimizeRequest):
     if df.empty:
         return {"error": "No OHLCV data available"}
 
-    result = grid_search(
+    import asyncio
+    result = await asyncio.to_thread(
+        grid_search,
         strategy_name=req.strategy,
         df=df,
         param_grid=req.param_grid,
@@ -152,7 +155,9 @@ async def run_walk_forward(req: WalkForwardRequest):
     if df.empty:
         return {"error": "No OHLCV data available"}
 
-    result = walk_forward_test(
+    import asyncio
+    result = await asyncio.to_thread(
+        walk_forward_test,
         strategy_name=req.strategy,
         df=df,
         param_grid=req.param_grid,
@@ -171,18 +176,22 @@ async def run_monte_carlo(req: MonteCarloRequest):
     if df.empty:
         return {"error": "No OHLCV data available"}
 
-    strategy = get_strategy(req.strategy, req.params)
-    risk_manager = RiskManager(max_risk_per_trade=req.risk_per_trade, max_lot=req.max_lot)
-    engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
-    bt_result = engine.run(df)
+    import asyncio
 
-    # Extract trade profits from backtest result
-    trades = bt_result.to_dict().get("trades", [])
-    profits = [t["profit"] for t in trades if "profit" in t]
-    if not profits:
+    def _run_mc():
+        strategy = get_strategy(req.strategy, req.params)
+        risk_manager = RiskManager(max_risk_per_trade=req.risk_per_trade, max_lot=req.max_lot)
+        engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
+        bt_result = engine.run(df)
+        trades = bt_result.to_dict().get("trades", [])
+        profits = [t["profit"] for t in trades if "profit" in t]
+        if not profits:
+            return None
+        return monte_carlo_analysis(profits, req.n_simulations, req.initial_balance)
+
+    mc_result = await asyncio.to_thread(_run_mc)
+    if mc_result is None:
         return {"error": "No trades produced by backtest"}
-
-    mc_result = monte_carlo_analysis(profits, req.n_simulations, req.initial_balance)
     return mc_result.to_dict()
 
 
@@ -192,19 +201,24 @@ async def run_comparison(req: CompareRequest):
     if df.empty:
         return {"error": "No OHLCV data available"}
 
-    results = []
-    for config in req.strategies:
-        name = config.get("name", "ema_crossover")
-        params = config.get("params")
-        strategy = get_strategy(name, params)
-        risk_manager = RiskManager(max_risk_per_trade=req.risk_per_trade, max_lot=req.max_lot)
-        engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
-        bt_result = engine.run(df)
-        result_dict = bt_result.to_dict()
-        result_dict["strategy_name"] = name
-        result_dict["strategy_params"] = params or {}
-        results.append(result_dict)
+    import asyncio
 
+    def _run_compare():
+        results = []
+        for config in req.strategies:
+            name = config.get("name", "ema_crossover")
+            params = config.get("params")
+            strategy = get_strategy(name, params)
+            risk_manager = RiskManager(max_risk_per_trade=req.risk_per_trade, max_lot=req.max_lot)
+            engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
+            bt_result = engine.run(df)
+            result_dict = bt_result.to_dict()
+            result_dict["strategy_name"] = name
+            result_dict["strategy_params"] = params or {}
+            results.append(result_dict)
+        return results
+
+    results = await asyncio.to_thread(_run_compare)
     return {"comparison": results}
 
 
@@ -245,7 +259,8 @@ async def run_cointegration_test(
     if df_a.empty or df_b.empty:
         return {"error": "Insufficient data for one or both symbols"}
 
-    result = cointegration_test(df_a["close"], df_b["close"])
+    import asyncio
+    result = await asyncio.to_thread(cointegration_test, df_a["close"], df_b["close"])
     return {**result.to_dict(), "symbol_a": symbol_a, "symbol_b": symbol_b}
 
 
