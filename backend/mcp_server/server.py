@@ -13,7 +13,7 @@ Usage:
 from mcp.server.fastmcp import FastMCP
 
 from mcp_server.tools import market_data, indicators, risk, broker, portfolio, sentiment, history, journal
-from mcp_server.tools import learning, session, strategy_gen
+from mcp_server.tools import learning, session, strategy_gen, quant
 
 
 def create_server() -> FastMCP:
@@ -212,6 +212,23 @@ def create_server() -> FastMCP:
     async def generate_ensemble_config(weights: dict, name: str = "custom_ensemble") -> dict:
         """Generate a custom ensemble strategy with specified strategy weights."""
         return strategy_gen.generate_ensemble_config(weights, name)
+
+    # ─── Quant Tools (quantitative analysis) ───────────────────────────
+
+    @mcp.tool()
+    async def get_var_analysis(symbol: str, timeframe: str = "M15", count: int = 200) -> dict:
+        """Calculate Value-at-Risk — estimate worst-case daily loss at 95% confidence."""
+        return await quant.get_var_analysis(symbol, timeframe, count)
+
+    @mcp.tool()
+    async def get_volatility_forecast(symbol: str, timeframe: str = "M15", count: int = 200) -> dict:
+        """Get GARCH volatility forecast vs realized — detect if volatility is expanding or contracting."""
+        return await quant.get_volatility_forecast(symbol, timeframe, count)
+
+    @mcp.tool()
+    async def get_quant_signals(symbol: str, timeframe: str = "M15", count: int = 200) -> dict:
+        """Get quantitative signals: momentum (ROC), mean-reversion (z-score), volatility breakout (ATR ratio)."""
+        return await quant.get_quant_signals(symbol, timeframe, count)
 
     return mcp
 

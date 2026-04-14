@@ -12,7 +12,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  TrendingUp, Layers, Activity, Play, Square, ShieldAlert, Wifi, WifiOff, DollarSign,
+  TrendingUp, Layers, Activity, Play, Square, ShieldAlert, Wifi, WifiOff, DollarSign, Loader2,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -187,8 +187,9 @@ export default function DashboardPage() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleStart = async () => { await startBot(activeSymbol); fetchData(); };
-  const handleStop = async () => { await stopBot(activeSymbol); fetchData(); };
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const handleStart = async () => { setActionLoading("start"); try { await startBot(activeSymbol); await fetchData(); } finally { setActionLoading(null); } };
+  const handleStop = async () => { setActionLoading("stop"); try { await stopBot(activeSymbol); await fetchData(); } finally { setActionLoading(null); } };
   const handleEmergencyStop = async () => {
     if (confirm("Are you sure? This will close ALL positions for " + activeSymbol + " immediately.")) {
       await emergencyStop(activeSymbol);
@@ -398,20 +399,20 @@ export default function DashboardPage() {
             <div className="flex gap-2">
               <Button
                 onClick={handleStart}
-                disabled={isRunning}
+                disabled={isRunning || actionLoading === "start"}
                 className="flex-1 rounded-full bg-primary text-primary-foreground font-semibold hover-scale"
               >
-                <Play className="size-4 mr-1.5" />
-                Start
+                {actionLoading === "start" ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Play className="size-4 mr-1.5" />}
+                {actionLoading === "start" ? "Starting..." : "Start"}
               </Button>
               <Button
                 onClick={handleStop}
-                disabled={!isRunning}
+                disabled={!isRunning || actionLoading === "stop"}
                 variant="secondary"
                 className="flex-1 rounded-full"
               >
-                <Square className="size-3.5 mr-1.5" />
-                Stop
+                {actionLoading === "stop" ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Square className="size-3.5 mr-1.5" />}
+                {actionLoading === "stop" ? "Stopping..." : "Stop"}
               </Button>
             </div>
             <Button

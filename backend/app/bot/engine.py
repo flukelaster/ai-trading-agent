@@ -209,10 +209,11 @@ class BotEngine:
         except Exception:
             pass
 
-        await self._log_event(BotEventType.STARTED, "Bot started")
-        logger.info(f"Bot started: strategy={self.strategy.name}, symbol={self.symbol}")
+        strategy_name = self.strategy.name if self.strategy else "ai_autonomous"
+        await self._log_event(BotEventType.STARTED, f"Bot started ({strategy_name})")
+        logger.info(f"Bot started: strategy={strategy_name}, symbol={self.symbol}")
         if self.notifier:
-            await self._notify(self.notifier.send_start_alert(self.symbol, self.timeframe, "AI Autonomous"))
+            await self._notify(self.notifier.send_start_alert(self.symbol, self.timeframe, strategy_name))
 
     async def stop(self):
         self.state = BotState.STOPPED
