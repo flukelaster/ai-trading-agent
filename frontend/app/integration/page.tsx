@@ -44,8 +44,17 @@ function MT5Logo() {
   );
 }
 
+function D2Logo() {
+  return (
+    <svg className="size-7" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path fillRule="evenodd" clipRule="evenodd" d="M115.055 72.5C115.055 79.8638 109.086 85.8333 101.722 85.8333C94.3583 85.8333 88.3888 79.8638 88.3888 72.5C88.3888 65.1362 94.3583 59.1667 101.722 59.1667C109.086 59.1667 115.055 65.1362 115.055 72.5ZM81.9999 59.7778H28.6667L28.6665 86.4444H55.3332V125.556H81.9999V59.7778ZM128.755 59.7778H159.333L131.778 125.556H101.111L128.755 59.7778Z" fill="currentColor"/>
+    </svg>
+  );
+}
+
 const LOGOS: Record<string, () => React.ReactElement> = {
   anthropic: ClaudeLogo, mt5: MT5Logo, telegram: TelegramLogo,
+  economic_calendar: D2Logo, tradingview: D2Logo,
 };
 
 // ─── Page ───────────────────────────────────────────────────────────────────

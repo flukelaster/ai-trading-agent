@@ -144,6 +144,22 @@ async def get_integration_status(request: Request):
     return {"services": list(results)}
 
 
+async def _test_economic_calendar() -> dict:
+    """Test Forex Factory economic calendar API."""
+    start = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get("https://nfs.faireconomy.media/ff_calendar_thisweek.json")
+        latency = int((time.time() - start) * 1000)
+        if resp.status_code == 200:
+            events = resp.json()
+            count = len(events) if isinstance(events, list) else 0
+            return {"name": "Economic Calendar", "status": "connected", "latency_ms": latency, "detail": f"{count} events this week"}
+        return {"name": "Economic Calendar", "status": "error", "latency_ms": latency, "detail": f"HTTP {resp.status_code}"}
+    except Exception as e:
+        return {"name": "Economic Calendar", "status": "error", "latency_ms": 0, "detail": str(e)}
+
+
 @router.get("/test/{service}")
 async def test_service(service: str, request: Request):
     """Test a single service."""
@@ -151,6 +167,8 @@ async def test_service(service: str, request: Request):
         "anthropic": _test_anthropic,
         "mt5": _test_mt5,
         "telegram": _test_telegram,
+        "economic_calendar": _test_economic_calendar,
+        "tradingview": lambda: {"name": "TradingView", "status": "configured" if os.environ.get("TRADINGVIEW_WEBHOOK_KEY") else "not_configured", "latency_ms": 0, "detail": "Webhook receiver — no outbound connection to test"},
     }
     tester = testers.get(service)
     if not tester:
