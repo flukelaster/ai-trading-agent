@@ -102,8 +102,9 @@ class TestBotEngine:
         )
         engine.strategy.calculate = MagicMock(return_value=df)
 
-        # Disable MTF filter to avoid H1 data dependency
-        with patch.object(settings, "use_mtf_filter", False):
+        # Disable MTF filter and confirmation gate to avoid data dependencies
+        with patch.object(settings, "use_mtf_filter", False), \
+             patch.dict("sys.modules", {"app.ai.confirmation_gate": None}):
             await engine.process_candle()
 
         # Paper position should be created
