@@ -372,6 +372,16 @@ class BotScheduler:
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
+                # Hallucination check — validate AI claims against real data
+                try:
+                    from app.ai.hallucination_check import check_hallucination
+                    hc = await check_hallucination(decision, sym, engine.market_data)
+                    engine._last_ai_decision["hallucination_check"] = hc
+                    if hc.get("high_severity_count", 0) > 0:
+                        logger.warning(f"AI hallucination [{sym}]: {hc['high_severity_count']} high-severity flags: {hc['flags']}")
+                except Exception as e:
+                    logger.debug(f"Hallucination check failed [{sym}]: {e}")
+
                 # Log AI analysis to DB for activity page
                 from app.db.models import BotEventType
                 summary = f"[{sym}] {decision[:500]}"
