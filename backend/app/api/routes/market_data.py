@@ -17,11 +17,13 @@ async def get_ohlcv(
     count: int = Query(200, le=5000),
 ):
     engine = _get_engine(symbol)
-    df = await engine.market_data.get_ohlcv(symbol, timeframe, count)
+    # Use engine's actual symbol (may differ from alias, e.g., GOLDmicro vs GOLD)
+    actual_symbol = engine.symbol
+    df = await engine.market_data.get_ohlcv(actual_symbol, timeframe, count)
     if df.empty:
         return {"candles": []}
 
-    profile = SYMBOL_PROFILES.get(symbol, {})
+    profile = SYMBOL_PROFILES.get(actual_symbol, SYMBOL_PROFILES.get(symbol, {}))
     decimals = profile.get("price_decimals", 2)
 
     candles = []

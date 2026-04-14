@@ -34,11 +34,19 @@ def get_manager():
 
 
 def _get_engine(symbol: str | None = None):
-    """Get a specific engine or the first one as default."""
+    """Get a specific engine or the first one as default.
+
+    Resolves symbol aliases (e.g., GOLD → GOLDmicro if that's what's configured).
+    """
     mgr = get_manager()
     if symbol:
         engine = mgr.get_engine(symbol)
         if not engine:
+            # Try reverse alias: frontend sends "GOLD" but engine is "GOLDmicro"
+            from app.config import SYMBOL_ALIASES
+            for alias, canonical in SYMBOL_ALIASES.items():
+                if canonical == symbol and alias in mgr.engines:
+                    return mgr.engines[alias]
             raise HTTPException(status_code=404, detail=f"Symbol {symbol} not configured")
         return engine
     # Default: first engine (backward compat)
