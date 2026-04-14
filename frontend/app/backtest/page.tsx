@@ -347,7 +347,7 @@ export default function BacktestPage() {
       />
 
       <Tabs defaultValue="backtest" className="space-y-5">
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 max-w-2xl">
+        <TabsList className="flex w-full overflow-x-auto max-w-2xl">
           <TabsTrigger value="backtest"><FlaskConical className="size-3.5 mr-1.5" />Backtest</TabsTrigger>
           <TabsTrigger value="optimize"><Zap className="size-3.5 mr-1.5" />Optimizer</TabsTrigger>
           <TabsTrigger value="walk-forward"><Footprints className="size-3.5 mr-1.5" />Walk Forward</TabsTrigger>
