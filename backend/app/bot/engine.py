@@ -279,14 +279,35 @@ class BotEngine:
             if await self._check_circuit_breakers(balance):
                 return
 
-            # 1b. Multi-timeframe regime detection
+            # 1b. Multi-timeframe regime detection + HMM overlay
             try:
-                from app.strategy.regime import detect_multi_tf_regime
+                from app.strategy.regime import detect_multi_tf_regime, HMMRegimeDetector
                 self._multi_tf_regime = await detect_multi_tf_regime(self.market_data, self.symbol)
-                self.risk_manager.set_regime(self._multi_tf_regime.composite)
-                self._last_regime = self._multi_tf_regime.composite
+                regime_label = self._multi_tf_regime.composite
+
+                # HMM regime overlay — refine with probability distribution
+                try:
+                    if not hasattr(self, "_hmm_detector"):
+                        self._hmm_detector = HMMRegimeDetector(n_states=2)
+                    ohlcv = await self.market_data.get_ohlcv(self.symbol, self.timeframe, 200)
+                    if ohlcv is not None and len(ohlcv) > 100:
+                        prices = ohlcv["close"].values
+                        if not self._hmm_detector._fitted:
+                            self._hmm_detector.fit(prices)
+                        if self._hmm_detector._fitted:
+                            hmm_result = self._hmm_detector.predict(prices)
+                            regime_label = hmm_result.label
+                            self._last_hmm_probs = hmm_result.probabilities
+                            logger.debug(f"HMM [{self.symbol}]: {hmm_result.label} probs={hmm_result.probabilities}")
+                except Exception as e:
+                    logger.debug(f"HMM overlay unavailable [{self.symbol}]: {e}")
+
+                self.risk_manager.set_regime(regime_label)
+                self._last_regime = regime_label
                 # Cache for dashboard
-                await self.redis.setex(f"mtf_regime:{self.symbol}", 300, json.dumps(self._multi_tf_regime.to_dict()))
+                regime_cache = self._multi_tf_regime.to_dict()
+                regime_cache["hmm_probs"] = getattr(self, "_last_hmm_probs", None)
+                await self.redis.setex(f"mtf_regime:{self.symbol}", 300, json.dumps(regime_cache))
             except Exception as e:
                 logger.warning(f"Multi-TF regime detection failed: {e}")
 
@@ -307,6 +328,86 @@ class BotEngine:
 
             if not await self._check_trade_permission(signal, signal_label, balance, ai_sentiment):
                 return
+
+            # 3b. Confirmation gate — require confirmations before trading
+            #     Graceful: if data sources aren't ready, reduce required count
+            try:
+                from app.ai.confirmation_gate import ConfirmationGate
+                from app.strategy.quant_signals import compute_all_signals
+
+                prices = df["close"].values if len(df) > 30 else None
+                # Count available data sources to set proportional requirement
+                available_sources = sum([
+                    prices is not None and len(prices) > 30,     # quant
+                    hasattr(self.strategy, "_last_ml_signal"),     # ML
+                    hasattr(self, "_last_hmm_probs"),              # regime
+                    True,                                          # risk/reward (always available)
+                    ai_sentiment is not None,                      # AI
+                ])
+                # Skip gate if not enough data sources ready (< 3)
+                if available_sources < 3:
+                    logger.debug(f"Confirmation gate skipped [{self.symbol}]: only {available_sources}/5 sources available")
+                    raise RuntimeError("skip")  # caught by except below → proceed without gate
+                # Require majority of available sources (at least 2)
+                required = max(2, (available_sources + 1) // 2)
+                gate = ConfirmationGate(required=required)
+
+                quant_data = None
+                if prices is not None and len(prices) > 30:
+                    qs = compute_all_signals(prices)
+                    quant_data = qs.to_dict()
+
+                ml_data = None
+                if hasattr(self.strategy, "_last_ml_signal"):
+                    ml_data = {
+                        "signal": getattr(self.strategy, "_last_ml_signal", 0),
+                        "confidence": getattr(self.strategy, "_last_ml_confidence", 0),
+                    }
+
+                regime_data = None
+                if hasattr(self, "_last_hmm_probs"):
+                    regime_data = {"label": str(self._last_regime), "probabilities": self._last_hmm_probs}
+
+                atr_val = df.iloc[-2].get("atr", 0)
+                entry_est = df["close"].iloc[-1]
+                sl_est = atr_val * self.risk_manager.sl_atr_mult
+                tp_est = atr_val * self.risk_manager.tp_atr_mult
+                rr_data = {"ratio": tp_est / sl_est if sl_est > 0 else 0}
+
+                ai_agrees = ai_sentiment and ai_sentiment.get("label") in (
+                    "bullish" if signal == 1 else "bearish",
+                    "neutral",
+                )
+                ai_data = {
+                    "agrees": bool(ai_agrees),
+                    "confidence": ai_sentiment.get("confidence", 0) if ai_sentiment else 0,
+                    "reasoning": ai_sentiment.get("label", "") if ai_sentiment else "",
+                }
+
+                gate_result = gate.evaluate(
+                    signal=signal,
+                    quant_signals=quant_data,
+                    ml_prediction=ml_data,
+                    regime=regime_data,
+                    risk_reward=rr_data,
+                    ai_reasoning=ai_data,
+                )
+
+                self._last_confirmation = gate_result.to_dict()
+                logger.info(
+                    f"Confirmation gate [{self.symbol}]: {gate_result.passed_count}/5 "
+                    f"(need {gate_result.required}) → {gate_result.decision}"
+                )
+
+                if not gate_result.approved:
+                    await self._log_event(
+                        BotEventType.TRADE_BLOCKED,
+                        f"{signal_label} blocked: confirmation gate {gate_result.passed_count}/{gate_result.required}",
+                    )
+                    return
+
+            except Exception as e:
+                logger.debug(f"Confirmation gate skipped [{self.symbol}]: {e}")
 
             # 4. Size position and place order
             await self._size_and_place_order(signal, signal_label, df, balance, ai_sentiment, near_event=near_event)
@@ -492,10 +593,26 @@ class BotEngine:
                 await self._push_event("bot_event", {"type": "trade_blocked", "signal": signal_label, "reason": portfolio_reason})
                 return False
 
-        # Check symbol correlation conflicts
+        # Check symbol correlation conflicts (rolling correlation if data available)
         if self._manager:
-            from app.risk.correlation import check_correlation_conflict
+            from app.risk.correlation import check_correlation_conflict, compute_rolling_correlation
             active_positions = await self._manager.get_active_positions()
+
+            # Try rolling correlation, fall back to static
+            try:
+                price_series = {}
+                for sym, eng in self._manager.engines.items():
+                    ohlcv = await eng.market_data.get_ohlcv(sym, eng.timeframe, 60)
+                    if ohlcv is not None and len(ohlcv) > 30:
+                        price_series[sym] = ohlcv["close"].values
+                if len(price_series) >= 2:
+                    rolling_matrix = compute_rolling_correlation(price_series, window=30)
+                    # Update global CORRELATIONS with rolling values for this check
+                    from app.risk import correlation as _corr_mod
+                    _corr_mod.CORRELATIONS = {**_corr_mod.STATIC_CORRELATIONS, **rolling_matrix.matrix}
+            except Exception as e:
+                logger.debug(f"Rolling correlation unavailable, using static: {e}")
+
             has_conflict, conflict_reason = check_correlation_conflict(self.symbol, signal, active_positions)
             if has_conflict:
                 logger.info(f"Correlation conflict: {conflict_reason}")
@@ -518,6 +635,22 @@ class BotEngine:
         entry_price = tick["ask"] if signal == 1 else tick["bid"]
         atr_pct = atr / entry_price if entry_price > 0 else 0
 
+        # GARCH volatility forecast (use for sizing, fallback to ATR if fails)
+        garch_vol = None
+        try:
+            from app.risk.garch import fit_garch
+            prices = df["close"].values
+            if len(prices) > 50:
+                garch_result = fit_garch(prices, window=min(200, len(prices)))
+                garch_vol = garch_result.forecast_1
+                self._last_garch = garch_result.to_dict()
+                logger.debug(f"GARCH [{self.symbol}]: forecast={garch_vol:.6f} method={garch_result.method}")
+        except Exception as e:
+            logger.debug(f"GARCH unavailable [{self.symbol}]: {e}")
+
+        # Use GARCH vol for sizing if available, otherwise ATR
+        effective_vol_pct = garch_vol * 100 if garch_vol else atr_pct
+
         # Detect regime and apply to risk manager
         from app.strategy.regime import detect_regime as _detect_regime
         adx_value = df.iloc[-2].get("adx", 20)
@@ -538,7 +671,7 @@ class BotEngine:
             lot = round(min(self.fixed_lot, self.risk_manager.max_lot), 2)
             lot = max(lot, MIN_LOT)
         else:
-            lot = await self._calculate_position_size(balance, sl_pips, atr_pct)
+            lot = await self._calculate_position_size(balance, sl_pips, effective_vol_pct)
             # Apply warmup ramp-in
             lot = self._apply_warmup(lot)
             # Apply consecutive loss streak reduction
@@ -596,6 +729,8 @@ class BotEngine:
             "indicators": {
                 "atr": round(atr, 4),
                 "atr_pct": round(atr_pct, 6),
+                "garch_vol": round(garch_vol, 6) if garch_vol else None,
+                "effective_vol_pct": round(effective_vol_pct, 6),
                 "adx": round(float(df.iloc[-2].get("adx", 0)), 2) if "adx" in df.columns else None,
             },
             "risk": {
