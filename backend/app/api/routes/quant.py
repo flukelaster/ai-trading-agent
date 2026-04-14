@@ -15,10 +15,10 @@ async def get_var():
     """Get current VaR/CVaR per symbol + portfolio."""
     try:
 
-        from app.api.routes.bot import _get_manager
+        from app.api.routes.bot import get_manager
         from app.risk.var import compute_var
 
-        manager = _get_manager()
+        manager = get_manager()
         results = {}
 
         for sym, engine in manager.engines.items():
@@ -28,6 +28,8 @@ async def get_var():
                     prices = df["close"].values
                     var_result = compute_var(prices, method="historical", window=60)
                     results[sym] = var_result.to_dict()
+                else:
+                    logger.debug(f"VaR skipped [{sym}]: OHLCV empty or too short ({len(df) if df is not None else 'None'})")
             except Exception as e:
                 logger.warning(f"VaR calculation failed for {sym}: {e}")
 
@@ -40,9 +42,9 @@ async def get_var():
 async def get_regime():
     """Get HMM regime state + transition probabilities per symbol."""
     try:
-        from app.api.routes.bot import _get_manager
+        from app.api.routes.bot import get_manager
 
-        manager = _get_manager()
+        manager = get_manager()
         results = {}
 
         for sym, engine in manager.engines.items():
@@ -63,10 +65,10 @@ async def get_correlation():
     """Get rolling correlation matrix."""
     try:
 
-        from app.api.routes.bot import _get_manager
+        from app.api.routes.bot import get_manager
         from app.risk.correlation import compute_rolling_correlation
 
-        manager = _get_manager()
+        manager = get_manager()
         price_series = {}
 
         for sym, engine in manager.engines.items():
@@ -92,10 +94,10 @@ async def get_volatility():
     try:
         import numpy as np
 
-        from app.api.routes.bot import _get_manager
+        from app.api.routes.bot import get_manager
         from app.risk.garch import fit_garch
 
-        manager = _get_manager()
+        manager = get_manager()
         results = {}
 
         for sym, engine in manager.engines.items():
@@ -126,10 +128,10 @@ async def get_portfolio():
     """Get optimal portfolio weights and risk contribution."""
     try:
 
-        from app.api.routes.bot import _get_manager
+        from app.api.routes.bot import get_manager
         from app.risk.portfolio_optimizer import max_sharpe, risk_parity
 
-        manager = _get_manager()
+        manager = get_manager()
         price_series = {}
 
         for sym, engine in manager.engines.items():
@@ -158,10 +160,10 @@ async def get_portfolio():
 async def get_signals():
     """Get quant signals (z-score, Hurst, rolling Sharpe) per symbol."""
     try:
-        from app.api.routes.bot import _get_manager
+        from app.api.routes.bot import get_manager
         from app.strategy.quant_signals import compute_all_signals
 
-        manager = _get_manager()
+        manager = get_manager()
         results = {}
 
         for sym, engine in manager.engines.items():
@@ -183,10 +185,10 @@ async def get_signals():
 async def run_stress_test_endpoint(scenario: str = "covid_crash"):
     """Run stress test on current portfolio."""
     try:
-        from app.api.routes.bot import _get_manager
+        from app.api.routes.bot import get_manager
         from app.backtest.stress_test import run_all_stress_tests, run_stress_test
 
-        manager = _get_manager()
+        manager = get_manager()
         price_series = {}
         positions = {}
 
