@@ -303,20 +303,16 @@ class BotScheduler:
                 if cached_mode:
                     trading_mode = cached_mode if isinstance(cached_mode, str) else cached_mode.decode()
                     settings.trading_mode = trading_mode
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Redis trading_mode read failed: {e}")
 
-        # Run regime detection for all running engines (needed in both modes)
-        for sym in symbols:
-            engine = self._engines.get(sym)
-            if engine and engine.state.value == "RUNNING":
-                try:
-                    await engine._detect_regime()
-                except Exception as e:
-                    logger.debug(f"Regime detection [{sym}]: {e}")
+        if trading_mode not in ("strategy", "ai_autonomous"):
+            logger.warning(f"Invalid trading_mode '{trading_mode}', defaulting to 'strategy'")
+            trading_mode = "strategy"
 
         if trading_mode == "strategy":
             # Strategy-first: rule-based strategies generate signals, AI is filter only
+            # (process_candle runs _detect_regime internally)
             for sym in symbols:
                 engine = self._engines.get(sym)
                 if engine and engine.state.value == "RUNNING":
@@ -327,7 +323,14 @@ class BotScheduler:
             # AI analysis in parallel (for dashboard display, not trading)
             asyncio.create_task(self._run_ai_agent(symbols))
         else:
-            # AI autonomous: AI agent is the primary decision-maker
+            # AI autonomous: run regime detection (process_candle is skipped)
+            for sym in symbols:
+                engine = self._engines.get(sym)
+                if engine and engine.state.value == "RUNNING":
+                    try:
+                        await engine._detect_regime()
+                    except Exception as e:
+                        logger.debug(f"Regime detection [{sym}]: {e}")
             await self._run_ai_agent(symbols)
 
     async def _sentiment_job(self):
