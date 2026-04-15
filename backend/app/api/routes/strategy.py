@@ -26,6 +26,8 @@ async def get_available_strategies():
 @router.get("/current")
 async def get_current_strategy():
     bot = _get_engine()
+    if bot.strategy is None:
+        return {"name": "ai_autonomous", "params": {}}
     return {
         "name": bot.strategy.name,
         "params": bot.strategy.get_params(),

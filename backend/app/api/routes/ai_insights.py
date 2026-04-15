@@ -90,6 +90,8 @@ async def run_optimization():
     bot = _get_engine()
     if not hasattr(bot, "_optimizer") or bot._optimizer is None:
         raise HTTPException(status_code=503, detail="Optimizer not configured")
+    if bot.strategy is None:
+        raise HTTPException(status_code=400, detail="Cannot optimize in AI Autonomous mode — select a strategy first")
     result = await bot._optimizer.optimize(bot.strategy.get_params())
     if result is None:
         raise HTTPException(status_code=500, detail="Optimization failed")
@@ -109,6 +111,8 @@ async def apply_optimization(log_id: int, db: AsyncSession = Depends(get_db)):
 
     import json
     suggested = json.loads(log.suggested_params)
+    if bot.strategy is None:
+        raise HTTPException(status_code=400, detail="Cannot apply optimization in AI Autonomous mode")
     await bot.update_strategy(bot.strategy.name, suggested)
     log.applied = True
     await db.commit()
