@@ -41,6 +41,7 @@ def mock_engine():
     engine.risk_manager.max_concurrent_trades = 3
     engine.risk_manager.max_lot = 1.0
     engine.sentiment_analyzer = None
+    engine.redis = AsyncMock()
     engine.connector = AsyncMock()
     engine.connector.get_account.return_value = {
         "success": True,
