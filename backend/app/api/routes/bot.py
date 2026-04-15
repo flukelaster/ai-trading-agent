@@ -183,10 +183,11 @@ async def update_strategy(data: StrategyUpdate):
     engine = _get_engine(data.symbol)
     if data.name == "ai_autonomous":
         settings.trading_mode = "ai_autonomous"
-        engine.strategy = None
+        await engine.redis.set("trading_mode", "ai_autonomous")
         return {"status": "updated", "strategy": "ai_autonomous", "symbol": engine.symbol}
     # Switch back to strategy-first mode
     settings.trading_mode = "strategy"
+    await engine.redis.set("trading_mode", "strategy")
     try:
         await engine.update_strategy(data.name, data.params)
         return {"status": "updated", "strategy": data.name, "symbol": engine.symbol}

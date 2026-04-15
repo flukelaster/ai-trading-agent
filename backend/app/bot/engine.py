@@ -252,6 +252,36 @@ class BotEngine:
             "sentiment": sentiment,
         }
 
+    async def _detect_regime(self):
+        """Detect market regime (can be called independently of process_candle)."""
+        try:
+            from app.strategy.regime import detect_multi_tf_regime, HMMRegimeDetector
+            self._multi_tf_regime = await detect_multi_tf_regime(self.market_data, self.symbol)
+            regime_label = self._multi_tf_regime.composite
+
+            try:
+                if not hasattr(self, "_hmm_detector"):
+                    self._hmm_detector = HMMRegimeDetector(n_states=2)
+                ohlcv = await self.market_data.get_ohlcv(self.symbol, self.timeframe, 200)
+                if ohlcv is not None and len(ohlcv) > 100:
+                    prices = ohlcv["close"].values
+                    if not self._hmm_detector._fitted:
+                        self._hmm_detector.fit(prices)
+                    if self._hmm_detector._fitted:
+                        hmm_result = self._hmm_detector.predict(prices)
+                        regime_label = hmm_result.label
+                        self._last_hmm_probs = hmm_result.probabilities
+            except Exception as e:
+                logger.debug(f"HMM overlay unavailable [{self.symbol}]: {e}")
+
+            self.risk_manager.set_regime(regime_label)
+            self._last_regime = regime_label
+            regime_cache = self._multi_tf_regime.to_dict()
+            regime_cache["hmm_probs"] = getattr(self, "_last_hmm_probs", None)
+            await self.redis.setex(f"mtf_regime:{self.symbol}", 300, json.dumps(regime_cache))
+        except Exception as e:
+            logger.warning(f"Regime detection failed [{self.symbol}]: {e}")
+
     async def process_candle(self):
         """Main trading logic — called every candle close."""
         # Auto-recovery: check if paused bot can resume after cooldown
@@ -281,36 +311,7 @@ class BotEngine:
                 return
 
             # 1b. Multi-timeframe regime detection + HMM overlay
-            try:
-                from app.strategy.regime import detect_multi_tf_regime, HMMRegimeDetector
-                self._multi_tf_regime = await detect_multi_tf_regime(self.market_data, self.symbol)
-                regime_label = self._multi_tf_regime.composite
-
-                # HMM regime overlay — refine with probability distribution
-                try:
-                    if not hasattr(self, "_hmm_detector"):
-                        self._hmm_detector = HMMRegimeDetector(n_states=2)
-                    ohlcv = await self.market_data.get_ohlcv(self.symbol, self.timeframe, 200)
-                    if ohlcv is not None and len(ohlcv) > 100:
-                        prices = ohlcv["close"].values
-                        if not self._hmm_detector._fitted:
-                            self._hmm_detector.fit(prices)
-                        if self._hmm_detector._fitted:
-                            hmm_result = self._hmm_detector.predict(prices)
-                            regime_label = hmm_result.label
-                            self._last_hmm_probs = hmm_result.probabilities
-                            logger.debug(f"HMM [{self.symbol}]: {hmm_result.label} probs={hmm_result.probabilities}")
-                except Exception as e:
-                    logger.debug(f"HMM overlay unavailable [{self.symbol}]: {e}")
-
-                self.risk_manager.set_regime(regime_label)
-                self._last_regime = regime_label
-                # Cache for dashboard
-                regime_cache = self._multi_tf_regime.to_dict()
-                regime_cache["hmm_probs"] = getattr(self, "_last_hmm_probs", None)
-                await self.redis.setex(f"mtf_regime:{self.symbol}", 300, json.dumps(regime_cache))
-            except Exception as e:
-                logger.warning(f"Multi-TF regime detection failed: {e}")
+            await self._detect_regime()
 
             # 1c. Check macro event proximity — reduce exposure or skip
             from app.constants import EVENT_BLOCK_HOURS
@@ -461,6 +462,9 @@ class BotEngine:
 
     async def _generate_signal(self) -> tuple[int, str, "pd.DataFrame"] | None:
         """Fetch OHLCV, calculate strategy, apply MTF filter. Returns (signal, label, df) or None."""
+        if self.strategy is None:
+            return None  # AI Autonomous mode — signals come from AI agent, not strategy
+
         df = await self.market_data.get_ohlcv(self.symbol, self.timeframe, DEFAULT_OHLCV_BARS)
         if df.empty:
             return None

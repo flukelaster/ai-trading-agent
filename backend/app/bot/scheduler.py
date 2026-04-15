@@ -294,7 +294,26 @@ class BotScheduler:
     async def _candle_job(self, symbols: list[str]):
         logger.debug(f"Candle job triggered for {symbols}")
 
+        # Read trading_mode from Redis (survives redeploy), fallback to settings/env
         trading_mode = getattr(settings, "trading_mode", "strategy")
+        try:
+            first_engine = next(iter(self._engines.values()), None)
+            if first_engine and first_engine.redis:
+                cached_mode = await first_engine.redis.get("trading_mode")
+                if cached_mode:
+                    trading_mode = cached_mode if isinstance(cached_mode, str) else cached_mode.decode()
+                    settings.trading_mode = trading_mode
+        except Exception:
+            pass
+
+        # Run regime detection for all running engines (needed in both modes)
+        for sym in symbols:
+            engine = self._engines.get(sym)
+            if engine and engine.state.value == "RUNNING":
+                try:
+                    await engine._detect_regime()
+                except Exception as e:
+                    logger.debug(f"Regime detection [{sym}]: {e}")
 
         if trading_mode == "strategy":
             # Strategy-first: rule-based strategies generate signals, AI is filter only
