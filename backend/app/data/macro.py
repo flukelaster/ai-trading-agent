@@ -111,6 +111,10 @@ class MacroDataService:
 
     async def get_latest_snapshot(self) -> dict:
         """Get latest value for each tracked series."""
+        try:
+            await self.db.rollback()
+        except Exception:
+            pass
         snapshot = {}
         for series_id, series_name in FRED_SERIES.items():
             result = await self.db.execute(
@@ -130,6 +134,10 @@ class MacroDataService:
 
     async def compute_correlations(self, symbol: str, timeframe: str, days: int = 90) -> dict:
         """Compute rolling correlation between gold price and macro series."""
+        try:
+            await self.db.rollback()
+        except Exception:
+            pass
         from app.db.models import OHLCVData
 
         cutoff = datetime.utcnow() - timedelta(days=days)
