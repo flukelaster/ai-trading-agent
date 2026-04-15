@@ -62,7 +62,7 @@ class StrategyOptimizer:
         self._collector = collector
 
     async def build_performance_summary(self, days: int = 7) -> str:
-        cutoff = datetime.now(UTC) - timedelta(days=days)
+        cutoff = datetime.utcnow() - timedelta(days=days)
         result = await self.db.execute(
             select(Trade).where(Trade.open_time >= cutoff).order_by(Trade.open_time)
         )
@@ -173,8 +173,9 @@ Profit factor: {pf:.2f}"""
             # Load last 90 days of data from DB
             to_date = datetime.now(UTC).strftime("%Y-%m-%d")
             from_date = (datetime.now(UTC) - timedelta(days=90)).strftime("%Y-%m-%d")
+            from app.config import resolve_broker_symbol
             df = await self._collector.load_from_db(
-                settings.symbol, settings.timeframe, from_date, to_date
+                resolve_broker_symbol(settings.symbol), settings.timeframe, from_date, to_date
             )
             if df.empty or len(df) < 200:
                 logger.info("Not enough historical data for backtest validation")

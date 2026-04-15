@@ -31,7 +31,9 @@ async def get_latest_macro():
 async def get_correlations(days: int = 90):
     if _macro_service is None:
         raise HTTPException(status_code=503, detail="Macro service not initialized")
-    return await _macro_service.compute_correlations(settings.symbol, settings.timeframe, days)
+    from app.config import resolve_broker_symbol
+    symbol = resolve_broker_symbol(settings.symbol)
+    return await _macro_service.compute_correlations(symbol, settings.timeframe, days)
 
 
 @router.get("/events")

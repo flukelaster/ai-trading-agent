@@ -192,13 +192,11 @@ export default function DashboardPage() {
   const handleStop = async () => { setActionLoading("stop"); try { await stopBot(activeSymbol); await fetchData(); } finally { setActionLoading(null); } };
   const handleEmergencyStop = async () => {
     if (confirm("Are you sure? This will close ALL positions for " + activeSymbol + " immediately.")) {
-      await emergencyStop(activeSymbol);
-      fetchData();
+      try { await emergencyStop(activeSymbol); await fetchData(); } catch { /* handled by axios interceptor */ }
     }
   };
   const handleAIFilterToggle = async (enabled: boolean) => {
-    await updateSettings({ symbol: activeSymbol, use_ai_filter: enabled });
-    fetchData();
+    try { await updateSettings({ symbol: activeSymbol, use_ai_filter: enabled }); await fetchData(); } catch { /* handled by axios interceptor */ }
   };
 
   const [chartTimeframe, setChartTimeframe] = useState("M5");

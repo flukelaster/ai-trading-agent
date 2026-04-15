@@ -128,9 +128,11 @@ export default function SettingsPage() {
   };
 
   const handleSettingChange = async (symbol: string, updates: Record<string, unknown>) => {
-    await updateSettings({ symbol, ...updates });
-    const res = await getBotStatus().catch(() => null);
-    if (res?.data?.symbols) setSymbolStatuses(res.data.symbols);
+    try {
+      await updateSettings({ symbol, ...updates });
+      const res = await getBotStatus().catch(() => null);
+      if (res?.data?.symbols) setSymbolStatuses(res.data.symbols);
+    } catch { /* handled by axios interceptor */ }
   };
 
   if (loading) {
@@ -288,9 +290,11 @@ export default function SettingsPage() {
                         value={st.strategy || "ai_autonomous"}
                         onValueChange={async (v) => {
                           if (!v) return;
-                          await updateStrategy(v, undefined, symbol || undefined);
-                          const res = await getBotStatus().catch(() => null);
-                          if (res?.data?.symbols) setSymbolStatuses(res.data.symbols);
+                          try {
+                            await updateStrategy(v, undefined, symbol || undefined);
+                            const res = await getBotStatus().catch(() => null);
+                            if (res?.data?.symbols) setSymbolStatuses(res.data.symbols);
+                          } catch { /* handled by axios interceptor */ }
                         }}
                       >
                         <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>

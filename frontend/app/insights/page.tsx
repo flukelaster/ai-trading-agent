@@ -70,8 +70,7 @@ export default function InsightsPage() {
   };
   const handleApply = async (logId: number) => {
     if (confirm("Apply suggested parameters?")) {
-      await applyOptimization(logId);
-      fetchData();
+      try { await applyOptimization(logId); await fetchData(); } catch { /* handled by axios interceptor */ }
     }
   };
 

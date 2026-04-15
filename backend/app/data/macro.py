@@ -132,7 +132,7 @@ class MacroDataService:
         """Compute rolling correlation between gold price and macro series."""
         from app.db.models import OHLCVData
 
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = datetime.utcnow() - timedelta(days=days)
 
         # Get daily gold closes
         result = await self.db.execute(
