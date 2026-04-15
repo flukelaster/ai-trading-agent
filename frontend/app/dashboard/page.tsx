@@ -525,12 +525,14 @@ export default function DashboardPage() {
         ) : (
           <Card className="order-2 lg:order-1 lg:col-span-3">
             <CardHeader className="p-3 sm:p-6">
-              <CardTitle className="text-sm font-bold flex items-center justify-between">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <span>{activeSymbolInfo?.display_name || activeSymbol}</span>
-                  <SentimentBadge label={sentiment?.label || "neutral"} score={sentiment?.score || 0} size="sm" />
+              <CardTitle className="text-sm font-bold space-y-2 sm:space-y-0">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <span>{activeSymbolInfo?.display_name || activeSymbol}</span>
+                    <SentimentBadge label={sentiment?.label || "neutral"} score={sentiment?.score || 0} size="sm" />
+                  </div>
+                  <TimeframeSelector value={chartTimeframe} onChange={setChartTimeframe} />
                 </div>
-                <TimeframeSelector value={chartTimeframe} onChange={setChartTimeframe} />
               </CardTitle>
             </CardHeader>
             <CardContent className="h-56 sm:h-72 xl:h-80 p-3 pt-0 sm:p-6 sm:pt-0">
@@ -550,19 +552,20 @@ export default function DashboardPage() {
         {status?.ai_decision && (
           <Card>
             <CardHeader className="p-3 sm:p-6">
-              <CardTitle className="text-sm font-bold flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Activity className="size-4 text-primary" />
-                  AI วิเคราะห์ล่าสุด
-                  {/* Signal badge */}
-                  {(() => {
-                    const d = (status.ai_decision.decision as string || "").toLowerCase();
-                    const signal = d.includes("buy") && !d.includes("hold") ? "BUY" : d.includes("sell") && !d.includes("hold") ? "SELL" : "HOLD";
-                    const color = signal === "BUY" ? "bg-green-500/10 text-green-400 border-green-500/20" : signal === "SELL" ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20";
-                    return <Badge variant="outline" className={`text-[10px] ${color}`}>{signal}</Badge>;
-                  })()}
+              <CardTitle className="text-sm font-bold space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="size-4 text-primary" />
+                    AI วิเคราะห์ล่าสุด
+                    {(() => {
+                      const d = (status.ai_decision.decision as string || "").toLowerCase();
+                      const signal = d.includes("buy") && !d.includes("hold") ? "BUY" : d.includes("sell") && !d.includes("hold") ? "SELL" : "HOLD";
+                      const color = signal === "BUY" ? "bg-green-500/10 text-green-400 border-green-500/20" : signal === "SELL" ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20";
+                      return <Badge variant="outline" className={`text-[10px] ${color}`}>{signal}</Badge>;
+                    })()}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs font-normal text-muted-foreground">
+                <div className="flex items-center gap-3 text-[11px] font-normal text-muted-foreground">
                   <span>{(status.ai_decision as Record<string, unknown>).timestamp ? new Date((status.ai_decision as Record<string, unknown>).timestamp as string).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) : "—"}</span>
                   <span>{status.ai_decision.tool_calls} tools</span>
                   <span>{status.ai_decision.turns} turns</span>
