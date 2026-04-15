@@ -271,6 +271,7 @@ class BotEngine:
                         hmm_result = self._hmm_detector.predict(prices)
                         regime_label = hmm_result.label
                         self._last_hmm_probs = hmm_result.probabilities
+                        logger.debug(f"HMM [{self.symbol}]: {hmm_result.label} probs={hmm_result.probabilities}")
             except Exception as e:
                 logger.debug(f"HMM overlay unavailable [{self.symbol}]: {e}")
 
@@ -284,6 +285,11 @@ class BotEngine:
 
     async def process_candle(self):
         """Main trading logic — called every candle close."""
+        # Skip if in AI autonomous mode (AI agent handles trading)
+        if settings.trading_mode == "ai_autonomous" or self.strategy is None:
+            logger.debug(f"process_candle skipped [{self.symbol}]: mode={settings.trading_mode}, strategy={'None' if self.strategy is None else self.strategy.name}")
+            return
+
         # Auto-recovery: check if paused bot can resume after cooldown
         if self.state == BotState.PAUSED:
             if await self.circuit_breaker.can_resume():

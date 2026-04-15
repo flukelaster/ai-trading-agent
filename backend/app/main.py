@@ -171,10 +171,11 @@ async def lifespan(app: FastAPI):
         cached_mode = await redis_client.get("trading_mode")
         if cached_mode:
             mode = cached_mode if isinstance(cached_mode, str) else cached_mode.decode()
-            settings.trading_mode = mode
-            logger.info(f"Restored trading_mode from Redis: {mode}")
-    except Exception:
-        pass
+            if mode in ("strategy", "ai_autonomous"):
+                settings.trading_mode = mode
+                logger.info(f"Restored trading_mode from Redis: {mode}")
+    except Exception as e:
+        logger.debug(f"Redis trading_mode restore failed: {e}")
 
     # Start scheduler
     scheduler = BotScheduler(manager)
