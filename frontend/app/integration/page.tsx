@@ -93,7 +93,7 @@ export default function IntegrationPage() {
     try {
       const res = await api.get("/api/integration/status");
       const results: Record<string, TestResult> = {};
-      const keyMap: Record<string, string> = { "Anthropic API": "anthropic", "MT5 Bridge": "mt5", "Telegram": "telegram" };
+      const keyMap: Record<string, string> = { "Claude AI (Max)": "anthropic", "Anthropic API": "anthropic", "MT5 Bridge": "mt5", "Telegram": "telegram", "Economic Calendar": "economic_calendar", "TradingView": "tradingview" };
       for (const s of res.data.services) results[keyMap[s.name] || s.name] = s;
       setTestResults(results);
     } catch { /* handled */ } finally { setTesting(null); }
@@ -134,7 +134,7 @@ export default function IntegrationPage() {
 
         items={[
           "Connect external services here. Click Configure to add API keys, then Test Connection to verify.",
-          "MT5 requires a running MetaTrader 5 terminal. Claude AI needs an Anthropic API key. Telegram needs a bot token from @BotFather.",
+          "MT5 requires a running MetaTrader 5 terminal. Claude AI uses Max Subscription (OAuth). Telegram needs a bot token from @BotFather.",
         ]}
       />
 

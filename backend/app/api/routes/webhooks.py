@@ -51,7 +51,8 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     if not expected_key:
         raise HTTPException(status_code=503, detail="TradingView webhook key not configured")
 
-    if alert.key != expected_key:
+    import hmac
+    if not hmac.compare_digest(alert.key, expected_key):
         logger.warning(f"TradingView webhook: invalid key from {request.client.host if request.client else 'unknown'}")
         raise HTTPException(status_code=401, detail="Invalid webhook key")
 
@@ -119,4 +120,4 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
 
     except Exception as e:
         logger.error(f"TradingView webhook error: {e}")
-        return {"executed": False, "reason": str(e)}
+        return {"executed": False, "reason": "Internal execution error"}
