@@ -27,12 +27,12 @@ const Markdown = dynamic(() => import("react-markdown"), { ssr: false });
 const PriceChart = dynamic(() => import("@/components/chart/PriceChart"), { ssr: false, loading: () => <Skeleton className="h-56 sm:h-72 xl:h-80 rounded-xl" /> });
 const LazyRecharts = dynamic(() => import("recharts").then((mod) => {
   const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = mod;
-  return { default: ({ data }: { data: { date: string; equity: number }[] }) => (
+  return { default: ({ data }: { data: { time: string; equity: number }[] }) => (
     <ResponsiveContainer width="100%" height={180}>
       <AreaChart data={data}>
         <defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#9fe870" stopOpacity={0.3} /><stop offset="100%" stopColor="#9fe870" stopOpacity={0} /></linearGradient></defs>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        <XAxis dataKey="date" fontSize={10} className="fill-muted-foreground" />
+        <XAxis dataKey="time" hide fontSize={10} className="fill-muted-foreground" />
         <YAxis fontSize={10} className="fill-muted-foreground" />
         <Tooltip contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: "12px", color: "var(--foreground)" }} />
         <Area type="monotone" dataKey="equity" stroke="#9fe870" fill="url(#eqGrad)" strokeWidth={2} />
@@ -741,13 +741,13 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {(analytics.equity_curve as {date: string; equity: number}[])?.length > 1 && (
+          {(analytics.equity_curve as {time: string; equity: number}[])?.length > 1 && (
             <Card>
               <CardHeader className="p-3 sm:p-6">
                 <CardTitle className="text-sm font-bold">Equity Curve</CardTitle>
               </CardHeader>
               <CardContent className="h-48 p-3 pt-0 sm:p-6 sm:pt-0">
-                <LazyRecharts data={analytics.equity_curve as {date: string; equity: number}[]} />
+                <LazyRecharts data={analytics.equity_curve as {time: string; equity: number}[]} />
               </CardContent>
             </Card>
           )}
