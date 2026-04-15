@@ -88,7 +88,7 @@ export const getSentimentHistory = (days?: number) =>
   api.get("/api/ai/sentiment/history", { params: { days } });
 export const getOptimizationReport = () =>
   api.get("/api/ai/optimization/latest");
-export const runOptimization = () => api.post("/api/ai/optimization/run");
+export const runOptimization = () => api.post("/api/ai/optimization/run", null, { timeout: 120000 });
 export const applyOptimization = (logId: number) =>
   api.post(`/api/ai/optimization/${logId}/apply`);
 
