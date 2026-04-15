@@ -9,12 +9,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Download, BarChart3, TrendingUp, DollarSign, Target } from "lucide-react";
+import { Download, BarChart3, TrendingUp, DollarSign, Target, History } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { StatCard } from "@/components/ui/stat-card";
 import SentimentBadge from "@/components/ai/SentimentBadge";
 import { getTradeHistory, getPerformance, getSymbols } from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { SymbolTabs } from "@/components/ui/symbol-tabs";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
@@ -55,7 +58,7 @@ export default function HistoryPage() {
       ]);
       setTrades(tradeRes.data.trades || []);
       setPerformance(perfRes.data);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { console.error(e); showError("Failed to load trade history"); } finally { setLoading(false); }
   }, [days, symbolFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -72,10 +75,11 @@ export default function HistoryPage() {
     a.href = URL.createObjectURL(blob);
     a.download = `trades_${days}d.csv`;
     a.click();
+    showSuccess("CSV exported", `${trades.length} trades exported`);
   };
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="Trade History" subtitle="Review past trades and performance">
         <SymbolTabs
           symbols={symbols}
@@ -209,7 +213,7 @@ export default function HistoryPage() {
                   })()}
                 </>
               ) : (
-                <p className="text-muted-foreground text-center py-12 font-medium">No trades found</p>
+                <EmptyState icon={History} heading="No trades found" description="Start trading to see your history here" action={{ label: "Go to Dashboard", href: "/dashboard" }} />
               )}
             </CardContent>
           </Card>
@@ -235,6 +239,7 @@ export default function HistoryPage() {
                 <CardTitle className="text-sm font-bold">Cumulative P&L</CardTitle>
               </CardHeader>
               <CardContent>
+                <ErrorBoundary>
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart
                     data={trades
@@ -268,6 +273,7 @@ export default function HistoryPage() {
                     <Area type="monotone" dataKey="pnl" stroke="#9fe870" strokeWidth={2} fill="url(#pnlGradient)" />
                   </AreaChart>
                 </ResponsiveContainer>
+                </ErrorBoundary>
               </CardContent>
             </Card>
           )}

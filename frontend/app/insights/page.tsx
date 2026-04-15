@@ -16,6 +16,9 @@ import {
   getLatestSentiment, getSentimentHistory, getOptimizationReport,
   runOptimization, applyOptimization, getBotStatus,
 } from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
@@ -60,17 +63,19 @@ export default function InsightsPage() {
     try {
       const res = await runOptimization();
       setOptimization(res.data);
+      showSuccess("Optimization complete");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Optimization failed";
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setOptimizeError(detail || msg);
+      showError("Optimization failed", detail || msg);
     } finally {
       setOptimizing(false);
     }
   };
   const handleApply = async (logId: number) => {
     if (confirm("Apply suggested parameters?")) {
-      try { await applyOptimization(logId); await fetchData(); } catch { /* handled by axios interceptor */ }
+      try { await applyOptimization(logId); await fetchData(); showSuccess("Optimization applied"); } catch { showError("Failed to apply optimization"); }
     }
   };
 
@@ -92,7 +97,7 @@ export default function InsightsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="AI Insights" subtitle="Sentiment analysis and strategy optimization" />
 
       <PageInstructions
@@ -142,9 +147,7 @@ export default function InsightsPage() {
                 </p>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-12 font-medium">
-                No sentiment data available
-              </p>
+              <EmptyState icon={Brain} heading="No sentiment data" description="AI sentiment analysis will appear after the bot runs its first analysis cycle" />
             )}
           </CardContent>
         </Card>
@@ -156,6 +159,7 @@ export default function InsightsPage() {
           </CardHeader>
           <CardContent>
             {chartData.length > 0 ? (
+              <ErrorBoundary>
               <ResponsiveContainer width="100%" height={320}>
                 <AreaChart data={chartData}>
                   <defs>
@@ -181,10 +185,9 @@ export default function InsightsPage() {
                   <Area type="monotone" dataKey="score" stroke="#9fe870" strokeWidth={2} fill="url(#sentimentGradient)" dot={{ fill: "#9fe870", r: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
+              </ErrorBoundary>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-20 font-medium">
-                No history data
-              </p>
+              <EmptyState icon={BarChart3} heading="No history data" description="Sentiment history will build up over time as the bot analyzes market conditions" />
             )}
           </CardContent>
         </Card>

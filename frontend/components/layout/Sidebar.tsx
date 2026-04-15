@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { ConnectionStatus } from "@/components/ui/connection-status";
+import { NotificationCenter } from "@/components/ui/notification-center";
 
 interface NavItem { href: string; label: string; icon: typeof LayoutDashboard; }
 interface NavGroup { label: string; items: NavItem[]; }
@@ -158,7 +160,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Footer */}
       <div className="p-4 space-y-1">
-        <ThemeToggle />
+        <ConnectionStatus />
+        <div className="flex items-center gap-1 px-1">
+          <NotificationCenter />
+          <ThemeToggle />
+        </div>
         <LogoutButton />
         <p className="px-3 pt-1 text-xs text-muted-foreground/50 font-medium">v2.0.0</p>
       </div>

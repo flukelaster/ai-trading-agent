@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database, CheckCircle2, XCircle, ChevronDown, ChevronUp, AlertTriangle, Activity, Loader2 } from "lucide-react";
+import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database, CheckCircle2, XCircle, ChevronDown, ChevronUp, AlertTriangle, Activity, Loader2, Cpu } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { showSuccess, showError } from "@/lib/toast";
 import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData, getSymbols, getDriftReport, getCalibration } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
 import { SymbolTabs } from "@/components/ui/symbol-tabs";
@@ -111,9 +113,11 @@ export default function MLPage() {
     try {
       const res = await collectData({ symbol: activeSymbol, timeframe: collectTimeframe, from_date: collectFrom, to_date: collectTo });
       setCollectResult(res.data);
+      showSuccess("Data collected successfully");
       await fetchData();
     } catch (e) {
       setCollectError((e as Error).message || "Collection failed");
+      showError("Data collection failed");
     } finally { setCollecting(false); }
   };
 
@@ -123,6 +127,7 @@ export default function MLPage() {
     try {
       const res = await trainModel({ symbol: activeSymbol, timeframe: trainTimeframe, from_date: trainFrom, to_date: trainTo, forward_bars: forwardBars, tp_pips: tpPips, sl_pips: slPips });
       setTrainResult(res.data);
+      showSuccess("Model trained successfully");
       await fetchData();
     } catch (e: unknown) {
       let msg = "Training failed";
@@ -134,6 +139,7 @@ export default function MLPage() {
         else msg = `Server error (${resp?.status || "unknown"})`;
       } else if (e instanceof Error) msg = e.message;
       setTrainResult({ error: msg });
+      showError("Training failed", msg);
     } finally { setTraining(false); }
   };
 
@@ -142,7 +148,8 @@ export default function MLPage() {
     try {
       const res = await mlPredict(activeSymbol);
       setPrediction(res.data);
-    } catch { /* handled */ }
+      showSuccess("Prediction completed");
+    } catch { showError("Prediction failed"); }
     finally { setPredicting(false); }
   };
 
@@ -182,7 +189,7 @@ export default function MLPage() {
   const totalBars = dataStatus.reduce((sum, d) => sum + (d.bar_count as number), 0);
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="ML Model" subtitle="Train and manage LightGBM signal model per symbol" />
 
       <PageInstructions
@@ -415,9 +422,7 @@ export default function MLPage() {
                 <p className="text-sm text-red-400">{String(prediction.error)}</p>
               )}
               {!prediction && (
-                <p className="text-xs text-muted-foreground text-center py-4">
-                  Run a prediction to see the model&apos;s current signal
-                </p>
+                <EmptyState icon={Cpu} heading="No prediction yet" description="Run a prediction to see the model's current signal" />
               )}
             </div>
           </div>

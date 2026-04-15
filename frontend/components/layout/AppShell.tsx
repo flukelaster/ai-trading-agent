@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar, MobileHeader } from "@/components/layout/Sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { CommandPalette } from "@/components/ui/command-palette";
+import { RouteProgress } from "@/components/ui/route-progress";
 import api from "@/lib/api";
 
 const AUTH_BYPASS_PAGES = ["/login"];
@@ -54,11 +56,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <TooltipProvider>
+      <Suspense fallback={null}>
+        <RouteProgress />
+      </Suspense>
+      <CommandPalette />
       <div className="flex flex-col lg:flex-row min-h-full">
         <MobileHeader />
         <Sidebar />
         <main className="flex-1 overflow-auto">
-          <div className="max-w-[1600px] mx-auto">{children}</div>
+          <div className="max-w-400 mx-auto">{children}</div>
         </main>
       </div>
     </TooltipProvider>

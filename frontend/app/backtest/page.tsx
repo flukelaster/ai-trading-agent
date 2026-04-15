@@ -17,6 +17,7 @@ import {
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { StatCard } from "@/components/ui/stat-card";
+import { showSuccess, showError } from "@/lib/toast";
 import { TIMEFRAMES } from "@/components/ui/timeframe-selector";
 import {
   runBacktest, runOptimize, runWalkForward, runMonteCarlo, runCointegration, runPermutationTest, getCurrentStrategy, getDataStatus, getSymbols,
@@ -170,7 +171,8 @@ export default function BacktestPage() {
       else { params.count = count; }
       const res = await runBacktest(params as Parameters<typeof runBacktest>[0]);
       setResult(res.data);
-    } catch { /* handled */ } finally { setLoading(false); }
+      showSuccess("Backtest completed");
+    } catch { showError("Backtest failed"); } finally { setLoading(false); }
   };
 
   const handleOptimize = async () => {
@@ -190,7 +192,8 @@ export default function BacktestPage() {
       if (source === "db") { params.from_date = fromDate; params.to_date = toDate; }
       const res = await runOptimize(params as Parameters<typeof runOptimize>[0]);
       setOptResult(res.data);
-    } catch { /* handled */ } finally { setOptimizing(false); }
+      showSuccess("Optimization completed");
+    } catch { showError("Optimization failed"); } finally { setOptimizing(false); }
   };
 
   const handleWalkForward = async () => {
@@ -213,7 +216,8 @@ export default function BacktestPage() {
       else { params.count = count; }
       const res = await runWalkForward(params as Parameters<typeof runWalkForward>[0]);
       setWfResult(res.data);
-    } catch { /* handled */ } finally { setWfRunning(false); }
+      showSuccess("Walk-forward completed");
+    } catch { showError("Walk-forward failed"); } finally { setWfRunning(false); }
   };
 
   const handleMonteCarlo = async () => {
@@ -227,7 +231,8 @@ export default function BacktestPage() {
       else { params.count = count; }
       const res = await runMonteCarlo(params as Parameters<typeof runMonteCarlo>[0]);
       setMcResult(res.data);
-    } catch { /* handled */ } finally { setMcRunning(false); }
+      showSuccess("Monte Carlo completed");
+    } catch { showError("Monte Carlo failed"); } finally { setMcRunning(false); }
   };
 
   const handleCointegration = async () => {
@@ -238,7 +243,8 @@ export default function BacktestPage() {
       const symbolB = pairMap[symbol] || "USDJPY";
       const res = await runCointegration({ symbol_a: symbol, symbol_b: symbolB, timeframe, source });
       setCointResult(res.data);
-    } catch { /* handled */ } finally { setCointRunning(false); }
+      showSuccess("Cointegration test completed");
+    } catch { showError("Cointegration test failed"); } finally { setCointRunning(false); }
   };
 
   const handlePermutation = async () => {
@@ -252,7 +258,8 @@ export default function BacktestPage() {
       else { params.count = count; }
       const res = await runPermutationTest(params as Parameters<typeof runPermutationTest>[0]);
       setPermResult(res.data);
-    } catch { /* handled */ } finally { setPermRunning(false); }
+      showSuccess("Permutation test completed");
+    } catch { showError("Permutation test failed"); } finally { setPermRunning(false); }
   };
 
   const equityCurve = (result?.equity_curve as number[] || []).map((v, i) => ({ bar: i, equity: v }));
@@ -334,7 +341,7 @@ export default function BacktestPage() {
   );
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="Backtester" subtitle="Test strategies against historical data" />
 
       <PageInstructions

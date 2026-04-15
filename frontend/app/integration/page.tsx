@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
+import { showSuccess, showError } from "@/lib/toast";
 import api from "@/lib/api";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -83,8 +84,11 @@ export default function IntegrationPage() {
     try {
       const res = await api.get(`/api/integration/test/${id}`);
       setTestResults((prev) => ({ ...prev, [id]: res.data }));
+      if (res.data.status === "connected") showSuccess("Connection successful");
+      else showError("Connection failed", res.data.detail);
     } catch {
       setTestResults((prev) => ({ ...prev, [id]: { name: id, status: "error", latency_ms: 0, detail: "Failed" } }));
+      showError("Connection failed");
     } finally { setTesting(null); }
   };
 
@@ -96,7 +100,10 @@ export default function IntegrationPage() {
       const keyMap: Record<string, string> = { "Claude AI (Max)": "anthropic", "Anthropic API": "anthropic", "MT5 Bridge": "mt5", "Telegram": "telegram", "Economic Calendar": "economic_calendar", "TradingView": "tradingview" };
       for (const s of res.data.services) results[keyMap[s.name] || s.name] = s;
       setTestResults(results);
-    } catch { /* handled */ } finally { setTesting(null); }
+      const allConnected = Object.values(results).every((r) => r.status === "connected");
+      if (allConnected) showSuccess("All services connected");
+      else showError("Some services failed");
+    } catch { showError("Connection test failed"); } finally { setTesting(null); }
   };
 
   const openModal = (id: string) => {
@@ -113,8 +120,9 @@ export default function IntegrationPage() {
     try {
       await api.put("/api/integration/config", { integration_id: modalId, config: nonEmpty });
       setEditValues({});
+      showSuccess("Configuration saved");
       await fetchConfig();
-    } catch { /* handled */ } finally { setSaving(false); }
+    } catch { showError("Failed to save configuration"); } finally { setSaving(false); }
   };
 
   const modalIntg = integrations.find((i) => i.id === modalId);
@@ -122,7 +130,7 @@ export default function IntegrationPage() {
   const hasEdits = Object.values(editValues).some((v) => v.trim());
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="Integration" subtitle="Connect external services to enable agent capabilities">
         <button type="button" onClick={testAll} disabled={testing === "all"}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">

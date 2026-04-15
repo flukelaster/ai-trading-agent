@@ -9,6 +9,8 @@ import { Globe, Calendar, RefreshCw, ArrowRightLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { getMacroLatest, getMacroCorrelations, getMacroEvents, collectMacro } from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export default function MacroPage() {
   const [snapshot, setSnapshot] = useState<Record<string, { name: string; value: number; date: string }>>({});
@@ -38,7 +40,11 @@ export default function MacroPage() {
     try {
       await collectMacro();
       await fetchData();
-    } catch (e) { console.error(e); }
+      showSuccess("Macro data collected");
+    } catch (e) {
+      console.error(e);
+      showError("Failed to collect macro data");
+    }
     finally { setCollecting(false); }
   };
 
@@ -58,7 +64,7 @@ export default function MacroPage() {
   const corrEntries = Object.entries(correlations);
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="Macro Data" subtitle="Economic indicators and gold correlations">
         <Button onClick={handleCollect} disabled={collecting} variant="outline" size="sm" className="rounded-full">
           <RefreshCw className={`size-4 mr-1.5 ${collecting ? "animate-spin" : ""}`} />
@@ -94,14 +100,7 @@ export default function MacroPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 space-y-3">
-              <Globe className="size-10 text-muted-foreground/20 mx-auto" />
-              <p className="text-sm text-muted-foreground font-medium">No macro data yet</p>
-              <Button onClick={handleCollect} disabled={collecting} className="rounded-full bg-primary text-primary-foreground font-semibold hover-scale">
-                <RefreshCw className="size-4 mr-1.5" />
-                Collect from FRED
-              </Button>
-            </div>
+            <EmptyState icon={Globe} heading="No macro data" description="Collect economic data to see indicators and correlations" />
           )}
         </CardContent>
       </Card>

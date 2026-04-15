@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { startRegistration } from "@simplewebauthn/browser";
 import api from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -51,9 +52,11 @@ export default function SetupPage() {
       });
 
       // Success — redirect to login
+      showSuccess("Passkey registered successfully!");
       router.push("/login");
     } catch (err: unknown) {
       setStep("form");
+      showError("Registration failed");
       if (err && typeof err === "object" && "name" in err) {
         const webauthnErr = err as { name: string; message?: string };
         if (webauthnErr.name === "NotAllowedError") {

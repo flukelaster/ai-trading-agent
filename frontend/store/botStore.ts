@@ -83,6 +83,11 @@ type BotStore = {
   ticks: Record<string, Tick>;
   tick: Tick | null; // active symbol's tick (convenience)
   events: BotEvent[];
+  // WebSocket connection state
+  wsConnected: boolean;
+  lastSyncAt: string | null;
+  // Notification center
+  unreadEventCount: number;
   setActiveSymbol: (symbol: string) => void;
   setSymbols: (symbols: SymbolInfo[]) => void;
   setStatus: (status: BotStatus) => void;
@@ -92,6 +97,9 @@ type BotStore = {
   setSentiment: (sentiment: Sentiment & { symbol?: string }) => void;
   setTick: (tick: Tick) => void;
   addEvent: (event: BotEvent) => void;
+  setWsConnected: (connected: boolean) => void;
+  setLastSyncAt: (time: string) => void;
+  markEventsRead: () => void;
 };
 
 export const useBotStore = create<BotStore>((set, get) => ({
@@ -106,6 +114,9 @@ export const useBotStore = create<BotStore>((set, get) => ({
   ticks: {},
   tick: null,
   events: [],
+  wsConnected: false,
+  lastSyncAt: null,
+  unreadEventCount: 0,
   setActiveSymbol: (symbol) => {
     const { ticks, sentiments } = get();
     set({ activeSymbol: symbol, tick: ticks[symbol] || null, sentiment: sentiments[symbol] || null });
@@ -136,5 +147,12 @@ export const useBotStore = create<BotStore>((set, get) => ({
     const isActive = symbol === get().activeSymbol;
     set({ ticks, ...(isActive ? { tick } : {}) });
   },
-  addEvent: (event) => set((state) => ({ events: [event, ...state.events].slice(0, 50) })),
+  addEvent: (event) =>
+    set((state) => ({
+      events: [event, ...state.events].slice(0, 50),
+      unreadEventCount: state.unreadEventCount + 1,
+    })),
+  setWsConnected: (connected) => set({ wsConnected: connected }),
+  setLastSyncAt: (time) => set({ lastSyncAt: time }),
+  markEventsRead: () => set({ unreadEventCount: 0 }),
 }));

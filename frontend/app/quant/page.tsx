@@ -17,6 +17,8 @@ import {
   getQuantVolatility, getQuantSignals, getQuantPortfolio,
   runStressTest,
 } from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Shield, TrendingUp, Activity, GitBranch, PieChart, Zap,
   AlertTriangle, Loader2, BarChart3,
@@ -84,11 +86,14 @@ export default function QuantPage() {
       const results = res.data.results || [];
       if (results.length === 0) {
         setStressError("No results — bot must be running with market data available");
+      } else {
+        showSuccess("Stress test completed");
       }
       setStressResults(results.length > 0 ? results : null);
     } catch (e) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setStressError(msg || "Stress test failed — check backend logs");
+      showError("Stress test failed");
       setStressResults(null);
     } finally {
       setStressLoading(false);
@@ -114,7 +119,7 @@ export default function QuantPage() {
   const parityAlloc = (portfolio as Record<string, Record<string, unknown>>)?.risk_parity || {};
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="Quant Analytics" subtitle="Quantitative risk, signals, and portfolio analysis" />
 
       <PageInstructions
@@ -233,7 +238,7 @@ export default function QuantPage() {
                 )}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No portfolio data</p>
+              <EmptyState icon={PieChart} heading="No portfolio data" description="Portfolio allocation will appear when data is available" />
             )}
           </CardContent>
         </Card>

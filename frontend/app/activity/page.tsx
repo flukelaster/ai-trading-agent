@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { Activity } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { showSuccess, showError } from "@/lib/toast";
 import api from "@/lib/api";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -86,6 +89,7 @@ export default function ActivityPage() {
       setLastRefresh(new Date());
     } catch {
       setItems([]);
+      showError("Failed to load activity");
     } finally {
       setLoading(false);
     }
@@ -106,7 +110,7 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="AI Activity" subtitle="Timeline of AI decisions, analyses, and actions">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">
@@ -186,9 +190,7 @@ export default function ActivityPage() {
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          No AI activity found for this period
-        </div>
+        <EmptyState icon={Activity} heading="No AI activity" description="AI decisions will appear here when the bot is running" />
       ) : (
         <div className="space-y-8">
           {Object.entries(grouped).map(([date, dateItems]) => (

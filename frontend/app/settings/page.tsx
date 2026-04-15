@@ -17,6 +17,7 @@ import {
   getBotStatus, updateSettings, updateStrategy, getRolloutMode, setRolloutMode, getRolloutReadiness, getAvailableStrategies,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { showSuccess, showError } from "@/lib/toast";
 
 type RolloutMode = "shadow" | "paper" | "micro" | "live";
 type Check = { name: string; status: string; detail: string };
@@ -119,9 +120,10 @@ export default function SettingsPage() {
     try {
       await setRolloutMode(mode);
       setRolloutModeState(mode);
+      showSuccess(`Switched to ${MODE_CONFIG[mode].label} mode`);
       await fetchAll();
     } catch {
-      /* handled */
+      showError("Failed to change rollout mode");
     } finally {
       setSaving(false);
     }
@@ -132,7 +134,8 @@ export default function SettingsPage() {
       await updateSettings({ symbol, ...updates });
       const res = await getBotStatus().catch(() => null);
       if (res?.data?.symbols) setSymbolStatuses(res.data.symbols);
-    } catch { /* handled by axios interceptor */ }
+      showSuccess("Settings updated");
+    } catch { showError("Failed to update settings"); }
   };
 
   if (loading) {
@@ -148,7 +151,7 @@ export default function SettingsPage() {
   const currentMode = MODE_CONFIG[rolloutMode];
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 max-w-4xl">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 max-w-4xl page-enter">
       <PageHeader title="Settings" subtitle="Trading mode, risk parameters, and system health" />
 
       {/* ── Decision Mode ────────────────────────────────────── */}
@@ -294,7 +297,8 @@ export default function SettingsPage() {
                             await updateStrategy(v, undefined, symbol || undefined);
                             const res = await getBotStatus().catch(() => null);
                             if (res?.data?.symbols) setSymbolStatuses(res.data.symbols);
-                          } catch { /* handled by axios interceptor */ }
+                            showSuccess("Strategy updated");
+                          } catch { showError("Failed to update strategy"); }
                         }}
                       >
                         <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>

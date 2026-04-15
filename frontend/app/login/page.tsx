@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function LoginPage() {
       // Store token in localStorage
       localStorage.setItem("token", access_token);
 
+      showSuccess("Welcome back!");
       // Redirect to dashboard
       router.push("/dashboard");
     } catch (err: unknown) {
@@ -32,6 +34,7 @@ export default function LoginPage() {
       } else {
         setError("Connection error");
       }
+      showError("Login failed");
     } finally {
       setLoading(false);
     }

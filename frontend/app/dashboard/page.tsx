@@ -50,6 +50,9 @@ import {
   resetPeakBalance,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
+import { showSuccess, showError } from "@/lib/toast";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { SkeletonCard, SkeletonChart } from "@/components/ui/skeleton-compositions";
 import { useBotStore } from "@/store/botStore";
 import { SymbolTabs } from "@/components/ui/symbol-tabs";
 import { TimeframeSelector, TIMEFRAMES } from "@/components/ui/timeframe-selector";
@@ -215,15 +218,15 @@ export default function DashboardPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const handleStart = async () => { setActionLoading("start"); try { await startBot(activeSymbol); await fetchData(); } finally { setActionLoading(null); } };
-  const handleStop = async () => { setActionLoading("stop"); try { await stopBot(activeSymbol); await fetchData(); } finally { setActionLoading(null); } };
+  const handleStart = async () => { setActionLoading("start"); try { await startBot(activeSymbol); showSuccess(`${activeSymbol} bot started`); await fetchData(); } catch (e) { showError(`Failed to start ${activeSymbol}`); } finally { setActionLoading(null); } };
+  const handleStop = async () => { setActionLoading("stop"); try { await stopBot(activeSymbol); showSuccess(`${activeSymbol} bot stopped`); await fetchData(); } catch (e) { showError(`Failed to stop ${activeSymbol}`); } finally { setActionLoading(null); } };
   const handleEmergencyStop = async () => {
     if (confirm("Are you sure? This will close ALL positions for " + activeSymbol + " immediately.")) {
-      try { await emergencyStop(activeSymbol); await fetchData(); } catch { /* handled by axios interceptor */ }
+      try { await emergencyStop(activeSymbol); showSuccess(`Emergency stop executed for ${activeSymbol}`); await fetchData(); } catch { showError("Emergency stop failed"); }
     }
   };
   const handleAIFilterToggle = async (enabled: boolean) => {
-    try { await updateSettings({ symbol: activeSymbol, use_ai_filter: enabled }); await fetchData(); } catch { /* handled by axios interceptor */ }
+    try { await updateSettings({ symbol: activeSymbol, use_ai_filter: enabled }); showSuccess(`AI filter ${enabled ? "enabled" : "disabled"}`); await fetchData(); } catch { showError("Failed to update AI filter"); }
   };
 
   const [chartTimeframe, setChartTimeframe] = useState("M5");
@@ -255,19 +258,19 @@ export default function DashboardPage() {
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 sm:h-28 rounded-2xl" />
+            <SkeletonCard key={i} lines={1} />
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-          <Skeleton className="h-60 sm:h-80 rounded-2xl lg:col-span-3" />
-          <Skeleton className="h-60 sm:h-80 rounded-2xl" />
+          <SkeletonChart className="lg:col-span-3" />
+          <SkeletonCard lines={4} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="Dashboard" subtitle="Real-time trading overview">
         {activeTick && (
           <div className="border border-border rounded-full px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-2 sm:gap-3 bg-card">

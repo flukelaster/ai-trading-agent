@@ -9,6 +9,7 @@ import { Settings2, RotateCcw, Save, ChevronDown, ChevronUp } from "lucide-react
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { getAgentPrompts, updateAgentPrompt, resetAgentPrompt } from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
 
 interface AgentPrompt {
   id: string;
@@ -144,13 +145,23 @@ export default function AgentPromptsPage() {
   }, [fetchData]);
 
   const handleSave = async (id: string, prompt: string) => {
-    await updateAgentPrompt(id, prompt);
-    await fetchData();
+    try {
+      await updateAgentPrompt(id, prompt);
+      await fetchData();
+      showSuccess("Prompt saved");
+    } catch {
+      showError("Failed to save prompt");
+    }
   };
 
   const handleReset = async (id: string) => {
-    await resetAgentPrompt(id);
-    await fetchData();
+    try {
+      await resetAgentPrompt(id);
+      await fetchData();
+      showSuccess("Prompt reset to default");
+    } catch {
+      showError("Failed to reset prompt");
+    }
   };
 
   if (loading) {
@@ -167,7 +178,7 @@ export default function AgentPromptsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader
         title="Agent Prompts"
         subtitle="View and customize system prompts for AI trading agents"

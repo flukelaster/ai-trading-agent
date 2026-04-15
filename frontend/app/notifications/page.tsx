@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { getBotEvents } from "@/lib/api";
+import { Bell } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface BotEvent {
   id: number;
@@ -54,7 +56,7 @@ export default function NotificationsPage() {
   ];
 
   return (
-    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="Notifications" subtitle="Bot event history and alerts" />
 
       <PageInstructions
@@ -93,7 +95,7 @@ export default function NotificationsPage() {
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : events.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No events found</div>
+        <EmptyState icon={Bell} heading="No events found" description="Notifications will appear here when events occur" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
