@@ -189,6 +189,11 @@ export const runPermutationTest = (params: {
   include_costs?: boolean;
 }) => api.post("/api/backtest/permutation-test", params, { timeout: 300000 });
 
+export const runOverfittingScore = (params: {
+  strategy: string; symbol?: string; timeframe?: string;
+  source?: string; count?: number;
+}) => api.post("/api/backtest/overfitting-score", params, { timeout: 300000 });
+
 // Macro Data
 export const getMacroLatest = () => api.get("/api/macro/latest");
 export const getMacroCorrelations = (days?: number) =>

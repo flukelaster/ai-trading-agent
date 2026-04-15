@@ -19,6 +19,7 @@ Evaluate whether a proposed trade is safe given current portfolio exposure, acco
 4. Use `validate_trade` to check risk rules
 5. Use `check_correlation` to detect correlated exposure
 6. If a trade is proposed, use `calculate_lot_size` and `calculate_sl_tp` for sizing
+7. Optionally use `compute_overfitting_score` to validate strategy robustness before approving a trade
 
 ## Output Format
 Provide a structured risk assessment with:
@@ -42,6 +43,7 @@ TOOL_NAMES = [
     "check_correlation",
     "calculate_lot_size",
     "calculate_sl_tp",
+    "compute_overfitting_score",
 ]
 
 

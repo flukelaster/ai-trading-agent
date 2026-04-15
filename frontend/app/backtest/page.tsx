@@ -20,7 +20,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { showSuccess, showError } from "@/lib/toast";
 import { TIMEFRAMES } from "@/components/ui/timeframe-selector";
 import {
-  runBacktest, runOptimize, runWalkForward, runMonteCarlo, runCointegration, runPermutationTest, getCurrentStrategy, getDataStatus, getSymbols,
+  runBacktest, runOptimize, runWalkForward, runMonteCarlo, runCointegration, runPermutationTest, runOverfittingScore, getCurrentStrategy, getDataStatus, getSymbols,
 } from "@/lib/api";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -141,6 +141,10 @@ export default function BacktestPage() {
   const [cointRunning, setCointRunning] = useState(false);
   const [permResult, setPermResult] = useState<Record<string, unknown> | null>(null);
   const [permRunning, setPermRunning] = useState(false);
+  // Overfitting score state
+  const [ofResult, setOfResult] = useState<Record<string, unknown> | null>(null);
+  const [ofRunning, setOfRunning] = useState(false);
+  const [ofHistory, setOfHistory] = useState<Record<string, unknown>[]>([]);
 
   const currentParams: ParamDef[] = STRATEGY_PARAMS[strategy] ?? [];
 
@@ -360,6 +364,7 @@ export default function BacktestPage() {
           <TabsTrigger value="walk-forward"><Footprints className="size-3.5 mr-1.5" />Walk Forward</TabsTrigger>
           <TabsTrigger value="monte-carlo"><Dice5 className="size-3.5 mr-1.5" />Monte Carlo</TabsTrigger>
           <TabsTrigger value="significance"><CheckCircle className="size-3.5 mr-1.5" />Significance</TabsTrigger>
+          <TabsTrigger value="overfitting"><AlertTriangle className="size-3.5 mr-1.5" />Overfitting</TabsTrigger>
         </TabsList>
 
         {/* ── Backtest Tab ─────────────────────────────────────── */}
@@ -885,6 +890,201 @@ export default function BacktestPage() {
               )}
             </div>
           </div>
+        </TabsContent>
+
+        {/* ── Overfitting Score Tab ──────────────────────────────── */}
+        <TabsContent value="overfitting" className="space-y-4 mt-0">
+          <div className="border border-border rounded-lg p-4 bg-card space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Composite Overfitting Score</h3>
+              <Button
+                onClick={async () => {
+                  setOfRunning(true);
+                  setOfResult(null);
+                  try {
+                    const res = await runOverfittingScore({
+                      strategy, symbol, timeframe,
+                      source, count,
+                    });
+                    const data = res.data as Record<string, unknown>;
+                    setOfResult(data);
+                    // Add to comparison history
+                    setOfHistory((prev) => {
+                      const filtered = prev.filter(
+                        (h) => !(h.strategy === data.strategy && h.symbol === data.symbol)
+                      );
+                      return [...filtered, data];
+                    });
+                    showSuccess(`Overfitting score: ${data.overfitting_pct}% (${data.grade})`);
+                  } catch {
+                    showError("Overfitting score computation failed");
+                  } finally {
+                    setOfRunning(false);
+                  }
+                }}
+                disabled={ofRunning}
+                size="sm"
+              >
+                {ofRunning ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Search className="size-3.5 mr-1.5" />}
+                {ofRunning ? "Computing..." : "Compute Score"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Runs walk-forward, permutation test, and monte carlo analysis concurrently. Auto-generates parameter grid from strategy profiles.
+            </p>
+          </div>
+
+          {ofResult && !("error" in ofResult) && (
+            <>
+              {/* Score Display */}
+              <div className={`border rounded-lg p-6 flex flex-col items-center gap-3 ${
+                (ofResult.grade === "healthy") ? "border-green-500/30 bg-green-500/5" :
+                (ofResult.grade === "moderate") ? "border-amber-500/30 bg-amber-500/5" :
+                "border-red-500/30 bg-red-500/5"
+              }`}>
+                <div className="flex items-center gap-3">
+                  {ofResult.grade === "healthy" ? <CheckCircle className="size-8 text-green-400" /> :
+                   ofResult.grade === "moderate" ? <AlertTriangle className="size-8 text-amber-400" /> :
+                   <XCircle className="size-8 text-red-400" />}
+                  <span className={`text-5xl font-bold tabular-nums ${
+                    (ofResult.grade === "healthy") ? "text-green-400" :
+                    (ofResult.grade === "moderate") ? "text-amber-400" :
+                    "text-red-400"
+                  }`}>
+                    {String(ofResult.overfitting_pct)}%
+                  </span>
+                </div>
+                <Badge variant={
+                  ofResult.grade === "healthy" ? "default" :
+                  ofResult.grade === "moderate" ? "secondary" :
+                  "destructive"
+                }>
+                  {String(ofResult.grade).toUpperCase()}
+                </Badge>
+                <p className="text-xs text-muted-foreground">
+                  {String(ofResult.strategy)} on {String(ofResult.symbol)}
+                  {Boolean(ofResult.partial) && (
+                    <span className="ml-2 text-amber-400">
+                      (partial — skipped: {(ofResult.skipped_tests as string[]).join(", ")})
+                    </span>
+                  )}
+                </p>
+                {/* Progress bar */}
+                <div className="w-full max-w-md h-3 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      (ofResult.grade === "healthy") ? "bg-green-500" :
+                      (ofResult.grade === "moderate") ? "bg-amber-500" :
+                      "bg-red-500"
+                    }`}
+                    style={{ width: `${Math.min(100, Number(ofResult.overfitting_pct))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Component Breakdown */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {Object.entries(ofResult.components as Record<string, number>).map(([key, value]) => (
+                  <StatCard
+                    key={key}
+                    icon={
+                      key === "walk_forward" ? Footprints :
+                      key === "permutation" ? Dice5 :
+                      key === "param_stability" ? Target :
+                      BarChart3
+                    }
+                    label={key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    value={`${value}%`}
+                    variant={value < 30 ? "success" : value < 60 ? "warning" : "danger"}
+                  />
+                ))}
+              </div>
+
+              {/* Walk-Forward Detail */}
+              {ofResult.walk_forward && (
+                <div className="border border-border rounded-lg p-4 bg-card space-y-2">
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Walk-Forward Detail</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    <div><span className="text-muted-foreground">IS Sharpe:</span> {String((ofResult.walk_forward as Record<string, unknown>).is_sharpe)}</div>
+                    <div><span className="text-muted-foreground">OOS Sharpe:</span> {String((ofResult.walk_forward as Record<string, unknown>).oos_sharpe)}</div>
+                    <div><span className="text-muted-foreground">Ratio:</span> {String((ofResult.walk_forward as Record<string, unknown>).overfitting_ratio)}</div>
+                    <div><span className="text-muted-foreground">Param CV:</span> {String((ofResult.walk_forward as Record<string, unknown>).param_stability_score ?? "N/A")}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Permutation Detail */}
+              {ofResult.permutation && (
+                <div className="border border-border rounded-lg p-4 bg-card space-y-2">
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Permutation Test Detail</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    <div><span className="text-muted-foreground">Real Sharpe:</span> {String((ofResult.permutation as Record<string, unknown>).real_sharpe)}</div>
+                    <div><span className="text-muted-foreground">p-value:</span> {String((ofResult.permutation as Record<string, unknown>).p_value)}</div>
+                    <div><span className="text-muted-foreground">Significant:</span> {(ofResult.permutation as Record<string, unknown>).is_significant ? "Yes" : "No"}</div>
+                    <div><span className="text-muted-foreground">Shuffled Mean:</span> {String((ofResult.permutation as Record<string, unknown>).shuffled_mean)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Monte Carlo Detail */}
+              {ofResult.monte_carlo && (
+                <div className="border border-border rounded-lg p-4 bg-card space-y-2">
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Monte Carlo Detail</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    <div><span className="text-muted-foreground">Ruin Prob:</span> {String((ofResult.monte_carlo as Record<string, unknown>).probability_of_ruin)}</div>
+                    <div><span className="text-muted-foreground">Profit Prob:</span> {String((ofResult.monte_carlo as Record<string, unknown>).probability_of_profit)}</div>
+                    <div><span className="text-muted-foreground">p95 DD:</span> {String((ofResult.monte_carlo as Record<string, unknown>).p95_max_drawdown)}</div>
+                    <div><span className="text-muted-foreground">Median Balance:</span> {String((ofResult.monte_carlo as Record<string, unknown>).median_final_balance)}</div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {ofResult && "error" in ofResult && (
+            <div className="border border-red-500/30 bg-red-500/5 rounded-lg p-4 text-red-400 text-sm">
+              {String(ofResult.error)}
+            </div>
+          )}
+
+          {/* Comparison History */}
+          {ofHistory.length > 1 && (
+            <div className="border border-border rounded-lg p-4 bg-card space-y-3">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Strategy Comparison</h4>
+              <div className="space-y-2">
+                {ofHistory.map((h, i) => {
+                  const pct = Number(h.overfitting_pct);
+                  const grade = String(h.grade);
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-sm w-32 truncate">{String(h.strategy)}</span>
+                      <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            grade === "healthy" ? "bg-green-500" :
+                            grade === "moderate" ? "bg-amber-500" :
+                            "bg-red-500"
+                          }`}
+                          style={{ width: `${Math.min(100, pct)}%` }}
+                        />
+                      </div>
+                      <span className={`text-sm font-mono w-14 text-right ${
+                        grade === "healthy" ? "text-green-400" :
+                        grade === "moderate" ? "text-amber-400" :
+                        "text-red-400"
+                      }`}>{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!ofResult && !ofRunning && (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Combines walk-forward ratio (40%), permutation p-value (25%), param stability (20%), and monte carlo ruin probability (15%) into a single overfitting score
+            </p>
+          )}
         </TabsContent>
       </Tabs>
     </div>

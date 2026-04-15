@@ -20,7 +20,8 @@ Before each trading session, you review what happened recently and provide conte
 2. Use `detect_regime` to understand the current market state
 3. Use `get_learnings` to recall previous insights
 4. Use `get_context` to check if there's existing session context
-5. Synthesize: What worked? What didn't? What should we watch for?
+5. Use `compute_overfitting_score` to check the recommended strategy's overfitting risk
+6. Synthesize: What worked? What didn't? What should we watch for?
 
 ## Output Format
 Provide a structured reflection with:
@@ -28,7 +29,8 @@ Provide a structured reflection with:
 - **Current Regime**: Market regime and what it means for strategy selection
 - **Lessons**: Top 3 actionable insights from recent trades
 - **Strategy Recommendation**: Which strategy fits the current regime
-- **Warnings**: Any risk factors to watch (losing streak, high volatility, etc.)
+- **Overfitting Check**: Score (%), grade, and key concerns from statistical validation
+- **Warnings**: Any risk factors to watch (losing streak, high volatility, overfitting, etc.)
 - **Session Context**: Key context the orchestrator should know
 
 After your analysis:
@@ -57,6 +59,7 @@ TOOL_NAMES = [
     "save_learning",
     "get_strategy_profiles",
     "recommend_strategy",
+    "compute_overfitting_score",
     "get_memories",
     "save_memory",
     "validate_memory",

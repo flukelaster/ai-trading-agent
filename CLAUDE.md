@@ -26,7 +26,7 @@ Frontend (Next.js 16) → Backend (FastAPI) → MT5 Bridge (Windows VPS)
   - `strategy/` — 5 strategies + ensemble + MTF filter + regime detection
   - `risk/` — risk manager, circuit breaker, correlation filter
   - `ml/` — LightGBM trainer, features (40+), predictor, drift detection, sentiment features
-  - `backtest/` — engine, optimizer, walk_forward, monte_carlo
+  - `backtest/` — engine, optimizer, walk_forward, monte_carlo, overfitting (composite score)
   - `data/` — collector, macro data, macro events
   - `news/` — news fetcher + sources
   - `notifications/` — Telegram alerts
@@ -60,7 +60,7 @@ Frontend (Next.js 16) → Backend (FastAPI) → MT5 Bridge (Windows VPS)
   - `logging_config.py` — structured JSON logging
 - `backend/mcp_server/` — MCP Agent system (Claude Code SDK)
   - `agents/` — orchestrator, technical/fundamental/risk analysts, reflector, prompt_registry
-  - `tools/` — 12 tool modules (broker, market_data, indicators, risk, portfolio, sentiment, history, journal, learning, session, strategy_gen, memory)
+  - `tools/` — 13 tool modules (broker, market_data, indicators, risk, portfolio, sentiment, history, journal, learning, session, strategy_gen, memory, overfitting)
   - `guardrails.py` — non-bypassable trading limits at broker tool level
   - `sdk_client.py` — Claude Code SDK client
   - `server.py` — MCP server entry
@@ -86,7 +86,7 @@ Frontend (Next.js 16) → Backend (FastAPI) → MT5 Bridge (Windows VPS)
   - `lib/websocket.ts` — WS client with token auth
 - `mt5_bridge/` — FastAPI on Windows VPS (MetaTrader5 SDK)
 - `scripts/backup_db.sh` — daily pg_dump
-- `backend/tests/` — 403 tests across 25 test files (unit + integration)
+- `backend/tests/` — 429 tests across 26 test files (unit + integration)
 - `Dockerfile.trading-agent` — Python 3.11-slim agent image
 
 ## Tech Stack

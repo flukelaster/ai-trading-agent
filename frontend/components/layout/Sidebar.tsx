@@ -27,7 +27,7 @@ import {
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ConnectionStatus } from "@/components/ui/connection-status";
-import { NotificationCenter } from "@/components/ui/notification-center";
+
 
 interface NavItem { href: string; label: string; icon: typeof LayoutDashboard; }
 interface NavGroup { label: string; items: NavItem[]; }
@@ -162,7 +162,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="p-4 space-y-1">
         <ConnectionStatus />
         <div className="flex items-center gap-1 px-1">
-          <NotificationCenter />
           <ThemeToggle />
         </div>
         <LogoutButton />

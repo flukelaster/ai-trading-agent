@@ -5,19 +5,18 @@ Backtest API routes.
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from loguru import logger
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_auth
-from app.db.models import NewsSentiment
-from app.db.session import get_db
-from pydantic import BaseModel, Field
-
 from app.backtest.engine import BacktestEngine
 from app.backtest.monte_carlo import monte_carlo_analysis
 from app.backtest.optimizer import grid_search
 from app.backtest.walk_forward import walk_forward_test
-from app.config import Settings
+from app.db.models import NewsSentiment
+from app.db.session import get_db
 from app.risk.manager import RiskManager
 from app.strategy import get_strategy
 
@@ -282,6 +281,7 @@ class PermutationTestRequest(BaseModel):
 async def run_permutation_test_endpoint(req: PermutationTestRequest):
     """Test if strategy signals are significantly better than random."""
     import asyncio
+
     from app.backtest.statistical_tests import permutation_test
 
     df = await _load_data(req.symbol, req.source, req.timeframe, req.count, req.from_date, req.to_date)
@@ -300,3 +300,110 @@ async def run_permutation_test_endpoint(req: PermutationTestRequest):
         include_costs=req.include_costs,
     )
     return {**result.to_dict(), "symbol": req.symbol, "strategy": req.strategy}
+
+
+# ─── Composite Overfitting Score ────────────────────────────────────────────
+
+
+class OverfittingScoreRequest(BaseModel):
+    strategy: str = "ema_crossover"
+    params: dict | None = None
+    symbol: str = "GOLD"
+    timeframe: str = "M15"
+    source: str = "db"
+    count: int = Field(5000, ge=500, le=50000)
+    from_date: str | None = None
+    to_date: str | None = None
+    initial_balance: float = Field(10000.0, ge=100.0)
+    risk_per_trade: float = Field(0.01, ge=0.001, le=0.10)
+    max_lot: float = Field(1.0, ge=0.01, le=100.0)
+    n_permutations: int = Field(200, ge=50, le=1000)
+    n_simulations: int = Field(500, ge=100, le=5000)
+    n_splits: int = Field(5, ge=2, le=10)
+    train_pct: float = Field(0.7, ge=0.5, le=0.9)
+
+
+@router.post("/overfitting-score", dependencies=[Depends(require_auth)])
+async def compute_overfitting_score_endpoint(req: OverfittingScoreRequest):
+    """Compute composite overfitting score (0-100%) for a strategy.
+
+    Runs walk-forward, permutation test, and monte carlo concurrently,
+    then combines into a single overfitting percentage with grade.
+    """
+    import asyncio
+
+    from app.backtest.overfitting import auto_param_grid, compute_composite_score
+
+    df = await _load_data(req.symbol, req.source, req.timeframe, req.count, req.from_date, req.to_date)
+    if df.empty:
+        return {"error": "No OHLCV data available"}
+
+    risk_manager = RiskManager(max_risk_per_trade=req.risk_per_trade, max_lot=req.max_lot)
+    param_grid = auto_param_grid(req.strategy)
+
+    # ── Define sub-tasks ────────────────────────────────────────────────
+
+    async def _run_walk_forward():
+        if param_grid is None:
+            return None
+        try:
+            return await asyncio.to_thread(
+                walk_forward_test,
+                strategy_name=req.strategy,
+                df=df,
+                param_grid=param_grid,
+                n_splits=req.n_splits,
+                train_pct=req.train_pct,
+                initial_balance=req.initial_balance,
+                risk_per_trade=req.risk_per_trade,
+                max_lot=req.max_lot,
+            )
+        except Exception as e:
+            logger.error(f"Walk-forward failed: {e}")
+            return None
+
+    async def _run_permutation():
+        try:
+            from app.backtest.statistical_tests import permutation_test
+
+            strategy = get_strategy(req.strategy, req.params, symbol=req.symbol)
+            return await asyncio.to_thread(
+                permutation_test,
+                df, strategy, risk_manager,
+                initial_balance=req.initial_balance,
+                n_permutations=req.n_permutations,
+            )
+        except Exception as e:
+            logger.error(f"Permutation test failed: {e}")
+            return None
+
+    async def _run_monte_carlo():
+        try:
+            strategy = get_strategy(req.strategy, req.params, symbol=req.symbol)
+            engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
+            bt_result = await asyncio.to_thread(engine.run, df)
+            trades = bt_result.to_dict().get("trades", [])
+            profits = [t["profit"] for t in trades if "profit" in t]
+            if len(profits) < 5:
+                return None
+            return await asyncio.to_thread(
+                monte_carlo_analysis, profits, req.n_simulations, req.initial_balance
+            )
+        except Exception as e:
+            logger.error(f"Monte Carlo failed: {e}")
+            return None
+
+    # ── Run concurrently ────────────────────────────────────────────────
+
+    wf_result, perm_result, mc_result = await asyncio.gather(
+        _run_walk_forward(),
+        _run_permutation(),
+        _run_monte_carlo(),
+    )
+
+    result = compute_composite_score(wf_result, perm_result, mc_result)
+    return {
+        **result.to_dict(),
+        "strategy": req.strategy,
+        "symbol": req.symbol,
+    }

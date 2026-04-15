@@ -12,8 +12,21 @@ Usage:
 
 from mcp.server.fastmcp import FastMCP
 
-from mcp_server.tools import market_data, indicators, risk, broker, portfolio, sentiment, history, journal
-from mcp_server.tools import learning, session, strategy_gen, quant
+from mcp_server.tools import (
+    broker,
+    history,
+    indicators,
+    journal,
+    learning,
+    market_data,
+    overfitting,
+    portfolio,
+    quant,
+    risk,
+    sentiment,
+    session,
+    strategy_gen,
+)
 
 
 def create_server() -> FastMCP:
@@ -230,12 +243,28 @@ def create_server() -> FastMCP:
         """Get quantitative signals: momentum (ROC), mean-reversion (z-score), volatility breakout (ATR ratio)."""
         return await quant.get_quant_signals(symbol, timeframe, count)
 
+    # ─── Overfitting Detection Tools ──────────────────────────────────
+
+    @mcp.tool()
+    async def compute_overfitting_score(
+        strategy: str,
+        symbol: str = "GOLD",
+        timeframe: str = "M15",
+        source: str = "db",
+        count: int = 5000,
+    ) -> dict:
+        """Compute composite overfitting score (0-100%) for a strategy.
+        Combines walk-forward ratio, permutation test, param stability, and monte carlo ruin probability."""
+        return await overfitting.compute_overfitting_score(strategy, symbol, timeframe, source, count)
+
     return mcp
 
 
 if __name__ == "__main__":
     import os
+
     import redis.asyncio as redis_async
+
     from mcp_server.tools import init_mcp_tools
 
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")

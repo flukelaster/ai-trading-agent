@@ -60,7 +60,10 @@ If you decide to HOLD:
 - NEVER skip logging — every decision must be journaled
 - ALWAYS include all three analyst reports in your reasoning
 - Prefer HOLD when uncertain — missing a trade is better than a bad trade
-- Maximum 3 trades per analysis cycle"""
+- Maximum 3 trades per analysis cycle
+- If Reflector reports overfitting grade "overfit" (>60%): reduce lot size by 50% and note elevated overfitting risk in log_decision
+- If overfitting grade is "moderate" (30-60%): proceed with caution, mention in log_decision
+- Always reference the overfitting grade when making strategy selection decisions"""
 
 # Orchestrator has access to execution tools + journal
 ORCHESTRATOR_TOOL_NAMES = [
