@@ -54,9 +54,24 @@ async def place_order(
     """
     _require_init()
 
-    # Resolve symbol alias (e.g. GOLD → GOLDmicro for XM micro accounts)
-    from app.config import resolve_broker_symbol
-    symbol = resolve_broker_symbol(symbol)
+    # Resolve symbol to broker name (e.g. GOLD → GOLDmicro)
+    # AI sends canonical names but MT5 may use different names (GOLDmicro on XM)
+    # Use the live engine list — engines are keyed by actual broker symbols from SYMBOLS env var
+    try:
+        from app.api.routes.bot import get_manager
+        mgr = get_manager()
+        if symbol not in mgr.engines:
+            # AI sent canonical name (GOLD), find matching broker name in engines
+            from app.config import SYMBOL_ALIASES
+            for broker_name, canonical in SYMBOL_ALIASES.items():
+                if canonical == symbol and broker_name in mgr.engines:
+                    logger.info(f"Symbol resolved: {symbol} → {broker_name}")
+                    symbol = broker_name
+                    break
+            else:
+                logger.warning(f"Symbol '{symbol}' not found in engines: {list(mgr.engines.keys())}")
+    except Exception as e:
+        logger.warning(f"Symbol resolution failed for '{symbol}': {e}")
 
     # Get current state for guardrail checks (concurrent)
     import asyncio as _aio
