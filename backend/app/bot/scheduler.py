@@ -365,7 +365,7 @@ class BotScheduler:
     async def _run_ai_agent(self, symbols: list[str]):
         """Run AI agent for each symbol — the primary trading decision-maker."""
         try:
-            from mcp_server.agent_config import run_agent
+            from mcp_server.agent_config import run_agent, run_multi_agent
         except ImportError:
             logger.error("CRITICAL: AI agent not available — trading disabled for this cycle!")
             # Notify via Telegram so operator knows trading is offline
@@ -386,10 +386,19 @@ class BotScheduler:
                 logger.debug(f"AI agent skipped [{sym}]: market closed")
                 return
             try:
-                result = await run_agent(
-                    job_type="candle_analysis",
-                    job_input={"symbol": sym, "timeframe": engine.timeframe},
-                )
+                # Use multi-agent pipeline when agent_mode=multi (Reflector + Specialists + Orchestrator)
+                # Single agent mode is analysis-only — it cannot place trades
+                use_multi = getattr(settings, "agent_mode", "single") == "multi"
+                if use_multi:
+                    result = await run_multi_agent(
+                        job_type="candle_analysis",
+                        job_input={"symbol": sym, "timeframe": engine.timeframe},
+                    )
+                else:
+                    result = await run_agent(
+                        job_type="candle_analysis",
+                        job_input={"symbol": sym, "timeframe": engine.timeframe},
+                    )
                 decision = result.get("decision", "HOLD")
                 tool_calls = result.get("tool_calls", [])
                 duration = result.get("duration_s", 0)
