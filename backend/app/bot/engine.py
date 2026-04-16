@@ -875,12 +875,13 @@ class BotEngine:
                 self._ai_context = None
 
             news = await self.news_fetcher.fetch_for_symbol(self.symbol)
-            if news:
-                result = await self.sentiment_analyzer.analyze(news, context=self._ai_context, symbol=self.symbol)
-                logger.info(f"Sentiment: {result.label} (score={result.score}, confidence={result.confidence})")
-                self._last_sentiment = result.to_dict()
-                await self._push_event("sentiment_update", {**result.to_dict(), "symbol": self.symbol})
-                # Sentiment alerts skipped from Telegram — view in dashboard instead
+            if not news:
+                logger.info(f"Sentiment [{self.symbol}]: no recent news from RSS feeds (max_age={self.news_fetcher.max_age_hours}h)")
+                return
+            result = await self.sentiment_analyzer.analyze(news, context=self._ai_context, symbol=self.symbol)
+            logger.info(f"Sentiment [{self.symbol}]: {result.label} (score={result.score}, confidence={result.confidence}, articles={len(news)})")
+            self._last_sentiment = result.to_dict()
+            await self._push_event("sentiment_update", {**result.to_dict(), "symbol": self.symbol})
         except Exception as e:
             logger.error(f"Sentiment analysis error: {e}")
 
