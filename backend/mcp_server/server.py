@@ -26,6 +26,7 @@ from mcp_server.tools import (
     sentiment,
     session,
     strategy_gen,
+    strategy_switch,
 )
 
 
@@ -256,6 +257,24 @@ def create_server() -> FastMCP:
         """Compute composite overfitting score (0-100%) for a strategy.
         Combines walk-forward ratio, permutation test, param stability, and monte carlo ruin probability."""
         return await overfitting.compute_overfitting_score(strategy, symbol, timeframe, source, count)
+
+    # ─── Strategy Switch Tools ───────────────────────────────────────
+
+    @mcp.tool()
+    async def apply_strategy(
+        symbol: str,
+        strategy_name: str,
+        params: str | None = None,
+        reasoning: str = "",
+    ) -> dict:
+        """Apply a strategy to the trading engine based on market regime analysis.
+        Only works when enable_auto_strategy_switch is ON. Cooldown: 1h, max 3/day."""
+        return await strategy_switch.apply_strategy(symbol, strategy_name, params, reasoning)
+
+    @mcp.tool()
+    async def get_switch_status(symbol: str = "GOLD") -> dict:
+        """Get auto-strategy-switch status: enabled, current strategy, cooldown, daily count."""
+        return await strategy_switch.get_switch_status(symbol)
 
     return mcp
 

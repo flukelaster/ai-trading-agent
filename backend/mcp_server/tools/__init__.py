@@ -13,5 +13,7 @@ def init_mcp_tools(redis_client) -> None:
     """Initialize all MCP tools that require Redis. Idempotent — safe to call once at startup."""
     from mcp_server.tools.broker import init_broker
     from mcp_server.tools.session import init_session
+    from mcp_server.tools.strategy_switch import init_strategy_switch
     init_broker(redis_client)
     init_session(redis_client)
+    init_strategy_switch(redis_client)

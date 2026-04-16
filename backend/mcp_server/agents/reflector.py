@@ -8,7 +8,7 @@ Uses: learning + session + strategy_gen tools.
 Model: Haiku (fast review, cost-efficient).
 """
 
-from mcp_server.agents.base import run_agent_loop, MODEL_SPECIALIST
+from mcp_server.agents.base import MODEL_SPECIALIST, run_agent_loop
 
 SYSTEM_PROMPT = """You are a Trade Reflector for a multi-symbol trading system. Your job is to review recent trading performance and extract actionable learnings.
 
@@ -38,6 +38,14 @@ After your analysis:
 - Use `save_learning` for any new cross-session insights (7-day Redis cache)
 - Use `recommend_strategy` to suggest the best strategy for the regime
 
+## Auto Strategy Switching
+After recommending a strategy via `recommend_strategy`, if it differs from the current:
+- Use `apply_strategy` to switch. Include reasoning with evidence from regime + performance.
+- The tool enforces guards (cooldown 1h, max 3/day, feature flag).
+- If the tool returns {"applied": false}, respect the rejection and mention it in your report.
+- Only switch when regime has CLEARLY changed AND current strategy performance is degrading.
+- Use `get_switch_status` to check current switch state before attempting.
+
 ## Persistent Memory (Long-term Learning)
 - Use `get_memories` to recall past insights for this symbol (mid-term 30d + long-term permanent)
 - If a stored memory's prediction matched recent outcomes → `validate_memory(id, hit=true)`
@@ -60,6 +68,8 @@ TOOL_NAMES = [
     "get_strategy_profiles",
     "recommend_strategy",
     "compute_overfitting_score",
+    "apply_strategy",
+    "get_switch_status",
     "get_memories",
     "save_memory",
     "validate_memory",

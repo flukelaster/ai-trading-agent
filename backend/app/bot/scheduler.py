@@ -4,7 +4,7 @@ Scheduler — APScheduler jobs for bot operations (multi-symbol).
 
 import asyncio
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
@@ -449,6 +449,30 @@ class BotScheduler:
                     await engine._notify(engine.notifier.send_optimization_report(
                         result.assessment, result.confidence,
                     ))
+                    # Auto-apply if feature flag ON and backtest confirms improvement.
+                    # Read from Redis (not in-memory settings) so the flag survives restarts.
+                    if result.backtest_validation and result.backtest_validation.get("suggested_better"):
+                        flag_raw = await engine.redis.get("enable_auto_strategy_switch")
+                        flag_on = (flag_raw == b"1" or flag_raw == "1") if flag_raw else False
+                        if flag_on:
+                            from mcp_server.strategy_switch_guard import StrategySwitchGuard
+                            guard = StrategySwitchGuard(engine.redis)
+                            strategy_name = engine.strategy.name if engine.strategy else "ema_crossover"
+                            validation = await guard.validate_switch(engine.symbol, strategy_name)
+                            if validation.allowed:
+                                await engine.update_strategy(strategy_name, result.suggested_params)
+                                await guard.record_switch(
+                                    engine.symbol, strategy_name,
+                                    f"Weekly optimizer: confidence={result.confidence}",
+                                )
+                                logger.info(
+                                    f"[Optimizer Auto-Apply] [{engine.symbol}] "
+                                    f"params={result.suggested_params} confidence={result.confidence}"
+                                )
+                            else:
+                                logger.info(
+                                    f"[Optimizer Auto-Apply] [{engine.symbol}] blocked: {validation.reason}"
+                                )
             except Exception as e:
                 logger.error(f"Weekly optimization error [{engine.symbol}]: {e}")
 
@@ -483,9 +507,11 @@ class BotScheduler:
         """Daily trading summary at market close — sends Telegram report."""
         logger.info("Daily summary triggered")
         try:
-            from sqlalchemy import select, and_, func
+            from datetime import datetime
+
+            from sqlalchemy import and_, select
+
             from app.db.models import Trade
-            from datetime import datetime, timezone, timedelta
 
             symbol_stats = []
             total_pnl = 0.0
@@ -494,7 +520,7 @@ class BotScheduler:
 
             for symbol, engine in self._engines.items():
                 # Get today's closed trades
-                today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+                today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
                 stmt = select(Trade).where(and_(
                     Trade.symbol == symbol,
                     Trade.close_time >= today_start,
@@ -584,7 +610,6 @@ class BotScheduler:
             import joblib
             from sqlalchemy import select, update
 
-            from app.config import settings
             from app.data.collector import DataCollector
             from app.db.models import MLModelLog
             from app.db.session import async_session

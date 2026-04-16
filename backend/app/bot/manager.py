@@ -107,6 +107,7 @@ class BotManager:
             "symbols": symbols_status,
             "active_count": running,
             "total_count": len(self.engines),
+            "enable_auto_strategy_switch": settings.enable_auto_strategy_switch,
         }
 
     async def get_active_positions(self) -> dict[str, list[dict]]:
