@@ -54,6 +54,10 @@ async def place_order(
     """
     _require_init()
 
+    # Resolve symbol alias (e.g. GOLD → GOLDmicro for XM micro accounts)
+    from app.config import resolve_broker_symbol
+    symbol = resolve_broker_symbol(symbol)
+
     # Get current state for guardrail checks (concurrent)
     import asyncio as _aio
     account_res, positions_res, tick_res = await _aio.gather(
