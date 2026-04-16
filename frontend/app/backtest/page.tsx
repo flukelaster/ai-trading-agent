@@ -1079,7 +1079,7 @@ export default function BacktestPage() {
                   const pct = Number(h.overfitting_pct);
                   const grade = String(h.grade);
                   return (
-                    <div key={i} className="flex items-center gap-3">
+                    <div key={`${String(h.strategy)}-${String(h.symbol)}`} className="flex items-center gap-3">
                       <span className="text-sm w-32 truncate">{String(h.strategy)}</span>
                       <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
                         <div

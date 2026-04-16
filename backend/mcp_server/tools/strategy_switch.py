@@ -45,6 +45,19 @@ async def apply_strategy(
     """
     guard = _require_guard()
 
+    # Rollout mode guard: shadow/paper = log only, no real switch
+    from app.config import settings as _settings
+    if _settings.rollout_mode in ("shadow", "paper"):
+        logger.info(
+            f"[{_settings.rollout_mode}] Strategy switch logged only: {symbol} → {strategy_name} | {reasoning[:100]}"
+        )
+        return {
+            "applied": False,
+            "strategy": strategy_name,
+            "symbol": symbol,
+            "reason": f"Rollout mode '{_settings.rollout_mode}' — logged only, no real switch",
+        }
+
     # Validate switch against guards
     result = await guard.validate_switch(symbol, strategy_name)
     if not result.allowed:
@@ -60,12 +73,13 @@ async def apply_strategy(
     import json
 
     parsed_params = None
+    params_warning = None
     if params:
         try:
             parsed_params = json.loads(params)
         except json.JSONDecodeError as e:
             logger.warning(f"apply_strategy: invalid params JSON for {symbol}: {e}")
-            parsed_params = None
+            params_warning = f"params JSON invalid ({e}), applied with default params"
 
     # Call backend API to apply strategy
     try:
@@ -98,12 +112,15 @@ async def apply_strategy(
     await guard.record_switch(symbol, strategy_name, reasoning)
 
     logger.info(f"Strategy switched [{symbol}] → {strategy_name} | {reasoning[:100]}")
-    return {
+    response: dict = {
         "applied": True,
         "strategy": strategy_name,
         "symbol": symbol,
         "reasoning": reasoning[:200],
     }
+    if params_warning:
+        response["warning"] = params_warning
+    return response
 
 
 async def get_switch_status(symbol: str = "GOLD") -> dict:

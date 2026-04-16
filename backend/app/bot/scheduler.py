@@ -449,18 +449,30 @@ class BotScheduler:
                     await engine._notify(engine.notifier.send_optimization_report(
                         result.assessment, result.confidence,
                     ))
-                    # Auto-apply if feature flag ON and backtest confirms improvement
-                    if (
-                        result.backtest_validation
-                        and result.backtest_validation.get("suggested_better")
-                        and settings.enable_auto_strategy_switch
-                    ):
-                        strategy_name = engine.strategy.name if engine.strategy else "ema_crossover"
-                        await engine.update_strategy(strategy_name, result.suggested_params)
-                        logger.info(
-                            f"[Optimizer Auto-Apply] [{engine.symbol}] "
-                            f"params={result.suggested_params} confidence={result.confidence}"
-                        )
+                    # Auto-apply if feature flag ON and backtest confirms improvement.
+                    # Read from Redis (not in-memory settings) so the flag survives restarts.
+                    if result.backtest_validation and result.backtest_validation.get("suggested_better"):
+                        flag_raw = await engine.redis.get("enable_auto_strategy_switch")
+                        flag_on = (flag_raw == b"1" or flag_raw == "1") if flag_raw else False
+                        if flag_on:
+                            from mcp_server.strategy_switch_guard import StrategySwitchGuard
+                            guard = StrategySwitchGuard(engine.redis)
+                            strategy_name = engine.strategy.name if engine.strategy else "ema_crossover"
+                            validation = await guard.validate_switch(engine.symbol, strategy_name)
+                            if validation.allowed:
+                                await engine.update_strategy(strategy_name, result.suggested_params)
+                                await guard.record_switch(
+                                    engine.symbol, strategy_name,
+                                    f"Weekly optimizer: confidence={result.confidence}",
+                                )
+                                logger.info(
+                                    f"[Optimizer Auto-Apply] [{engine.symbol}] "
+                                    f"params={result.suggested_params} confidence={result.confidence}"
+                                )
+                            else:
+                                logger.info(
+                                    f"[Optimizer Auto-Apply] [{engine.symbol}] blocked: {validation.reason}"
+                                )
             except Exception as e:
                 logger.error(f"Weekly optimization error [{engine.symbol}]: {e}")
 

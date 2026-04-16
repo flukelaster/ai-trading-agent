@@ -87,7 +87,7 @@ Frontend (Next.js 16) → Backend (FastAPI) → MT5 Bridge (Windows VPS)
   - `lib/websocket.ts` — WS client with token auth
 - `mt5_bridge/` — FastAPI on Windows VPS (MetaTrader5 SDK)
 - `scripts/backup_db.sh` — daily pg_dump
-- `backend/tests/` — 429 tests across 26 test files (unit + integration)
+- `backend/tests/` — 444 tests across 27 test files (unit + integration)
 - `Dockerfile.trading-agent` — Python 3.11-slim agent image
 
 ## Tech Stack
@@ -176,7 +176,7 @@ railway vars set -s backend "KEY=value"  # set env var
 - **DB session**: Shared session can get dirty — always `rollback()` before new operations in long-lived services
 - **SYMBOL_PROFILES**: Per-symbol config in config.py (timeframe, pip_value, SL/TP mults, ML defaults)
 - **Constants**: All magic numbers in `constants.py` — never hardcode
-- **Tests**: 403 tests across 25 files. SQLite in-memory for DB, fakeredis, mock MT5 connector. Auth disabled via `os.environ["AUTH_PASSWORD_HASH"] = ""` in conftest.py. SDK mocks use `type` attribute instead of `isinstance`.
+- **Tests**: 444 tests across 27 files. SQLite in-memory for DB, fakeredis, mock MT5 connector. Auth disabled via `os.environ["AUTH_PASSWORD_HASH"] = ""` in conftest.py. SDK mocks use `type` attribute instead of `isinstance`.
 - **Runner**: `RunnerManager` init in `main.py` lifespan. Uses `ProcessRunnerBackend` by default (Railway-compatible). Heartbeat monitor runs as APScheduler job. Job queue uses dual Redis+DB storage. Runner logs streamed via Redis pub/sub to WebSocket.
 - **Coverage**: CI threshold 25% (overall ~29%, critical paths ~89%)
 - **Telegram**: Notifications for trade signals, AI analysis, system alerts. Thai language alerts.
