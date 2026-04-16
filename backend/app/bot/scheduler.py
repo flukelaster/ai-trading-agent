@@ -353,10 +353,14 @@ class BotScheduler:
             tasks.append(engine.fetch_and_analyze_sentiment())
 
         if tasks:
-            logger.debug(f"Sentiment job triggered for {len(tasks)} symbol(s)")
-            await asyncio.gather(*tasks, return_exceptions=True)
+            logger.info(f"Sentiment job triggered for {len(tasks)} symbol(s)")
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, r in enumerate(results):
+                if isinstance(r, Exception):
+                    sym = list(self._engines.keys())[i] if i < len(self._engines) else "?"
+                    logger.error(f"Sentiment fetch failed [{sym}]: {r}")
         else:
-            logger.debug("Sentiment job skipped: no active symbols with open market")
+            logger.info("Sentiment job skipped: no active symbols with open market")
 
     async def _run_ai_agent(self, symbols: list[str]):
         """Run AI agent for each symbol — the primary trading decision-maker."""
