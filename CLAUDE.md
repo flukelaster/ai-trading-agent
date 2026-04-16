@@ -60,8 +60,9 @@ Frontend (Next.js 16) → Backend (FastAPI) → MT5 Bridge (Windows VPS)
   - `logging_config.py` — structured JSON logging
 - `backend/mcp_server/` — MCP Agent system (Claude Code SDK)
   - `agents/` — orchestrator, technical/fundamental/risk analysts, reflector, prompt_registry
-  - `tools/` — 13 tool modules (broker, market_data, indicators, risk, portfolio, sentiment, history, journal, learning, session, strategy_gen, memory, overfitting)
+  - `tools/` — 14 tool modules (broker, market_data, indicators, risk, portfolio, sentiment, history, journal, learning, session, strategy_gen, memory, overfitting, strategy_switch)
   - `guardrails.py` — non-bypassable trading limits at broker tool level
+  - `strategy_switch_guard.py` — AI auto-strategy-switch safety (cooldown 1h, max 3/day, feature flag)
   - `sdk_client.py` — Claude Code SDK client
   - `server.py` — MCP server entry
   - `agent_config.py` — agent entry point

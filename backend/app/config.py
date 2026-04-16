@@ -1,6 +1,4 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
-
 
 # Per-symbol trading profiles
 SYMBOL_PROFILES: dict[str, dict] = {
@@ -181,6 +179,7 @@ class Settings(BaseSettings):
     enable_scale_in: bool = False     # enable momentum add-on positions
     max_scale_in_count: int = 1       # max add-on entries per position
     enable_partial_tp: bool = False   # enable close-and-reopen partial TP
+    enable_auto_strategy_switch: bool = False  # AI agent can switch strategies based on regime
 
     # Portfolio risk
     max_portfolio_leverage: float = 3.0  # block trades when total leverage exceeds this

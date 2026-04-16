@@ -3,19 +3,16 @@ Bot control API routes (multi-symbol).
 """
 
 from datetime import datetime, timedelta
-
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-
 from loguru import logger
-
-from app.auth import require_auth
-from app.config import settings
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import require_auth
+from app.config import settings
 from app.db.models import BotEvent
 from app.db.session import get_db
 
@@ -62,6 +59,13 @@ class StrategyUpdate(BaseModel):
     symbol: str | None = None
 
 
+class StrategyApply(BaseModel):
+    name: str
+    params: dict | None = None
+    symbol: str | None = None
+    reasoning: str = ""
+
+
 class SettingsUpdate(BaseModel):
     symbol: str | None = None
     use_ai_filter: bool | None = None
@@ -74,6 +78,7 @@ class SettingsUpdate(BaseModel):
     max_lot: float | None = Field(None, ge=0.01, le=1.0)
     fixed_lot: float | None = Field(None, ge=0.01, le=1.0)
     lot_mode: Literal["fixed", "auto"] | None = None
+    enable_auto_strategy_switch: bool | None = None
 
 
 @router.post("/start", dependencies=[Depends(require_auth)])
@@ -204,6 +209,31 @@ async def update_strategy(data: StrategyUpdate):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.put("/strategy-apply", dependencies=[Depends(require_auth)])
+async def apply_strategy_in_ai_mode(data: StrategyApply):
+    """Apply a strategy to the engine without changing trading mode.
+
+    Used by AI auto-strategy-switch to set a real strategy while staying in ai_autonomous mode.
+    """
+    engine = _get_engine(data.symbol)
+    try:
+        await engine.update_strategy(data.name, data.params)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    from app.db.models import BotEventType
+
+    try:
+        await engine._log_event(
+            BotEventType.STRATEGY_CHANGED,
+            f"[Auto-Switch] → {data.name} | {data.reasoning[:200]}",
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log strategy switch event: {e}")
+
+    return {"status": "applied", "strategy": data.name, "symbol": engine.symbol}
+
+
 @router.put("/settings", dependencies=[Depends(require_auth)])
 async def update_settings(data: SettingsUpdate):
     # Resolve fixed_lot from lot_mode: "auto" → None, "fixed" → use fixed_lot value
@@ -241,6 +271,19 @@ async def update_settings(data: SettingsUpdate):
                 max_lot=data.max_lot,
                 fixed_lot=resolved_fixed_lot,
             )
+
+    # Persist auto-strategy-switch flag to Redis (global, not per-engine)
+    if data.enable_auto_strategy_switch is not None:
+        try:
+            engine = _get_engine()
+            await engine.redis.set(
+                "enable_auto_strategy_switch",
+                "1" if data.enable_auto_strategy_switch else "0",
+            )
+            settings.enable_auto_strategy_switch = data.enable_auto_strategy_switch
+        except Exception as e:
+            logger.debug(f"Redis enable_auto_strategy_switch write failed: {e}")
+
     return {"status": "updated"}
 
 

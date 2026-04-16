@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import type { LucideIcon } from "lucide-react";
 import {
   Play, BarChart3, TrendingUp, DollarSign, Target,
   AlertTriangle, Search, Loader2, FlaskConical, Zap, Footprints,
@@ -145,6 +146,8 @@ export default function BacktestPage() {
   const [ofResult, setOfResult] = useState<Record<string, unknown> | null>(null);
   const [ofRunning, setOfRunning] = useState(false);
   const [ofHistory, setOfHistory] = useState<Record<string, unknown>[]>([]);
+  // Active tab
+  const [activeTab, setActiveTab] = useState("backtest");
 
   const currentParams: ParamDef[] = STRATEGY_PARAMS[strategy] ?? [];
 
@@ -357,15 +360,35 @@ export default function BacktestPage() {
         ]}
       />
 
-      <Tabs defaultValue="backtest" className="space-y-5">
-        <TabsList className="flex w-full overflow-x-auto max-w-2xl">
-          <TabsTrigger value="backtest"><FlaskConical className="size-3.5 mr-1.5" />Backtest</TabsTrigger>
-          <TabsTrigger value="optimize"><Zap className="size-3.5 mr-1.5" />Optimizer</TabsTrigger>
-          <TabsTrigger value="walk-forward"><Footprints className="size-3.5 mr-1.5" />Walk Forward</TabsTrigger>
-          <TabsTrigger value="monte-carlo"><Dice5 className="size-3.5 mr-1.5" />Monte Carlo</TabsTrigger>
-          <TabsTrigger value="significance"><CheckCircle className="size-3.5 mr-1.5" />Significance</TabsTrigger>
-          <TabsTrigger value="overfitting"><AlertTriangle className="size-3.5 mr-1.5" />Overfitting</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {([
+            { value: "backtest", label: "Backtest", icon: FlaskConical },
+            { value: "optimize", label: "Optimizer", icon: Zap },
+            { value: "walk-forward", label: "Walk Forward", icon: Footprints },
+            { value: "monte-carlo", label: "Monte Carlo", icon: Dice5 },
+            { value: "significance", label: "Significance", icon: CheckCircle },
+            { value: "overfitting", label: "Overfitting", icon: AlertTriangle },
+          ] as { value: string; label: string; icon: LucideIcon }[]).map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.value;
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setActiveTab(tab.value)}
+                className={`flex items-center gap-2 min-h-11 px-4 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all whitespace-nowrap ${
+                  isActive
+                    ? "bg-card text-primary border-primary"
+                    : "bg-card text-foreground border-border hover:border-primary/50"
+                }`}
+              >
+                <Icon className="size-3.5" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
         {/* ── Backtest Tab ─────────────────────────────────────── */}
         <TabsContent value="backtest" className="space-y-4 mt-0">

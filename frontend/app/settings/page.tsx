@@ -72,6 +72,7 @@ export default function SettingsPage() {
   const [readiness, setReadiness] = useState<{ ready: boolean; errors: number; warnings: number } | null>(null);
   const [confirmLive, setConfirmLive] = useState(false);
   const [strategies, setStrategies] = useState<{ name: string; worst_case: string }[]>([]);
+  const [autoStrategySwitch, setAutoStrategySwitch] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -87,6 +88,9 @@ export default function SettingsPage() {
       }
       if (statusRes?.data?.symbols) {
         setSymbolStatuses(statusRes.data.symbols);
+      }
+      if (statusRes?.data?.enable_auto_strategy_switch !== undefined) {
+        setAutoStrategySwitch(statusRes.data.enable_auto_strategy_switch);
       }
       if (readinessRes?.data) {
         setChecks(readinessRes.data.checks || []);
@@ -173,6 +177,39 @@ export default function SettingsPage() {
           <p className="text-[11px] text-muted-foreground mt-2">
             Strategy สร้าง signal → AI filter ดูข่าว/event → Risk manager ตรวจ regime/drawdown → เปิด trade
           </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Auto Strategy Switch ────────────────────────────── */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <RefreshCw className="size-4" />
+            AI Auto Strategy Switch
+            <Badge variant="outline" className="text-[10px]">Beta</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm">Allow AI to switch strategies based on market regime</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Cooldown 1h between switches, max 3/day. Respects rollout mode (shadow/paper = log only).
+              </p>
+            </div>
+            <Switch
+              checked={autoStrategySwitch}
+              onCheckedChange={async (v) => {
+                try {
+                  await updateSettings({ enable_auto_strategy_switch: v });
+                  setAutoStrategySwitch(v);
+                  showSuccess(v ? "Auto strategy switch enabled" : "Auto strategy switch disabled");
+                } catch {
+                  showError("Failed to update setting");
+                }
+              }}
+            />
+          </div>
         </CardContent>
       </Card>
 
