@@ -27,6 +27,10 @@ Provide a structured analysis with:
 - **Bias**: Your fundamental bias (BULLISH/BEARISH/NEUTRAL) with confidence (0.0-1.0)
 - **Reasoning**: 2-3 sentences explaining your assessment
 
+## Important
+- If no recent news or sentiment data is available, report **NEUTRAL with confidence 0.5** — this is a normal state, not a negative signal. The Orchestrator should NOT interpret "no news" as a reason to avoid trading.
+- NEUTRAL means "no fundamental edge either way" — it does not mean "don't trade".
+
 Be concise and data-driven. The Orchestrator needs clear directional bias, not speculation."""
 
 TOOL_NAMES = [

@@ -33,7 +33,12 @@ Provide a structured risk assessment with:
 If a specific trade is proposed (symbol + direction), evaluate it specifically.
 If no trade is proposed, provide a general portfolio risk assessment.
 
-Be conservative. When in doubt, recommend CAUTION with reduced size."""
+## Verdict Guidelines
+- **APPROVED**: Account is healthy, exposure is within limits, no correlated risk — this is the NORMAL state when risk checks pass. Do not downgrade to CAUTION just because the market could move against us (that's always true).
+- **CAUTION**: A specific risk factor exists (high drawdown, correlated exposure, losing streak) — recommend reduced lot, not blocking the trade.
+- **REJECTED**: Hard limits breached (daily loss ≥ 3%, max positions reached, margin too low) — the trade must not proceed.
+
+Default to APPROVED when all risk checks pass. Do not add artificial caution."""
 
 TOOL_NAMES = [
     "get_account",
