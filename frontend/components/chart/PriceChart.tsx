@@ -224,7 +224,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
                     lineWidth: 1,
                     lineStyle: 2, // dashed
                     axisLabelVisible: true,
-                    title: `TP ${p.tp}`,
+                    title: "TP",
                   });
                   priceLinesRef.current.push(tpLine);
                 }
@@ -237,7 +237,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
                     lineWidth: 1,
                     lineStyle: 2, // dashed
                     axisLabelVisible: true,
-                    title: `SL ${p.sl}`,
+                    title: "SL",
                   });
                   priceLinesRef.current.push(slLine);
                 }
@@ -250,7 +250,7 @@ export default function PriceChart({ symbol, timeframe, tick, emaFast = 20, emaS
                     lineWidth: 1,
                     lineStyle: 1, // dotted
                     axisLabelVisible: true,
-                    title: `Entry ${p.open_price}`,
+                    title: "Entry",
                   });
                   priceLinesRef.current.push(entryLine);
                 }

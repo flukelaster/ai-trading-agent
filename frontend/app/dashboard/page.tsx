@@ -566,6 +566,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="h-56 sm:h-72 xl:h-80 p-3 pt-0 sm:p-6 sm:pt-0">
               <PriceChart
+                key={`${activeSymbol}-${chartTimeframe}`}
                 symbol={activeSymbol}
                 timeframe={chartTimeframe}
                 tick={activeTick}
