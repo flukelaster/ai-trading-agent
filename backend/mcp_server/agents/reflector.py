@@ -43,7 +43,8 @@ After recommending a strategy via `recommend_strategy`, if it differs from the c
 - Use `apply_strategy` to switch. Include reasoning with evidence from regime + performance.
 - The tool enforces guards (cooldown 1h, max 3/day, feature flag).
 - If the tool returns {"applied": false}, respect the rejection and mention it in your report.
-- Only switch when regime has CLEARLY changed AND current strategy performance is degrading.
+- Use `apply_strategy` immediately if no strategy is currently set (get_switch_status returns current_strategy=null) — this is initial assignment, not a regime switch, so the "CLEARLY changed" rule does not apply.
+- Otherwise, only switch when regime has CLEARLY changed AND current strategy performance is degrading.
 - Use `get_switch_status` to check current switch state before attempting.
 
 ## Persistent Memory (Long-term Learning)
