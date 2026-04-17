@@ -64,45 +64,44 @@ async def lifespan(app: FastAPI):
 
     logger.info("Starting Trading Bot (multi-symbol)...")
 
-    # Auto-add missing columns (safe for production — ALTER TABLE IF NOT EXISTS equivalent)
-    try:
-        from sqlalchemy import text
-        async with async_session() as _tmp_session:
-            await _tmp_session.execute(text("SET lock_timeout = '5s'"))
-            for col_sql in [
-                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_reason VARCHAR(255)",
-                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pre_trade_snapshot JSON",
-                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS post_trade_analysis JSON",
-                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE",
-                "CREATE INDEX IF NOT EXISTS ix_trades_is_archived ON trades (is_archived)",
-                """CREATE TABLE IF NOT EXISTS ai_usage_logs (
-                    id BIGSERIAL PRIMARY KEY,
-                    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-                    agent_id VARCHAR(100) NOT NULL,
-                    model VARCHAR(100) NOT NULL,
-                    input_tokens INTEGER NOT NULL DEFAULT 0,
-                    output_tokens INTEGER NOT NULL DEFAULT 0,
-                    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-                    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
-                    cost_usd_sdk DOUBLE PRECISION,
-                    cost_usd_calc DOUBLE PRECISION,
-                    duration_ms INTEGER NOT NULL DEFAULT 0,
-                    turns INTEGER NOT NULL DEFAULT 0,
-                    tool_calls_count INTEGER NOT NULL DEFAULT 0,
-                    success BOOLEAN NOT NULL DEFAULT TRUE,
-                    raw_usage JSON
-                )""",
-                "CREATE INDEX IF NOT EXISTS ix_ai_usage_logs_timestamp ON ai_usage_logs (timestamp)",
-                "CREATE INDEX IF NOT EXISTS ix_ai_usage_logs_agent_id ON ai_usage_logs (agent_id)",
-            ]:
-                try:
-                    await _tmp_session.execute(text(col_sql))
-                except Exception:
-                    pass
-            await _tmp_session.commit()
-        logger.info("DB schema check complete")
-    except Exception as e:
-        logger.warning(f"DB schema auto-migration skipped: {e}")
+    # Auto-add missing columns/tables (safe for production — IF NOT EXISTS guards)
+    # Each statement runs in its own session to isolate transaction abort on error.
+    from sqlalchemy import text
+    schema_stmts = [
+        "ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_reason VARCHAR(255)",
+        "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pre_trade_snapshot JSON",
+        "ALTER TABLE trades ADD COLUMN IF NOT EXISTS post_trade_analysis JSON",
+        "ALTER TABLE trades ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE",
+        "CREATE INDEX IF NOT EXISTS ix_trades_is_archived ON trades (is_archived)",
+        """CREATE TABLE IF NOT EXISTS ai_usage_logs (
+            id BIGSERIAL PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+            agent_id VARCHAR(100) NOT NULL,
+            model VARCHAR(100) NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+            cost_usd_sdk DOUBLE PRECISION,
+            cost_usd_calc DOUBLE PRECISION,
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            turns INTEGER NOT NULL DEFAULT 0,
+            tool_calls_count INTEGER NOT NULL DEFAULT 0,
+            success BOOLEAN NOT NULL DEFAULT TRUE,
+            raw_usage JSON
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_ai_usage_logs_timestamp ON ai_usage_logs (timestamp)",
+        "CREATE INDEX IF NOT EXISTS ix_ai_usage_logs_agent_id ON ai_usage_logs (agent_id)",
+    ]
+    for stmt in schema_stmts:
+        try:
+            async with async_session() as _tmp_session:
+                await _tmp_session.execute(text("SET lock_timeout = '5s'"))
+                await _tmp_session.execute(text(stmt))
+                await _tmp_session.commit()
+        except Exception as e:
+            logger.warning(f"Schema stmt skipped: {str(e)[:120]}")
+    logger.info("DB schema check complete")
 
     # Initialize shared components
     connector = MT5BridgeConnector()
