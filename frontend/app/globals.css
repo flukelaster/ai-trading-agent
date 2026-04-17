@@ -455,3 +455,11 @@
 #nprogress .spinner {
   display: none;
 }
+
+.trading-floor-grid {
+  background-color: #0a0a0a;
+  background-image:
+    linear-gradient(rgba(34, 197, 94, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 197, 94, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
