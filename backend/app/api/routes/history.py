@@ -211,6 +211,8 @@ async def get_performance(
     symbol: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    from app.api.routes.bot import _manager
+
     if symbol:
         from app.config import resolve_broker_symbol
         symbol = resolve_broker_symbol(symbol)
@@ -220,17 +222,46 @@ async def get_performance(
     if symbol:
         query = query.where(Trade.symbol == symbol)
     result = await db.execute(query)
-    trades = result.scalars().all()
+    db_trades = result.scalars().all()
 
-    if not trades:
-        return {"total_trades": 0, "win_rate": 0, "total_profit": 0, "monthly_pnl": []}
+    db_tickets = {t.ticket for t in db_trades}
+    profits: list[float] = [t.profit for t in db_trades]
 
-    wins = [t for t in trades if t.profit > 0]
-    total_profit = sum(t.profit for t in trades)
+    # Merge MT5 history (catches manual trades not in DB)
+    if _manager is not None:
+        try:
+            from app.api.routes.bot import _get_engine
+            engine = _get_engine(symbol) if symbol else next(iter(_manager.engines.values()))
+            mt5_result = await engine.connector.get_history(days=days, symbol=symbol or None)
+            if mt5_result.get("success"):
+                for deal in mt5_result.get("data", []):
+                    ticket = deal.get("ticket")
+                    if ticket in db_tickets:
+                        continue
+                    try:
+                        deal_time = datetime.fromisoformat(deal["time"].replace("Z", ""))
+                    except Exception:
+                        continue
+                    if deal_time < cutoff:
+                        continue
+                    if symbol and deal.get("symbol") != symbol:
+                        continue
+                    deal_profit = deal.get("profit")
+                    if deal_profit is None:
+                        continue
+                    profits.append(deal_profit)
+        except Exception:
+            pass
+
+    if not profits:
+        return {"total_trades": 0, "win_rate": 0, "total_profit": 0, "avg_profit": 0}
+
+    wins = [p for p in profits if p > 0]
+    total_profit = sum(profits)
 
     return {
-        "total_trades": len(trades),
-        "win_rate": round(len(wins) / len(trades), 4) if trades else 0,
+        "total_trades": len(profits),
+        "win_rate": round(len(wins) / len(profits), 4),
         "total_profit": round(total_profit, 2),
-        "avg_profit": round(total_profit / len(trades), 2),
+        "avg_profit": round(total_profit / len(profits), 2),
     }
