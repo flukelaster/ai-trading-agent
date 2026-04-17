@@ -49,7 +49,7 @@ const AGENT_CONFIG: Record<string, AgentConfig> = {
     glow: "hover:shadow-blue-500/30",
     floorArea: "Head Office — Executive Suite",
   },
-  technical: {
+  technical_analyst: {
     character: "/agent-characters/Technical Analyst.png",
     role: "Chart Analyst",
     accent: "green",
@@ -59,7 +59,7 @@ const AGENT_CONFIG: Record<string, AgentConfig> = {
     glow: "hover:shadow-green-500/30",
     floorArea: "Analysis Room — Desk 01",
   },
-  fundamental: {
+  fundamental_analyst: {
     character: "/agent-characters/Fundamental Analyst.png",
     role: "Market Researcher",
     accent: "purple",
@@ -69,7 +69,7 @@ const AGENT_CONFIG: Record<string, AgentConfig> = {
     glow: "hover:shadow-purple-500/30",
     floorArea: "Analysis Room — Desk 02",
   },
-  risk: {
+  risk_analyst: {
     character: "/agent-characters/Risk Analyst.png",
     role: "Risk Manager",
     accent: "red",
@@ -88,6 +88,26 @@ const AGENT_CONFIG: Record<string, AgentConfig> = {
     accentText: "text-amber-400",
     glow: "hover:shadow-amber-500/30",
     floorArea: "Review Office",
+  },
+  sentiment: {
+    character: "/agent-characters/Sentiment Analyzer.png",
+    role: "Sentiment Analyzer",
+    accent: "pink",
+    accentBorder: "border-pink-500/50",
+    accentBg: "bg-pink-500/5",
+    accentText: "text-pink-400",
+    glow: "hover:shadow-pink-500/30",
+    floorArea: "News Desk",
+  },
+  optimization: {
+    character: "/agent-characters/Strategy Optimizer.png",
+    role: "Strategy Optimizer",
+    accent: "cyan",
+    accentBorder: "border-cyan-500/50",
+    accentBg: "bg-cyan-500/5",
+    accentText: "text-cyan-400",
+    glow: "hover:shadow-cyan-500/30",
+    floorArea: "Lab — Optimization",
   },
   single_agent: {
     character: "/agent-characters/Single Agent Agent.png",
@@ -176,7 +196,7 @@ function AgentDesk({ agent, onClick, isActive, size = "md" }: AgentDeskProps) {
             priority={size === "lg"}
           />
           {/* Scanline overlay */}
-          <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.08)_50%)] bg-[length:100%_3px] opacity-40" />
+          <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.08)_50%)] bg-size-[100%_3px] opacity-40" />
         </div>
 
         {/* Name plate + info */}
@@ -270,8 +290,8 @@ export default function AgentPromptsPage() {
   const isDirty = selected && editValue !== selected.active_prompt;
 
   const orchestrator = agents.filter(a => a.id === "orchestrator");
-  const analysts = agents.filter(a => ["technical", "fundamental", "risk"].includes(a.id));
-  const others = agents.filter(a => !["orchestrator", "technical", "fundamental", "risk"].includes(a.id));
+  const analysts = agents.filter(a => ["technical_analyst", "fundamental_analyst", "risk_analyst"].includes(a.id));
+  const others = agents.filter(a => !["orchestrator", "technical_analyst", "fundamental_analyst", "risk_analyst"].includes(a.id));
 
   if (loading) {
     return (
@@ -357,7 +377,7 @@ export default function AgentPromptsPage() {
             <div className="px-3 py-1 bg-muted/20 border-b border-border">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">⬛ Support Desks</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x-2 divide-border">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 divide-y xl:divide-y-0 md:divide-x-2 xl:divide-x-2 divide-border">
               {others.map(a => (
                 <div key={a.id} className="p-2">
                   <AgentDesk agent={a} onClick={() => openDesk(a)} isActive={selected?.id === a.id} />
