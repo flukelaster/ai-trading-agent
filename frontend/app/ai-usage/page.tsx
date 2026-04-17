@@ -202,7 +202,7 @@ export default function AIUsagePage() {
             icon={Database}
             label="Total Tokens"
             value={formatNumber(summary?.total_tokens ?? 0)}
-            subtitle={`I: ${formatNumber(summary?.input_tokens ?? 0)} · O: ${formatNumber(summary?.output_tokens ?? 0)}`}
+            subtitle={`I:${formatNumber(summary?.input_tokens ?? 0)} O:${formatNumber(summary?.output_tokens ?? 0)} CR:${formatNumber(summary?.cache_read ?? 0)} CW:${formatNumber(summary?.cache_write ?? 0)}`}
           />
           <StatCard
             icon={DollarSign}
