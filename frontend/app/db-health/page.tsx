@@ -1,9 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Database,
+} from "lucide-react";
 import api from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
+import { StatCard } from "@/components/ui/stat-card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface PoolStats {
   size: number;
@@ -46,15 +68,17 @@ interface PoolHealthResponse {
   };
 }
 
+type Variant = "default" | "success" | "danger" | "warning" | "gold";
+
 function fmtTs(ts: number): string {
   return new Date(ts * 1000).toLocaleTimeString();
 }
 
-function utilizationColor(u: number): string {
-  if (u >= 0.85) return "text-red-600 dark:text-red-400";
-  if (u >= 0.7) return "text-orange-600 dark:text-orange-400";
-  if (u >= 0.5) return "text-amber-600 dark:text-amber-400";
-  return "text-green-600 dark:text-green-400";
+function utilizationVariant(u: number): Variant {
+  if (u >= 0.85) return "danger";
+  if (u >= 0.7) return "warning";
+  if (u >= 0.5) return "warning";
+  return "success";
 }
 
 export default function DbHealthPage() {
@@ -79,7 +103,7 @@ export default function DbHealthPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader title="DB Health" subtitle="PostgreSQL pool + slow queries" />
       <PageInstructions
         items={[
@@ -89,98 +113,153 @@ export default function DbHealthPage() {
         ]}
       />
 
-      {error && <div className="rounded border border-red-300 bg-red-50 p-3 text-red-700 dark:border-red-700 dark:bg-red-950 dark:text-red-300">{error}</div>}
+      {error && (
+        <div className="rounded border border-red-300 bg-red-50 p-3 text-red-700 dark:border-red-700 dark:bg-red-950 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       {data && (
         <>
-          <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            <Stat label="Utilization" value={`${Math.round(data.pool.utilization * 100)}%`} cls={utilizationColor(data.pool.utilization)} />
-            <Stat label="Checked out" value={`${data.pool.checked_out}/${data.pool.total_capacity}`} />
-            <Stat label="Checked in" value={String(data.pool.checked_in)} />
-            <Stat label="Overflow" value={String(data.pool.overflow)} />
-            <Stat label="Pool size" value={String(data.pool.size)} />
-          </section>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+            <StatCard
+              icon={Activity}
+              label="Utilization"
+              value={`${Math.round(data.pool.utilization * 100)}%`}
+              variant={utilizationVariant(data.pool.utilization)}
+            />
+            <StatCard
+              icon={ArrowUpFromLine}
+              label="Checked out"
+              value={`${data.pool.checked_out}/${data.pool.total_capacity}`}
+            />
+            <StatCard
+              icon={ArrowDownToLine}
+              label="Checked in"
+              value={String(data.pool.checked_in)}
+              variant="success"
+            />
+            <StatCard
+              icon={AlertTriangle}
+              label="Overflow"
+              value={String(data.pool.overflow)}
+              variant={data.pool.overflow > 0 ? "warning" : "default"}
+            />
+            <StatCard
+              icon={Database}
+              label="Pool size"
+              value={String(data.pool.size)}
+            />
+          </div>
 
-          <section>
-            <h2 className="mb-2 text-lg font-semibold">Utilization (last {data.samples.length} samples × 10s)</h2>
-            <Sparkline samples={data.samples} threshold={data.thresholds.alert_utilization} />
-          </section>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-bold">
+                Utilization (last {data.samples.length} samples × 10s)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Sparkline
+                samples={data.samples}
+                threshold={data.thresholds.alert_utilization}
+              />
+            </CardContent>
+          </Card>
 
-          <section>
-            <h2 className="mb-2 text-lg font-semibold">Top slow queries ({'>'} {data.thresholds.slow_query_ms}ms)</h2>
-            {data.slow_queries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No slow queries recorded.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="bg-muted/40">
-                    <tr>
-                      <th className="border-b p-2 text-left">Duration</th>
-                      <th className="border-b p-2 text-left">When</th>
-                      <th className="border-b p-2 text-left">SQL</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-bold">
+                Top slow queries ({">"} {data.thresholds.slow_query_ms}ms)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.slow_queries.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No slow queries recorded.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Duration</TableHead>
+                      <TableHead className="text-xs">When</TableHead>
+                      <TableHead className="text-xs">SQL</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {data.slow_queries.map((q, i) => (
-                      <tr key={i} className="border-b">
-                        <td className="p-2 font-mono text-red-600 dark:text-red-400">{q.duration_ms.toFixed(0)}ms</td>
-                        <td className="p-2">{fmtTs(q.timestamp)}</td>
-                        <td className="p-2 font-mono text-xs">{q.sql}</td>
-                      </tr>
+                      <TableRow key={i}>
+                        <TableCell className="text-xs font-mono text-destructive">
+                          {q.duration_ms.toFixed(0)}ms
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {fmtTs(q.timestamp)}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono whitespace-normal break-all">
+                          {q.sql}
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
 
-          <section>
-            <h2 className="mb-2 text-lg font-semibold">Long-hold requests ({'>'} {data.thresholds.request_warn_ms}ms)</h2>
-            {data.long_holds.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No long-hold requests recorded.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="bg-muted/40">
-                    <tr>
-                      <th className="border-b p-2 text-left">Duration</th>
-                      <th className="border-b p-2 text-left">Method</th>
-                      <th className="border-b p-2 text-left">Path</th>
-                      <th className="border-b p-2 text-left">Checkouts</th>
-                      <th className="border-b p-2 text-left">When</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-bold">
+                Long-hold requests ({">"} {data.thresholds.request_warn_ms}ms)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.long_holds.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No long-hold requests recorded.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Duration</TableHead>
+                      <TableHead className="text-xs">Method</TableHead>
+                      <TableHead className="text-xs">Path</TableHead>
+                      <TableHead className="text-xs text-right">Checkouts</TableHead>
+                      <TableHead className="text-xs">When</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {data.long_holds.map((h, i) => (
-                      <tr key={i} className="border-b">
-                        <td className="p-2 font-mono text-orange-600 dark:text-orange-400">{h.duration_ms.toFixed(0)}ms</td>
-                        <td className="p-2 font-mono">{h.method}</td>
-                        <td className="p-2 font-mono text-xs">{h.path}</td>
-                        <td className="p-2">{h.checkouts}</td>
-                        <td className="p-2">{fmtTs(h.timestamp)}</td>
-                      </tr>
+                      <TableRow key={i}>
+                        <TableCell className="text-xs font-mono text-amber-600 dark:text-amber-400">
+                          {h.duration_ms.toFixed(0)}ms
+                        </TableCell>
+                        <TableCell className="text-xs font-mono">{h.method}</TableCell>
+                        <TableCell className="text-xs font-mono">{h.path}</TableCell>
+                        <TableCell className="text-xs text-right">{h.checkouts}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {fmtTs(h.timestamp)}
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
   );
 }
 
-function Stat({ label, value, cls }: { label: string; value: string; cls?: string }) {
-  return (
-    <div className="rounded border bg-card p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-1 text-2xl font-semibold ${cls ?? ""}`}>{value}</div>
-    </div>
-  );
-}
-
-function Sparkline({ samples, threshold }: { samples: PoolSample[]; threshold: number }) {
+function Sparkline({
+  samples,
+  threshold,
+}: {
+  samples: PoolSample[];
+  threshold: number;
+}) {
   if (samples.length === 0) {
     return <p className="text-sm text-muted-foreground">No samples yet.</p>;
   }
@@ -188,13 +267,33 @@ function Sparkline({ samples, threshold }: { samples: PoolSample[]; threshold: n
   const height = 80;
   const maxN = Math.max(samples.length, 1);
   const points = samples
-    .map((s, i) => `${(i / maxN) * width},${height - Math.min(s.utilization, 1) * height}`)
+    .map(
+      (s, i) =>
+        `${(i / maxN) * width},${height - Math.min(s.utilization, 1) * height}`,
+    )
     .join(" ");
   const thresholdY = height - threshold * height;
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full max-w-2xl border rounded bg-card">
-      <line x1="0" y1={thresholdY} x2={width} y2={thresholdY} stroke="#f97316" strokeDasharray="4 4" strokeWidth="1" />
-      <polyline fill="none" stroke="#3b82f6" strokeWidth="2" points={points} />
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      className="w-full h-24"
+    >
+      <line
+        x1="0"
+        y1={thresholdY}
+        x2={width}
+        y2={thresholdY}
+        stroke="#f97316"
+        strokeDasharray="4 4"
+        strokeWidth="1"
+      />
+      <polyline
+        fill="none"
+        stroke="#3b82f6"
+        strokeWidth="2"
+        points={points}
+      />
     </svg>
   );
 }

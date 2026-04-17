@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getBotEvents } from "@/lib/api";
 import { Bell } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -28,11 +28,15 @@ const EVENT_COLORS: Record<string, string> = {
   STOPPED: "text-gray-600 dark:text-gray-400",
 };
 
+const PAGE_SIZE = 30;
+
 export default function NotificationsPage() {
   const [events, setEvents] = useState<BotEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const [typeFilter, setTypeFilter] = useState<string>("");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -40,6 +44,7 @@ export default function NotificationsPage() {
       try {
         const res = await getBotEvents({ days, event_type: typeFilter || undefined, limit: 500 });
         setEvents(res.data.events || []);
+        setVisibleCount(PAGE_SIZE);
       } catch {
         setEvents([]);
       } finally {
@@ -48,6 +53,28 @@ export default function NotificationsPage() {
     };
     fetchEvents();
   }, [days, typeFilter]);
+
+  const visibleEvents = useMemo(
+    () => events.slice(0, visibleCount),
+    [events, visibleCount],
+  );
+  const hasMore = visibleCount < events.length;
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((n) => Math.min(n + PAGE_SIZE, events.length));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [hasMore, events.length]);
 
   const eventTypes = [
     "", "STARTED", "STOPPED", "TRADE_OPENED", "TRADE_CLOSED",
@@ -60,7 +87,6 @@ export default function NotificationsPage() {
       <PageHeader title="Notifications" subtitle="Bot event history and alerts" />
 
       <PageInstructions
-
         items={[
           "Bot event notifications in chronological order, color-coded by type.",
           "Trade events in green, errors in red, settings changes in purple. Filter by time range and type.",
@@ -90,6 +116,10 @@ export default function NotificationsPage() {
             <option key={t} value={t}>{t.replace(/_/g, " ")}</option>
           ))}
         </select>
+
+        <span className="text-xs text-muted-foreground self-center ml-auto">
+          {visibleEvents.length} / {events.length} events
+        </span>
       </div>
 
       {loading ? (
@@ -107,7 +137,7 @@ export default function NotificationsPage() {
               </tr>
             </thead>
             <tbody>
-              {events.map((e) => (
+              {visibleEvents.map((e) => (
                 <tr key={e.id} className="border-b border-border/50">
                   <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
                     {new Date(e.created_at).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })}
@@ -118,6 +148,13 @@ export default function NotificationsPage() {
                   <td className="py-2">{e.message}</td>
                 </tr>
               ))}
+              {hasMore && (
+                <tr ref={sentinelRef}>
+                  <td colSpan={3} className="py-4 text-center text-xs text-muted-foreground">
+                    Loading more...
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -39,7 +39,7 @@ If no trade is proposed, provide a general portfolio risk assessment.
 - **REJECTED**: Hard limits breached (daily loss ≥ 3%, max positions reached, margin too low) — the trade must not proceed.
 
 Default to APPROVED when all risk checks pass. Do not add artificial caution.
-ห้ามใช้ emoji ห้ามใช้ markdown table ใช้ bullet list แทน"""
+Respond in English only. Do NOT use emoji, icons, or unicode symbols. Do NOT use markdown tables — use bullet lists."""
 
 TOOL_NAMES = [
     "get_account",
