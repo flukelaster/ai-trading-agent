@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,83 +22,96 @@ interface AgentPrompt {
   is_customized: boolean;
 }
 
+interface AgentConfig {
+  character: string;
+  role: string;
+  accent: string;
+  accentBorder: string;
+  accentBg: string;
+  accentText: string;
+  glow: string;
+  floorArea: string;
+}
+
 const MODEL_BADGE: Record<string, { label: string; color: string }> = {
   "claude-sonnet-4-20250514": { label: "Sonnet", color: "text-blue-400 border-blue-500/40 bg-blue-500/10" },
   "claude-haiku-4-5-20251001": { label: "Haiku", color: "text-amber-400 border-amber-500/40 bg-amber-500/10" },
 };
 
-// Agent desk configs — emoji avatar, desk position flavour, role color
-const AGENT_CONFIG: Record<string, {
-  avatar: string;
-  role: string;
-  deskColor: string;
-  glowColor: string;
-  floorArea: string;
-}> = {
+const AGENT_CONFIG: Record<string, AgentConfig> = {
   orchestrator: {
-    avatar: "🧑‍💼",
+    character: "/agent-characters/Orchestrator.png",
     role: "Head Trader",
-    deskColor: "border-blue-500/50 bg-blue-500/5",
-    glowColor: "shadow-blue-500/20",
-    floorArea: "Trading Floor — Center",
+    accent: "blue",
+    accentBorder: "border-blue-500/50",
+    accentBg: "bg-blue-500/5",
+    accentText: "text-blue-400",
+    glow: "hover:shadow-blue-500/30",
+    floorArea: "Head Office — Executive Suite",
   },
   technical: {
-    avatar: "📊",
+    character: "/agent-characters/Technical Analyst.png",
     role: "Chart Analyst",
-    deskColor: "border-green-500/50 bg-green-500/5",
-    glowColor: "shadow-green-500/20",
-    floorArea: "Analysis Room — Left",
+    accent: "green",
+    accentBorder: "border-green-500/50",
+    accentBg: "bg-green-500/5",
+    accentText: "text-green-400",
+    glow: "hover:shadow-green-500/30",
+    floorArea: "Analysis Room — Desk 01",
   },
   fundamental: {
-    avatar: "📰",
+    character: "/agent-characters/Fundamental Analyst.png",
     role: "Market Researcher",
-    deskColor: "border-purple-500/50 bg-purple-500/5",
-    glowColor: "shadow-purple-500/20",
-    floorArea: "Analysis Room — Center",
+    accent: "purple",
+    accentBorder: "border-purple-500/50",
+    accentBg: "bg-purple-500/5",
+    accentText: "text-purple-400",
+    glow: "hover:shadow-purple-500/30",
+    floorArea: "Analysis Room — Desk 02",
   },
   risk: {
-    avatar: "🛡️",
+    character: "/agent-characters/Risk Analyst.png",
     role: "Risk Manager",
-    deskColor: "border-red-500/50 bg-red-500/5",
-    glowColor: "shadow-red-500/20",
-    floorArea: "Analysis Room — Right",
+    accent: "red",
+    accentBorder: "border-red-500/50",
+    accentBg: "bg-red-500/5",
+    accentText: "text-red-400",
+    glow: "hover:shadow-red-500/30",
+    floorArea: "Analysis Room — Desk 03",
   },
   reflector: {
-    avatar: "🔍",
+    character: "/agent-characters/Reflector.png",
     role: "Trade Reviewer",
-    deskColor: "border-amber-500/50 bg-amber-500/5",
-    glowColor: "shadow-amber-500/20",
+    accent: "amber",
+    accentBorder: "border-amber-500/50",
+    accentBg: "bg-amber-500/5",
+    accentText: "text-amber-400",
+    glow: "hover:shadow-amber-500/30",
     floorArea: "Review Office",
   },
   single_agent: {
-    avatar: "🤖",
+    character: "/agent-characters/Single Agent Agent.png",
     role: "Solo Trader",
-    deskColor: "border-zinc-500/50 bg-zinc-500/5",
-    glowColor: "shadow-zinc-500/20",
+    accent: "zinc",
+    accentBorder: "border-zinc-500/50",
+    accentBg: "bg-zinc-500/5",
+    accentText: "text-zinc-300",
+    glow: "hover:shadow-zinc-500/30",
     floorArea: "Backup Desk",
   },
 };
 
-// Pixel-art style monitor SVG for desk decoration
-function Monitor({ active }: { active?: boolean }) {
-  return (
-    <svg width="28" height="24" viewBox="0 0 28 24" className="opacity-60">
-      <rect x="2" y="0" width="24" height="17" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="4" y="2" width="20" height="13" fill={active ? "#22c55e22" : "#ffffff08"} />
-      {active && (
-        <>
-          <line x1="5" y1="6" x2="23" y2="6" stroke="#22c55e" strokeWidth="0.8" opacity="0.6" />
-          <line x1="5" y1="9" x2="18" y2="9" stroke="#22c55e" strokeWidth="0.8" opacity="0.4" />
-          <line x1="5" y1="12" x2="20" y2="12" stroke="#22c55e" strokeWidth="0.8" opacity="0.4" />
-        </>
-      )}
-      <rect x="12" y="17" width="4" height="4" fill="currentColor" opacity="0.4" />
-      <rect x="8" y="21" width="12" height="2" rx="1" fill="currentColor" opacity="0.3" />
-    </svg>
-  );
-}
+const FALLBACK_CONFIG: AgentConfig = {
+  character: "/agent-characters/Single Agent Agent.png",
+  role: "Agent",
+  accent: "zinc",
+  accentBorder: "border-zinc-500/50",
+  accentBg: "bg-zinc-500/5",
+  accentText: "text-zinc-300",
+  glow: "hover:shadow-zinc-500/30",
+  floorArea: "—",
+};
 
-// Ticker tape at top of trading floor
 function TickerTape() {
   const tickers = [
     "GOLD ▲ 3,342.10", "BTC ▲ 84,250", "OIL ▼ 63.42",
@@ -117,53 +131,60 @@ function TickerTape() {
   );
 }
 
-function AgentDesk({
-  agent,
-  onClick,
-  isActive,
-}: {
+interface AgentDeskProps {
   agent: AgentPrompt;
   onClick: () => void;
   isActive: boolean;
-}) {
-  const cfg = AGENT_CONFIG[agent.id] ?? {
-    avatar: "🤖", role: agent.name, deskColor: "border-zinc-500/50 bg-zinc-500/5",
-    glowColor: "shadow-zinc-500/20", floorArea: "—",
-  };
+  size?: "lg" | "md";
+}
+
+function AgentDesk({ agent, onClick, isActive, size = "md" }: AgentDeskProps) {
+  const cfg = AGENT_CONFIG[agent.id] ?? FALLBACK_CONFIG;
   const badge = MODEL_BADGE[agent.model] ?? { label: agent.model, color: "text-muted-foreground border-border bg-muted" };
+  const portraitClass = size === "lg" ? "size-44" : "size-36";
+  const portraitSizeAttr = size === "lg" ? "180px" : "140px";
 
   return (
     <button
       type="button"
       onClick={onClick}
       className={`
-        relative group text-left w-full rounded-none border-2 p-4
-        transition-all duration-200 cursor-pointer
-        ${cfg.deskColor}
-        hover:scale-[1.02] hover:shadow-lg hover:${cfg.glowColor}
+        relative group text-left w-full h-full rounded-none border-2 p-4
+        transition-all duration-200 cursor-pointer overflow-hidden
+        ${cfg.accentBorder} ${cfg.accentBg}
+        hover:scale-[1.02] hover:shadow-lg ${cfg.glow}
         active:scale-[0.98]
         ${isActive ? "ring-2 ring-primary/60" : ""}
       `}
     >
-      {/* Floor label */}
-      <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-2 opacity-70">
+      {/* Floor area label */}
+      <p className={`text-[9px] font-mono uppercase tracking-widest mb-2 opacity-70 ${cfg.accentText}`}>
         {cfg.floorArea}
       </p>
 
-      {/* Desk surface */}
-      <div className="flex items-start gap-3">
-        {/* Character + monitor */}
-        <div className="flex flex-col items-center gap-1 shrink-0">
-          <span className="text-3xl leading-none">{cfg.avatar}</span>
-          <div className="text-muted-foreground">
-            <Monitor active />
-          </div>
+      <div className={`flex gap-4 ${size === "lg" ? "items-center" : "items-start"}`}>
+        {/* Character portrait */}
+        <div
+          className={`relative shrink-0 ${cfg.accentBg} border ${cfg.accentBorder} rounded-sm overflow-hidden ${portraitClass}`}
+        >
+          <Image
+            src={cfg.character}
+            alt={agent.name}
+            fill
+            sizes={portraitSizeAttr}
+            className="object-contain p-1 group-hover:scale-105 transition-transform duration-300"
+            priority={size === "lg"}
+          />
+          {/* Scanline overlay */}
+          <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.08)_50%)] bg-[length:100%_3px] opacity-40" />
         </div>
 
-        {/* Name plate */}
-        <div className="flex-1 min-w-0">
+        {/* Name plate + info */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-bold text-foreground">{agent.name}</span>
+            <span className={`font-bold text-foreground ${size === "lg" ? "text-lg" : "text-sm"}`}>
+              {agent.name}
+            </span>
             <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${badge.color}`}>
               {badge.label}
             </Badge>
@@ -173,16 +194,22 @@ function AgentDesk({
               </Badge>
             )}
           </div>
-          <p className="text-[11px] text-primary/80 font-mono mt-0.5">{cfg.role}</p>
-          <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{agent.description}</p>
-        </div>
-      </div>
+          <p className={`text-xs font-mono ${cfg.accentText} opacity-90`}>
+            {cfg.role}
+          </p>
+          <p className={`text-[11px] text-muted-foreground ${size === "lg" ? "line-clamp-3" : "line-clamp-2"}`}>
+            {agent.description}
+          </p>
 
-      {/* Status bar */}
-      <div className="mt-3 flex items-center gap-2">
-        <span className="size-1.5 rounded-full bg-green-400 animate-pulse" />
-        <span className="text-[10px] font-mono text-green-400">ONLINE</span>
-        <span className="text-[10px] text-muted-foreground ml-auto">Click to configure →</span>
+          {/* Status bar */}
+          <div className="mt-auto pt-2 flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-[10px] font-mono text-green-400">ONLINE</span>
+            <span className="text-[10px] text-muted-foreground ml-auto group-hover:text-primary transition-colors">
+              Configure →
+            </span>
+          </div>
+        </div>
       </div>
     </button>
   );
@@ -242,7 +269,6 @@ export default function AgentPromptsPage() {
 
   const isDirty = selected && editValue !== selected.active_prompt;
 
-  // Split into floor sections: orchestrator top, 3 analysts middle, rest bottom
   const orchestrator = agents.filter(a => a.id === "orchestrator");
   const analysts = agents.filter(a => ["technical", "fundamental", "risk"].includes(a.id));
   const others = agents.filter(a => !["orchestrator", "technical", "fundamental", "risk"].includes(a.id));
@@ -251,8 +277,8 @@ export default function AgentPromptsPage() {
     return (
       <div className="p-4 sm:p-6 xl:p-8 space-y-4">
         <Skeleton className="h-8 w-64" />
-        <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-none" />)}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-none" />)}
         </div>
       </div>
     );
@@ -281,12 +307,10 @@ export default function AgentPromptsPage() {
         </Button>
       </div>
 
-      {/* Ticker tape */}
       <TickerTape />
 
       {/* Trading floor grid */}
-      <div className="border-2 border-border trading-floor-grid p-0">
-        {/* Floor label */}
+      <div className="border-2 border-border trading-floor-grid">
         <div className="border-b border-green-500/20 bg-green-500/5 px-4 py-1.5">
           <p className="text-[10px] font-mono text-green-500/70 uppercase tracking-widest">◉ TRADING FLOOR — ACTIVE</p>
         </div>
@@ -294,12 +318,18 @@ export default function AgentPromptsPage() {
         {/* Orchestrator — full width top */}
         {orchestrator.length > 0 && (
           <div className="border-b-2 border-border">
-            <div className="px-2 py-1 bg-blue-500/5 border-b border-blue-500/20">
+            <div className="px-3 py-1 bg-blue-500/5 border-b border-blue-500/20">
               <p className="text-[9px] font-mono text-blue-400/70 uppercase tracking-widest">⬛ Head Office</p>
             </div>
             <div className="p-2">
               {orchestrator.map(a => (
-                <AgentDesk key={a.id} agent={a} onClick={() => openDesk(a)} isActive={selected?.id === a.id} />
+                <AgentDesk
+                  key={a.id}
+                  agent={a}
+                  onClick={() => openDesk(a)}
+                  isActive={selected?.id === a.id}
+                  size="lg"
+                />
               ))}
             </div>
           </div>
@@ -308,10 +338,10 @@ export default function AgentPromptsPage() {
         {/* Analysts — 3 columns */}
         {analysts.length > 0 && (
           <div className="border-b-2 border-border">
-            <div className="px-2 py-1 bg-muted/30 border-b border-border">
+            <div className="px-3 py-1 bg-muted/30 border-b border-border">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">⬛ Analysis Room</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 divide-x-2 divide-border p-0">
+            <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x-2 divide-border">
               {analysts.map(a => (
                 <div key={a.id} className="p-2">
                   <AgentDesk agent={a} onClick={() => openDesk(a)} isActive={selected?.id === a.id} />
@@ -321,13 +351,13 @@ export default function AgentPromptsPage() {
           </div>
         )}
 
-        {/* Others — reflector + single agent */}
+        {/* Support desks */}
         {others.length > 0 && (
           <div>
-            <div className="px-2 py-1 bg-muted/20 border-b border-border">
+            <div className="px-3 py-1 bg-muted/20 border-b border-border">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">⬛ Support Desks</p>
             </div>
-            <div className={`grid grid-cols-1 sm:grid-cols-${Math.min(others.length, 3)} divide-x-2 divide-border p-0`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x-2 divide-border">
               {others.map(a => (
                 <div key={a.id} className="p-2">
                   <AgentDesk agent={a} onClick={() => openDesk(a)} isActive={selected?.id === a.id} />
@@ -352,17 +382,25 @@ export default function AgentPromptsPage() {
 
       {/* Prompt editor dialog */}
       <Dialog open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
-        <DialogContent className="max-w-2xl rounded-none border-2">
+        <DialogContent className="max-w-3xl rounded-none border-2">
           {selected && (() => {
-            const cfg = AGENT_CONFIG[selected.id];
+            const cfg = AGENT_CONFIG[selected.id] ?? FALLBACK_CONFIG;
             const badge = MODEL_BADGE[selected.model] ?? { label: selected.model, color: "text-muted-foreground" };
             return (
               <>
                 <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2 font-mono">
-                    <span className="text-2xl">{cfg?.avatar ?? "🤖"}</span>
+                  <DialogTitle className="flex items-center gap-3 font-mono">
+                    <div className={`relative shrink-0 ${cfg.accentBg} border ${cfg.accentBorder} rounded-sm overflow-hidden size-14`}>
+                      <Image
+                        src={cfg.character}
+                        alt={selected.name}
+                        fill
+                        sizes="56px"
+                        className="object-contain p-0.5"
+                      />
+                    </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span>{selected.name}</span>
                         <Badge variant="outline" className={`text-[9px] ${badge.color}`}>{badge.label}</Badge>
                         {selected.is_customized && (
@@ -372,8 +410,8 @@ export default function AgentPromptsPage() {
                       <p className="text-xs text-muted-foreground font-normal mt-0.5">{selected.description}</p>
                     </div>
                   </DialogTitle>
-                  <DialogDescription className="text-[10px] font-mono text-muted-foreground">
-                    {cfg?.floorArea} · {cfg?.role}
+                  <DialogDescription className={`text-[10px] font-mono ${cfg.accentText} opacity-80`}>
+                    {cfg.floorArea} · {cfg.role}
                   </DialogDescription>
                 </DialogHeader>
 
