@@ -16,7 +16,7 @@ export function ConnectionStatus() {
   const timeAgo = lastSyncAt ? getTimeAgo(lastSyncAt) : null;
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5">
+    <div className="flex items-center gap-2 min-w-0" title={timeAgo ? `Last sync: ${timeAgo}` : statusLabel}>
       <span className="relative flex size-2">
         <span
           className={cn(
@@ -33,7 +33,7 @@ export function ConnectionStatus() {
         {statusLabel}
       </span>
       {timeAgo && (
-        <span className="text-[10px] text-muted-foreground/50">
+        <span className="text-[10px] text-muted-foreground/50 truncate">
           {timeAgo}
         </span>
       )}

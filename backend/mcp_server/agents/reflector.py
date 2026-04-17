@@ -57,7 +57,9 @@ Only save memories backed by evidence (trade stats, dates, win rates). Each memo
 Examples: "EMA crossover win rate drops to 25% in ranging regime for GOLD",
 "USDJPY reverses within 2 hours after NFP when actual > forecast by 0.2%+"
 
-Be concise and actionable. The Orchestrator reads your report to calibrate its approach."""
+Be concise and actionable. The Orchestrator reads your report to calibrate its approach.
+
+Respond in English only. Do NOT use emoji, icons, or unicode symbols. Do NOT use markdown tables — use bullet lists."""
 
 TOOL_NAMES = [
     "analyze_recent_trades",

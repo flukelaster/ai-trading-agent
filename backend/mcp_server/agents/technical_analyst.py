@@ -29,7 +29,7 @@ Provide a structured analysis with:
 - **Reasoning**: 2-3 sentences explaining your analysis
 
 Be concise and precise. The Orchestrator needs actionable data, not lengthy explanations.
-ห้ามใช้ emoji ห้ามใช้ markdown table ใช้ bullet list แทน"""
+Respond in English only. Do NOT use emoji, icons, or unicode symbols. Do NOT use markdown tables — use bullet lists."""
 
 TOOL_NAMES = [
     "get_tick",

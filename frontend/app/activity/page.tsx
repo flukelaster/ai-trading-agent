@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Activity } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
@@ -66,6 +66,8 @@ function formatDateTimeTH(iso: string): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 25;
+
 export default function ActivityPage() {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -73,6 +75,8 @@ export default function ActivityPage() {
   const [days, setDays] = useState(7);
   const [category, setCategory] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -87,6 +91,7 @@ export default function ActivityPage() {
       setItems(actRes.data.items || []);
       setSummary(sumRes.data);
       setLastRefresh(new Date());
+      setVisibleCount(PAGE_SIZE);
     } catch {
       setItems([]);
       showError("Failed to load activity");
@@ -97,17 +102,45 @@ export default function ActivityPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Group items by date (Thai timezone)
-  const grouped: Record<string, ActivityItem[]> = {};
-  for (const item of items) {
-    const dateKey = new Date(item.timestamp).toLocaleDateString("en-GB", {
-      timeZone: TH_TZ,
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    });
-    (grouped[dateKey] ??= []).push(item);
-  }
+  // Only render the first `visibleCount` items for perf.
+  const visibleItems = useMemo(
+    () => items.slice(0, visibleCount),
+    [items, visibleCount],
+  );
+  const hasMore = visibleCount < items.length;
+
+  // Group visible items by date (Thai timezone). Memoized so re-group
+  // only on slice/items change, not on unrelated re-renders.
+  const grouped = useMemo(() => {
+    const g: Record<string, ActivityItem[]> = {};
+    for (const item of visibleItems) {
+      const dateKey = new Date(item.timestamp).toLocaleDateString("en-GB", {
+        timeZone: TH_TZ,
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      });
+      (g[dateKey] ??= []).push(item);
+    }
+    return g;
+  }, [visibleItems]);
+
+  // IntersectionObserver — load next page when sentinel enters viewport.
+  useEffect(() => {
+    if (!hasMore) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((n) => Math.min(n + PAGE_SIZE, items.length));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [hasMore, items.length]);
 
   return (
     <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
@@ -182,7 +215,7 @@ export default function ActivityPage() {
         </select>
 
         <span className="text-xs text-muted-foreground self-center ml-auto">
-          {items.length} events
+          {visibleItems.length} / {items.length} events
         </span>
       </div>
 
@@ -233,6 +266,14 @@ export default function ActivityPage() {
               </div>
             </div>
           ))}
+          {hasMore && (
+            <div
+              ref={sentinelRef}
+              className="flex items-center justify-center py-4 text-xs text-muted-foreground"
+            >
+              Loading more...
+            </div>
+          )}
         </div>
       )}
     </div>
