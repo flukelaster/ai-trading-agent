@@ -19,6 +19,7 @@ let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wasConnected = false;
 let isStarted = false;
+let visibilityHandler: (() => void) | null = null;
 
 const subscribers = new Map<string, Set<Callback>>();
 const connectionListeners = new Set<(connected: boolean) => void>();
@@ -71,6 +72,9 @@ function openSocket() {
     ws.onclose = () => {
       useBotStore.getState().setWsConnected(false);
       notifyConnection(false);
+      // If stopWebSocket() closed the socket, do not schedule a reconnect —
+      // otherwise we get a zombie connection after logout.
+      if (!isStarted) return;
       if (wasConnected && reconnectAttempts === 0) {
         showError("Connection lost. Reconnecting...");
       }
@@ -104,15 +108,16 @@ export function startWebSocket() {
   isStarted = true;
   openSocket();
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", () => {
+  if (typeof document !== "undefined" && !visibilityHandler) {
+    visibilityHandler = () => {
       if (document.visibilityState === "visible") {
         reconnectAttempts = 0;
         if (!wsInstance || wsInstance.readyState !== WebSocket.OPEN) {
           openSocket();
         }
       }
-    });
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
   }
 }
 
@@ -125,8 +130,13 @@ export function stopWebSocket() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  if (visibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = null;
+  }
   subscribers.clear();
   wasConnected = false;
+  reconnectAttempts = 0;
   wsInstance?.close();
   wsInstance = null;
 }
