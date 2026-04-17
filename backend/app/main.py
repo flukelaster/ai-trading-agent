@@ -72,6 +72,8 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_reason VARCHAR(255)",
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pre_trade_snapshot JSON",
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS post_trade_analysis JSON",
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE",
+                "CREATE INDEX IF NOT EXISTS ix_trades_is_archived ON trades (is_archived)",
             ]:
                 try:
                     await _tmp_session.execute(text(col_sql))
