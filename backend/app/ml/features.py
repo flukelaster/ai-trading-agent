@@ -205,36 +205,42 @@ def build_labels(
     return labels
 
 
-def _merge_macro_features(df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
-    """Merge macro data into OHLCV features with forward-fill."""
-    # macro_df expected columns: date, series_id, value (pivoted to columns)
-    if "date" in macro_df.columns:
-        macro_df = macro_df.set_index("date")
+def _merge_external_features(
+    df: pd.DataFrame,
+    external_df: pd.DataFrame,
+    column_prefix: str = "",
+    skip_columns: set[str] | None = None,
+) -> pd.DataFrame:
+    """Merge external data into OHLCV features with forward-fill.
 
-    # Align to OHLCV dates
-    macro_df.index = pd.to_datetime(macro_df.index)
-    df_date = df.index.normalize()  # strip time for daily macro merge
+    Args:
+        df: OHLCV DataFrame with DatetimeIndex
+        external_df: External data to merge (has 'date' column or DatetimeIndex)
+        column_prefix: Optional prefix for merged columns (e.g., "macro_")
+        skip_columns: Column names to skip during merge
+    """
+    external_df = external_df.copy()
+    if "date" in external_df.columns:
+        external_df = external_df.set_index("date")
+    external_df.index = pd.to_datetime(external_df.index)
+    df_date = df.index.normalize()
+    skip_columns = skip_columns or set()
 
-    for col in macro_df.columns:
-        if col in ("series_id",):
+    for col in external_df.columns:
+        if col in skip_columns:
             continue
-        # Map macro values to OHLCV bars by date
-        mapped = df_date.map(macro_df[col].reindex(macro_df.index).to_dict())
-        df[f"macro_{col}"] = pd.to_numeric(mapped, errors="coerce")
-        df[f"macro_{col}"] = df[f"macro_{col}"].ffill()
+        mapped = df_date.map(external_df[col].reindex(external_df.index).to_dict())
+        df[f"{column_prefix}{col}"] = pd.to_numeric(mapped, errors="coerce")
+        df[f"{column_prefix}{col}"] = df[f"{column_prefix}{col}"].ffill()
 
     return df
+
+
+def _merge_macro_features(df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
+    """Merge macro data into OHLCV features with forward-fill."""
+    return _merge_external_features(df, macro_df, column_prefix="macro_", skip_columns={"series_id"})
 
 
 def _merge_sentiment_features(df: pd.DataFrame, sentiment_df: pd.DataFrame) -> pd.DataFrame:
     """Merge daily sentiment aggregates into OHLCV features with forward-fill."""
-    sentiment_df = sentiment_df.copy()
-    sentiment_df.index = pd.to_datetime(sentiment_df.index)
-    df_date = df.index.normalize()
-
-    for col in sentiment_df.columns:
-        mapped = df_date.map(sentiment_df[col].to_dict())
-        df[col] = pd.to_numeric(mapped, errors="coerce")
-        df[col] = df[col].ffill()
-
-    return df
+    return _merge_external_features(df, sentiment_df)
