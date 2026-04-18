@@ -5,6 +5,9 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// SECURITY: localStorage is vulnerable to XSS. Consider migrating to httpOnly cookies.
+// WebAuthn auth already uses secure cookies. Bearer token auth should follow the same pattern.
+// TODO: Implement cookie-based JWT option for better XSS protection.
 // Add Bearer token from localStorage
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {

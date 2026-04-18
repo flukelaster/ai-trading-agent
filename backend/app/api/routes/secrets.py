@@ -97,7 +97,7 @@ async def get_secret(
     except VaultUnavailableError:
         raise
     except Exception:
-        masked = "*** (decryption error)"
+        masked = "***"
 
     await log_audit(
         db, "secret_read", resource=f"secret:{key}",
