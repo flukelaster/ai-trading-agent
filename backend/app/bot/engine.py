@@ -42,7 +42,7 @@ from app.constants import (
 
 def _naive_utc() -> datetime:
     """Return current UTC time without timezone info (for DB columns without tz)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.utcnow()
 
 
 def _get_h1_trend(df) -> int:
@@ -77,6 +77,7 @@ from app.db.models import BotEvent, BotEventType, OrderAudit, Trade
 from app.mt5.connector import MT5BridgeConnector
 from app.mt5.market_data import MarketDataService
 from app.mt5.order_executor import OrderExecutor
+from app.bot.position_tracker import PositionTracker
 from app.news.fetcher import NewsFetcher
 from app.risk.circuit_breaker import CircuitBreaker
 from app.risk.manager import RiskManager
@@ -141,7 +142,6 @@ class BotEngine:
 
         self.state = BotState.STOPPED
         self._manager = None  # BotManager ref (set in manager.py)
-        self._known_tickets: set[int] = set()  # Track open tickets for close detection
 
         # Lot sizing mode: None = auto (AI/Kelly/risk-based), float = fixed lot
         self.fixed_lot: float | None = None
@@ -154,11 +154,18 @@ class BotEngine:
 
         # Paper trade mode
         self.paper_trade = settings.paper_trade
-        self._paper_positions: list[dict] = []
-        self._paper_ticket_counter = PAPER_TICKET_START
-        self._paper_balance = PAPER_INITIAL_BALANCE
 
-        # Trailing stop config
+        # Position tracker: manages position sync, reconciliation, paper trades
+        self.position_tracker = PositionTracker(
+            executor=self.executor,
+            db_session=db_session,
+            redis_client=redis_client,
+            connector=connector,
+            symbol=self.symbol,
+            paper_trade=self.paper_trade,
+        )
+
+        # Trailing stop config (still managed by BotEngine, will be extracted in Phase 2)
         self.trailing_stop_enabled = True
         self.trailing_start_atr = DEFAULT_TRAILING_START_ATR
         self.trailing_step_atr = DEFAULT_TRAILING_STEP_ATR
@@ -176,6 +183,7 @@ class BotEngine:
 
     def set_notifier(self, notifier):
         self.notifier = notifier
+        self.position_tracker.notifier = notifier
 
     async def _notify(self, coro):
         """Fire-and-forget notification — never crash the bot."""
@@ -197,16 +205,10 @@ class BotEngine:
         if self.state == BotState.RUNNING:
             return
         self.state = BotState.RUNNING
-        self.started_at = datetime.now(timezone.utc)
+        self.started_at = datetime.utcnow()
 
         # Seed known tickets from current MT5 positions
-        try:
-            positions = await self.executor.get_open_positions(self.symbol)
-            self._known_tickets = {p["ticket"] for p in positions}
-            if self._known_tickets:
-                logger.info(f"Tracking {len(self._known_tickets)} existing positions")
-        except Exception as e:
-            logger.warning(f"Could not seed known tickets: {e}")
+        await self.position_tracker.seed_known_tickets()
 
         # Load cached sentiment from Redis
         try:
@@ -534,7 +536,7 @@ class BotEngine:
                 )
                 return None
 
-        self.last_signal_time = datetime.now(timezone.utc)
+        self.last_signal_time = datetime.utcnow()
         signal_label = "BUY" if signal == 1 else "SELL"
         logger.info(f"Signal detected: {signal_label}")
         await self._log_event(BotEventType.SIGNAL_DETECTED, f"{signal_label} signal on {self.symbol}")
@@ -876,9 +878,8 @@ class BotEngine:
         return lot
 
     def _create_paper_order(self, order_type: str, lot: float, entry_price: float, sl_tp, comment: str) -> dict:
-        """Create a simulated paper trade order."""
-        self._paper_ticket_counter += 1
-        ticket = self._paper_ticket_counter
+        """Create a simulated paper trade order using position_tracker."""
+        ticket = self.position_tracker.increment_paper_ticket()
         signal = 1 if order_type == "BUY" else -1
         tick_size = 10 ** (-self.risk_manager.price_decimals)
         slippage = random.uniform(1, 3) * tick_size
@@ -888,14 +889,15 @@ class BotEngine:
             "ticket": ticket, "price": fill_price,
             "lot": lot, "type": order_type,
         }}
-        self._paper_positions.append({
+        position = {
             "ticket": ticket, "symbol": self.symbol,
             "type": order_type, "lot": lot,
             "open_price": fill_price, "current_price": fill_price,
             "sl": sl_tp.sl, "tp": sl_tp.tp,
             "profit": 0.0, "open_time": datetime.now(timezone.utc).isoformat(),
             "comment": comment, "magic": MT5_MAGIC_NUMBER,
-        })
+        }
+        self.position_tracker.add_paper_position(position)
         logger.info(f"PAPER trade: {order_type} {lot} {self.symbol} @ {entry_price}")
         return result
 
@@ -938,35 +940,7 @@ class BotEngine:
         if self.state != BotState.RUNNING:
             return
         try:
-            if self.paper_trade:
-                positions = await self._sync_paper_positions()
-            else:
-                positions = await self.executor.get_open_positions(self.symbol)
-
-            current_tickets = {p["ticket"] for p in positions}
-
-            # Safety: if fetch returned empty but we have known positions, skip sync
-            # (likely a timeout, not all positions actually closed)
-            if not positions and len(self._known_tickets) > 0 and not self.paper_trade:
-                logger.warning(f"Position fetch returned empty but {len(self._known_tickets)} known — skipping sync (possible timeout)")
-                return
-
-            # Always track ALL open positions (including manually opened ones)
-            self._known_tickets = self._known_tickets | current_tickets
-
-            # Detect closed positions
-            closed = self._known_tickets - current_tickets
-            if closed and not self.paper_trade:
-                await self._handle_closed_trades(closed)
-            elif closed:
-                for ticket in closed:
-                    logger.info(f"Paper position closed: ticket={ticket}")
-                    self._position_atr.pop(ticket, None)
-                    self._position_entry_time.pop(ticket, None)
-                    self._position_partial_closed.discard(ticket)
-                    self._position_breakeven.discard(ticket)
-
-            self._known_tickets = current_tickets
+            positions = await self.position_tracker.sync_positions()
 
             # Apply trailing stops (real mode only — paper handles SL/TP internally)
             if self.trailing_stop_enabled and positions and not self.paper_trade:
@@ -1403,9 +1377,13 @@ class BotEngine:
             self.risk_manager.max_concurrent_trades = max(1, max_concurrent_trades)
             logger.info(f"Max concurrent trades: {max_concurrent_trades}")
         if max_lot is not None:
+            if max_lot <= 0:
+                raise ValueError(f"max_lot must be positive, got {max_lot}")
             self.risk_manager.max_lot = max_lot
             logger.info(f"Max lot: {max_lot}")
         if fixed_lot is not _UNSET:
+            if fixed_lot is not None and fixed_lot <= 0:
+                raise ValueError(f"fixed_lot must be positive or None, got {fixed_lot}")
             self.fixed_lot = fixed_lot if fixed_lot is None else float(fixed_lot)
             logger.info(f"Lot sizing: {'fixed ' + str(self.fixed_lot) if self.fixed_lot else 'auto (AI)'}")
 
@@ -1459,144 +1437,8 @@ class BotEngine:
 
     async def _recover_pending_trades(self):
         """Recover trades that failed DB save and were stored in Redis fallback."""
-        key = f"pending_trades:{self.symbol}"
-        try:
-            pending = await self.redis.lrange(key, 0, -1)
-            if not pending:
-                return
-
-            logger.info(f"Recovering {len(pending)} pending trades [{self.symbol}]")
-            for raw in pending:
-                try:
-                    data = json.loads(raw)
-                    trade = Trade(
-                        ticket=data["ticket"],
-                        symbol=data["symbol"],
-                        type=data["type"],
-                        lot=data["lot"],
-                        open_price=data["open_price"],
-                        expected_price=data.get("expected_price"),
-                        sl=data.get("sl"),
-                        tp=data.get("tp"),
-                        open_time=datetime.fromisoformat(data["open_time"]) if data.get("open_time") else _naive_utc(),
-                        strategy_name=data.get("strategy_name"),
-                    )
-                    self.db.add(trade)
-                    await self.db.commit()
-                    await self.redis.lrem(key, 1, raw)
-                    logger.info(f"Recovered pending trade: ticket={data['ticket']}")
-                except Exception as e:
-                    logger.warning(f"Failed to recover pending trade: {e}")
-                    try:
-                        await self.db.rollback()
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.error(f"Pending trades recovery error [{self.symbol}]: {e}")
+        await self.position_tracker.recover_pending_trades()
 
     async def reconcile_positions(self):
         """Compare DB open trades with MT5 positions to detect orphans and phantoms."""
-        if self.paper_trade:
-            return
-
-        try:
-            from sqlalchemy import select
-
-            # 1. Get current MT5 positions
-            positions = await self.executor.get_open_positions(self.symbol)
-            mt5_tickets = {p["ticket"] for p in positions}
-
-            # 2. Get DB trades that should be open (no close_time)
-            stmt = (
-                select(Trade)
-                .where(Trade.symbol == self.symbol, Trade.close_time.is_(None))
-            )
-            result = await self.db.execute(stmt)
-            db_trades = result.scalars().all()
-            db_tickets = {t.ticket for t in db_trades}
-
-            # 3. Orphan detection: in MT5 but not in DB → auto-adopt
-            orphans = mt5_tickets - db_tickets
-            if orphans:
-                pos_map = {p["ticket"]: p for p in positions}
-                adopted = []
-                for ticket in orphans:
-                    p = pos_map.get(ticket)
-                    if not p:
-                        continue
-                    try:
-                        open_time = datetime.fromisoformat(p["open_time"]) if isinstance(p.get("open_time"), str) else _naive_utc()
-                        trade = Trade(
-                            ticket=ticket,
-                            symbol=self.symbol,
-                            type=p.get("type", "BUY"),
-                            lot=p.get("lot", 0.01),
-                            open_price=p.get("open_price", 0),
-                            sl=p.get("sl", 0),
-                            tp=p.get("tp", 0),
-                            open_time=open_time,
-                            strategy_name=p.get("comment", "adopted_from_mt5") or "adopted_from_mt5",
-                        )
-                        self.db.add(trade)
-                        await self.db.commit()
-                        adopted.append(ticket)
-                        logger.info(f"Auto-adopted orphan [{self.symbol}]: ticket={ticket}")
-                    except Exception as e:
-                        logger.warning(f"Failed to adopt orphan {ticket}: {e}")
-                        try:
-                            await self.db.rollback()
-                        except Exception:
-                            pass
-
-                if adopted:
-                    tickets_str = ", ".join(str(t) for t in sorted(adopted))
-                    await self._log_event(
-                        BotEventType.ERROR,
-                        f"Auto-adopted orphaned positions: {tickets_str}",
-                    )
-                    if self.notifier:
-                        await self._notify(self.notifier._send(
-                            f"🔄 <b>Auto-adopted positions</b> [{self.symbol}]\n"
-                            f"Tickets: {tickets_str}\n"
-                            f"สร้าง record ใน DB ให้อัตโนมัติแล้ว"
-                        ))
-
-            # 4. Phantom detection: in DB but not in MT5
-            phantoms = db_tickets - mt5_tickets
-            if phantoms:
-                logger.warning(f"Phantom records [{self.symbol}]: {phantoms} (in DB, not in MT5)")
-                # Try to find close details from MT5 history
-                history_result = await self.connector.get_history(days=7)
-                history_deals = history_result.get("data", []) if history_result.get("success") else []
-                history_map = {d["ticket"]: d for d in history_deals}
-
-                for trade in db_trades:
-                    if trade.ticket not in phantoms:
-                        continue
-                    deal = history_map.get(trade.ticket)
-                    if deal:
-                        trade.close_price = deal["price"]
-                        trade.close_time = (
-                            datetime.fromisoformat(deal["time"]).replace(tzinfo=None)
-                            if deal.get("time")
-                            else _naive_utc()
-                        )
-                        trade.profit = deal.get("profit", 0)
-                        logger.info(f"Reconciled phantom #{trade.ticket}: closed @ {trade.close_price}, profit={trade.profit}")
-                    else:
-                        trade.close_time = _naive_utc()
-                        trade.profit = 0
-                        logger.warning(f"Reconciled phantom #{trade.ticket}: not found in 7-day history, marked closed with profit=0")
-
-                await self.db.commit()
-                await self._log_event(
-                    BotEventType.ERROR,
-                    f"Phantom records reconciled: {phantoms}",
-                )
-
-        except Exception as e:
-            logger.error(f"Position reconciliation error [{self.symbol}]: {e}")
-            try:
-                await self.db.rollback()
-            except Exception:
-                pass
+        await self.position_tracker.reconcile_positions()
