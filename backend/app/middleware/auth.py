@@ -57,8 +57,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(prefix) for prefix in EXCLUDED_PREFIXES):
             return await call_next(request)
 
-        # Allow WebSocket upgrades (they handle auth separately)
+        # WebSocket connections require token auth via query param
         if request.headers.get("upgrade", "").lower() == "websocket":
+            # WS uses short-lived token from /api/auth/ws-token (query param)
+            # Middleware validates token to prevent unauth WebSocket access
+            token = request.query_params.get("token")
+            if await self._is_setup_complete():
+                if not token or not _verify_jwt(token):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "WebSocket authentication required"},
+                    )
             return await call_next(request)
 
         # Check if WebAuthn setup is complete

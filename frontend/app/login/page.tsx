@@ -13,8 +13,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Dev mode bypass: only allow when NEXT_PUBLIC_DEV_MODE=true explicitly set
     const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (isLocal) {
+    const devModeEnabled = process.env.NEXT_PUBLIC_DEV_MODE === "true";
+    if (isLocal && devModeEnabled) {
       localStorage.setItem("token", "__noauth__");
       router.replace("/dashboard");
     }
