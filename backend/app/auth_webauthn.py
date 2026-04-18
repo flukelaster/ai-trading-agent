@@ -366,7 +366,7 @@ async def login_verify(
         value=token,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="strict",  # CSRF protection: strict same-site policy
         max_age=settings.jwt_expire_hours * 3600,
         path="/",
     )
@@ -393,7 +393,7 @@ async def logout(response: Response, session: str | None = Cookie(None),
             )
             await db.commit()
 
-    response.delete_cookie("session", path="/")
+    response.delete_cookie("session", path="/", samesite="strict")
     return {"status": "logged_out"}
 
 

@@ -344,6 +344,10 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
+# CSRF protection — validate Origin/Referer on state-changing requests
+from app.middleware.csrf import CSRFMiddleware
+app.add_middleware(CSRFMiddleware, trusted_origins=settings.cors_origin_list)
+
 # Routes
 app.include_router(admin.router)
 app.include_router(auth_router)
