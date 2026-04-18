@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from fastapi import HTTPException
+from loguru import logger
 
 
 class VaultUnavailableError(HTTPException):
@@ -24,8 +25,17 @@ class VaultUnavailableError(HTTPException):
 class VaultService:
     """AES-256-GCM encryption service with HKDF key derivation."""
 
-    _SALT = b"gold-trading-bot-vault-v1"
+    # Use env var for unique salt per deployment (security best practice)
+    # Falls back to legacy salt for backward compatibility
+    _legacy_salt = b"gold-trading-bot-vault-v1"
+    _env_salt = os.getenv("VAULT_SALT", "").encode() if os.getenv("VAULT_SALT") else None
+    _SALT = _env_salt if _env_salt else _legacy_salt
     _INFO = b"secrets-encryption"
+
+    if _env_salt:
+        logger.info("Vault: Using custom salt from VAULT_SALT env var")
+    else:
+        logger.warning("Vault: Using legacy hardcoded salt — set VAULT_SALT env var for production")
 
     def __init__(self, master_key: str | None):
         self._derived_key: bytes | None = None

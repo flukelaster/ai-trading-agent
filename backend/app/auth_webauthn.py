@@ -19,12 +19,84 @@ from app.db.session import get_db
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# In-memory challenge store (short-lived, per-request)
-_challenges: dict[str, bytes] = {}
+# Challenge storage: Redis with 5-minute TTL (security fix for multi-instance deployments)
+# Key pattern: "webauthn:challenge:{id}"
+
+
+# ─── Rate Limiting for Auth Endpoints ────────────────────────────────────────
+
+_AUTH_RATE_LIMIT = 10  # attempts per minute per IP (higher for passkey retries)
+_AUTH_RATE_WINDOW = 60  # seconds
+
+
+async def _check_auth_rate_limit(request: Request, redis_client) -> None:
+    """Check if IP has exceeded auth rate limit. Raises 429 if exceeded."""
+    ip = _get_client_ip_from_request(request)
+    key = f"ratelimit:webauthn:{ip}"
+
+    try:
+        # Increment counter
+        current = await redis_client.incr(key)
+        if current == 1:
+            # First request — set expiration
+            await redis_client.expire(key, _AUTH_RATE_WINDOW)
+
+        if current > _AUTH_RATE_LIMIT:
+            logger.warning(f"Rate limit exceeded for IP {ip} (WebAuthn endpoint)")
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many attempts. Please wait {_AUTH_RATE_WINDOW} seconds before trying again.",
+                headers={"Retry-After": str(_AUTH_RATE_WINDOW)},
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Redis error — fail open
+        logger.debug(f"Rate limiter error: {e}, allowing request")
+
+
+def _get_client_ip_from_request(request: Request) -> str:
+    """Extract client IP from request, accounting for proxies."""
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 RP_ID = settings.webauthn_rp_id if hasattr(settings, "webauthn_rp_id") else "localhost"
 RP_NAME = "AI Trading Agent"
 ORIGIN = settings.webauthn_origin if hasattr(settings, "webauthn_origin") else "http://localhost:3000"
+CHALLENGE_TTL = 300  # 5 minutes
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _get_redis(request: Request):
+    """Get Redis client from app state."""
+    redis_client = getattr(request.app.state, "redis", None)
+    if not redis_client:
+        raise HTTPException(
+            status_code=503,
+            detail="Redis not available — WebAuthn requires Redis for challenge storage"
+        )
+    return redis_client
+
+
+async def _store_challenge(redis_client, key: str, challenge: bytes) -> None:
+    """Store challenge in Redis with TTL."""
+    await redis_client.setex(f"webauthn:challenge:{key}", CHALLENGE_TTL, challenge)
+
+
+async def _get_and_delete_challenge(redis_client, key: str) -> bytes | None:
+    """Get and delete challenge from Redis (atomic)."""
+    challenge_key = f"webauthn:challenge:{key}"
+    challenge = await redis_client.get(challenge_key)
+    if challenge:
+        await redis_client.delete(challenge_key)
+        # Redis returns bytes, ensure we return bytes
+        if isinstance(challenge, bytes):
+            return challenge
+        return challenge.encode() if isinstance(challenge, str) else bytes(challenge)
+    return None
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -71,10 +143,16 @@ class RegisterOptionsRequest(BaseModel):
 
 
 @router.post("/register/options")
-async def register_options(req: RegisterOptionsRequest, db: AsyncSession = Depends(get_db)):
+async def register_options(
+    req: RegisterOptionsRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """Generate WebAuthn registration challenge. Only works if setup not complete."""
     from webauthn import generate_registration_options
     from webauthn.helpers.structs import AuthenticatorSelectionCriteria, ResidentKeyRequirement
+
+    redis_client = _get_redis(request)
 
     # Check if already set up
     result = await db.execute(select(Owner).limit(1))
@@ -111,8 +189,8 @@ async def register_options(req: RegisterOptionsRequest, db: AsyncSession = Depen
         ],
     )
 
-    # Store challenge for verification
-    _challenges[str(owner.id)] = options.challenge
+    # Store challenge for verification in Redis with TTL
+    await _store_challenge(redis_client, f"register:{owner.id}", options.challenge)
 
     from webauthn.helpers import options_to_json
     return {"options": options_to_json(options), "owner_id": owner.id}
@@ -125,13 +203,18 @@ class RegisterVerifyRequest(BaseModel):
 
 
 @router.post("/register/verify")
-async def register_verify(req: RegisterVerifyRequest, db: AsyncSession = Depends(get_db)):
+async def register_verify(
+    req: RegisterVerifyRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """Verify registration response and store credential."""
     from webauthn import verify_registration_response
     from webauthn.helpers import parse_registration_credential_json
     import json
 
-    challenge = _challenges.pop(str(req.owner_id), None)
+    redis_client = _get_redis(request)
+    challenge = await _get_and_delete_challenge(redis_client, f"register:{req.owner_id}")
     if not challenge:
         raise HTTPException(status_code=400, detail="Registration challenge expired")
 
@@ -175,9 +258,14 @@ async def register_verify(req: RegisterVerifyRequest, db: AsyncSession = Depends
 # ─── Login ────────────────────────────────────────────────────────────────────
 
 @router.post("/login/options")
-async def login_options(db: AsyncSession = Depends(get_db)):
+async def login_options(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """Generate WebAuthn login challenge."""
     from webauthn import generate_authentication_options
+
+    redis_client = _get_redis(request)
 
     result = await db.execute(select(Owner).limit(1))
     owner = result.scalar_one_or_none()
@@ -199,7 +287,8 @@ async def login_options(db: AsyncSession = Depends(get_db)):
         ],
     )
 
-    _challenges["login"] = options.challenge
+    # Store challenge in Redis with TTL
+    await _store_challenge(redis_client, "login", options.challenge)
 
     from webauthn.helpers import options_to_json
     return {"options": options_to_json(options)}
@@ -210,14 +299,22 @@ class LoginVerifyRequest(BaseModel):
 
 
 @router.post("/login/verify")
-async def login_verify(req: LoginVerifyRequest, request: Request, response: Response,
-                       db: AsyncSession = Depends(get_db)):
+async def login_verify(
+    req: LoginVerifyRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Verify login assertion and issue JWT cookie."""
     from webauthn import verify_authentication_response
     from webauthn.helpers import parse_authentication_credential_json
     import json
 
-    challenge = _challenges.pop("login", None)
+    redis_client = _get_redis(request)
+    # Rate limit check
+    await _check_auth_rate_limit(request, redis_client)
+
+    challenge = await _get_and_delete_challenge(redis_client, "login")
     if not challenge:
         raise HTTPException(status_code=400, detail="Login challenge expired")
 

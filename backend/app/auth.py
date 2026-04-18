@@ -12,6 +12,53 @@ from pydantic import BaseModel
 
 from app.config import settings
 
+
+# ─── Rate Limiting for Auth Endpoints ────────────────────────────────────────
+
+_AUTH_RATE_LIMIT = 5  # attempts per minute per IP
+_AUTH_RATE_WINDOW = 60  # seconds
+
+
+async def _check_auth_rate_limit(request: Request) -> None:
+    """Check if IP has exceeded auth rate limit. Raises 429 if exceeded."""
+    if not _auth_enabled():
+        return  # No rate limiting if auth is disabled
+
+    redis_client = getattr(request.app.state, "redis", None)
+    if not redis_client:
+        # Redis unavailable — fail open (log but don't block)
+        logger.debug("Rate limiter: Redis unavailable, allowing request")
+        return
+
+    ip = _get_client_ip(request)
+    key = f"ratelimit:auth:{ip}"
+
+    try:
+        # Increment counter
+        current = await redis_client.incr(key)
+        if current == 1:
+            # First request — set expiration
+            await redis_client.expire(key, _AUTH_RATE_WINDOW)
+
+        if current > _AUTH_RATE_LIMIT:
+            logger.warning(f"Rate limit exceeded for IP {ip} (auth endpoint)")
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many attempts. Please wait {_AUTH_RATE_WINDOW} seconds before trying again.",
+                headers={"Retry-After": str(_AUTH_RATE_WINDOW)},
+            )
+    except Exception as e:
+        # Redis error — fail open
+        logger.debug(f"Rate limiter error: {e}, allowing request")
+
+
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP from request, accounting for proxies."""
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Lazy imports to avoid hard dependency when auth is disabled
@@ -115,7 +162,10 @@ async def require_auth(credentials: HTTPAuthorizationCredentials | None = Depend
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
+    # Rate limit check
+    await _check_auth_rate_limit(request)
+
     if not _auth_enabled():
         raise HTTPException(status_code=400, detail="Authentication is not configured")
 
@@ -142,6 +192,9 @@ async def get_ws_token(request: Request):
     Reads the JWT from the httpOnly 'session' cookie (set by WebAuthn login)
     and returns a short-lived token the frontend can pass as a query param.
     """
+    # Rate limit check (token endpoint can be abused for session enumeration)
+    await _check_auth_rate_limit(request)
+
     if not _auth_enabled():
         return {"token": "__noauth__"}
 
