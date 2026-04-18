@@ -22,22 +22,25 @@ async def runner_logs_stream(
     """Stream runner logs in real-time via WebSocket."""
     # Validate auth if enabled
     from app.auth import _auth_enabled, verify_token
-    if _auth_enabled():
-        if not token or not verify_token(token):
-            await websocket.close(code=4001, reason="Authentication required")
-            return
-
-    await websocket.accept()
-    logger.info(f"Runner logs WebSocket connected: runner_id={runner_id}")
 
     redis_client = None
     pubsub = None
+    websocket_accepted = False
+
     try:
+        if _auth_enabled():
+            if not token or not verify_token(token):
+                return  # Reject connection, no websocket.accept() called
+
         from app.config import settings
         redis_client = redis_lib.from_url(settings.redis_url)
         pubsub = redis_client.pubsub()
         channel = f"runner:{runner_id}:logs"
         await pubsub.subscribe(channel)
+
+        await websocket.accept()
+        websocket_accepted = True
+        logger.info(f"Runner logs WebSocket connected: runner_id={runner_id}")
 
         while True:
             message = await pubsub.get_message(
@@ -54,8 +57,21 @@ async def runner_logs_stream(
     except Exception as e:
         logger.error(f"Runner logs WebSocket error: {e}")
     finally:
+        # Ensure websocket is closed on errors
+        if websocket_accepted:
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+        # Always cleanup Redis resources
         if pubsub:
-            await pubsub.unsubscribe()
-            await pubsub.close()
+            try:
+                await pubsub.unsubscribe()
+                await pubsub.close()
+            except Exception:
+                pass
         if redis_client:
-            await redis_client.close()
+            try:
+                await redis_client.close()
+            except Exception:
+                pass

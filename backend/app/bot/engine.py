@@ -894,7 +894,7 @@ class BotEngine:
             "type": order_type, "lot": lot,
             "open_price": fill_price, "current_price": fill_price,
             "sl": sl_tp.sl, "tp": sl_tp.tp,
-            "profit": 0.0, "open_time": datetime.now(timezone.utc).isoformat(),
+            "profit": 0.0, "open_time": datetime.utcnow().isoformat(),
             "comment": comment, "magic": MT5_MAGIC_NUMBER,
         }
         self.position_tracker.add_paper_position(position)
@@ -965,7 +965,7 @@ class BotEngine:
 
             close_price = deal["price"] if deal else 0
             profit = deal["profit"] if deal else 0
-            close_time = datetime.fromisoformat(deal["time"]).replace(tzinfo=None) if deal and deal.get("time") else datetime.now(timezone.utc).replace(tzinfo=None)
+            close_time = datetime.fromisoformat(deal["time"]).replace(tzinfo=None) if deal and deal.get("time") else datetime.utcnow()
 
             profit_str = f"+${profit:.2f}" if profit >= 0 else f"-${abs(profit):.2f}"
             logger.info(f"Position closed: ticket={ticket} price={close_price} profit={profit_str}")
@@ -1072,7 +1072,7 @@ class BotEngine:
             from app.db.models import MLPredictionLog
             from app.constants import PREDICTION_FEEDBACK_HOURS
             from sqlalchemy import select, and_
-            cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=PREDICTION_FEEDBACK_HOURS)
+            cutoff = datetime.utcnow() - timedelta(hours=PREDICTION_FEEDBACK_HOURS)
             stmt = (
                 select(MLPredictionLog)
                 .where(and_(
