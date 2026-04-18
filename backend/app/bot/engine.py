@@ -186,6 +186,13 @@ class BotEngine:
         except Exception as e:
             logger.error(f"Notification failed: {e}")
 
+    async def _fire_and_forget(self, coro, name: str):
+        """Fire-and-forget task with error logging — never crash the bot."""
+        try:
+            await coro
+        except Exception as e:
+            logger.error(f"Background task [{name}] failed: {e}")
+
     async def start(self):
         if self.state == BotState.RUNNING:
             return
@@ -737,9 +744,12 @@ class BotEngine:
 
         # Audit log (truly fire-and-forget — don't block order path)
         import asyncio as _asyncio
-        _asyncio.create_task(self._log_order_audit(
-            order_type, lot, sl_tp.sl, sl_tp.tp, entry_price, result,
-            self.strategy.name, latency_ms,
+        _asyncio.create_task(self._fire_and_forget(
+            self._log_order_audit(
+                order_type, lot, sl_tp.sl, sl_tp.tp, entry_price, result,
+                self.strategy.name, latency_ms,
+            ),
+            "order_audit"
         ))
 
         if not result.get("success"):
@@ -857,7 +867,10 @@ class BotEngine:
                 if consecutive_losses >= LOSING_STREAK_ALERT_THRESHOLD and self.notifier:
                     factor = STREAK_3_FACTOR if consecutive_losses >= 3 else STREAK_2_FACTOR
                     import asyncio as _asyncio
-                    _asyncio.create_task(self.notifier.send_losing_streak_alert(self.symbol, consecutive_losses, factor))
+                    _asyncio.create_task(self._fire_and_forget(
+                        self.notifier.send_losing_streak_alert(self.symbol, consecutive_losses, factor),
+                        "losing_streak_alert"
+                    ))
         except Exception:
             pass
         return lot
@@ -986,6 +999,11 @@ class BotEngine:
             # Update trade in DB
             from sqlalchemy import select
             stmt = select(Trade).where(Trade.ticket == ticket)
+            try:
+                # Rollback any pending failed transaction before starting
+                await self.db.rollback()
+            except Exception:
+                pass
             result = await self.db.execute(stmt)
             trade = result.scalar_one_or_none()
             if trade:

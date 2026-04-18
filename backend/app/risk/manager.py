@@ -130,7 +130,9 @@ class RiskManager:
         pip_value: float | None = None,
     ) -> float:
         """Kelly Criterion position sizing (fractional Kelly = 0.25x for safety)."""
-        if avg_loss <= 0 or win_rate <= 0:
+        # Use epsilon to prevent division by zero with tiny positive numbers
+        epsilon = 1e-9
+        if avg_loss <= epsilon or win_rate <= epsilon or sl_pips <= epsilon:
             return self.calculate_lot_size(balance, sl_pips, pip_value)
 
         # Kelly fraction: f* = (p * b - q) / b
@@ -144,8 +146,6 @@ class RiskManager:
         kelly = min(kelly, self.max_risk_per_trade * KELLY_MAX_RISK_MULT)
 
         pv = pip_value if pip_value is not None else self.pip_value
-        if sl_pips <= 0:
-            return MIN_LOT
         lot = (balance * kelly) / (sl_pips * pv * 100)
         lot = round(min(lot, self.max_lot), 2)
         return max(lot, MIN_LOT)

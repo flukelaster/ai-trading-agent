@@ -72,6 +72,13 @@ class BotScheduler:
     def set_health_monitor(self, monitor):
         self._health_monitor = monitor
 
+    async def _fire_and_forget(self, coro, name: str):
+        """Fire-and-forget task with error logging."""
+        try:
+            await coro
+        except Exception as e:
+            logger.error(f"Background task [{name}] failed: {e}")
+
     @property
     def _engines(self) -> dict[str, BotEngine]:
         if self.manager:
@@ -253,7 +260,10 @@ class BotScheduler:
         logger.info("Scheduler started")
 
         # Initial calendar refresh
-        asyncio.create_task(self._refresh_economic_calendar())
+        asyncio.create_task(self._fire_and_forget(
+            self._refresh_economic_calendar(),
+            "economic_calendar_refresh"
+        ))
 
     def _schedule_candle_jobs(self):
         """Create one cron job per unique timeframe across all engines."""

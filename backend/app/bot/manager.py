@@ -29,6 +29,7 @@ class BotManager:
         self.engines: dict[str, BotEngine] = {}
         self._positions_cache: dict[str, list[dict]] = {}
         self._positions_cache_time: float = 0
+        self._cache_lock = asyncio.Lock()  # Protect cache from concurrent access
         # Validate symbol profiles exist
         for symbol in settings.symbol_list:
             if symbol not in SYMBOL_PROFILES:
@@ -112,20 +113,22 @@ class BotManager:
 
     async def get_active_positions(self) -> dict[str, list[dict]]:
         """Get open positions grouped by symbol (cached 30s)."""
-        now = time.time()
-        if now - self._positions_cache_time < 30 and self._positions_cache:
-            return self._positions_cache
-        result = {}
-        for symbol, engine in self.engines.items():
-            try:
-                positions = await engine.executor.get_open_positions(symbol)
-                if positions:
-                    result[symbol] = positions
-            except Exception:
-                pass
-        self._positions_cache = result
-        self._positions_cache_time = now
-        return result
+        async with self._cache_lock:
+            now = time.time()
+            if now - self._positions_cache_time < 30 and self._positions_cache:
+                # Return copy to prevent external mutation
+                return {k: v.copy() for k, v in self._positions_cache.items()}
+            result = {}
+            for symbol, engine in self.engines.items():
+                try:
+                    positions = await engine.executor.get_open_positions(symbol)
+                    if positions:
+                        result[symbol] = positions
+                except Exception:
+                    pass
+            self._positions_cache = result
+            self._positions_cache_time = now
+            return {k: v.copy() for k, v in result.items()}
 
     async def get_portfolio_exposure(self, balance: float) -> dict:
         """Calculate total notional exposure across all symbols."""
