@@ -10,8 +10,11 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.engine import BotEngine
-from app.config import SYMBOL_PROFILES, settings
+from app.config import SYMBOL_PROFILES, apply_db_symbol_profiles, settings
+from app.db.session import async_session
 from app.mt5.connector import MT5BridgeConnector
+from app.services import symbol_config_service as symbol_svc
+from app.services.symbol_config_service import RELOAD_CHANNEL
 
 
 class BotManager:
@@ -29,6 +32,10 @@ class BotManager:
         self.engines: dict[str, BotEngine] = {}
         self._positions_cache: dict[str, list[dict]] = {}
         self._positions_cache_time: float = 0
+        self._reload_task: asyncio.Task | None = None
+        self._sentiment_analyzer = None
+        self._notifier = None
+        self._binance_connector = None
         # Validate symbol profiles exist
         for symbol in settings.symbol_list:
             if symbol not in SYMBOL_PROFILES:
@@ -159,6 +166,115 @@ class BotManager:
             return False, reason
         return True, "OK"
 
+    def _build_engine(self, symbol: str, profile: dict) -> BotEngine:
+        engine = BotEngine(
+            connector=self.connector,
+            db_session=self.db,
+            redis_client=self.redis,
+            symbol=symbol,
+            symbol_profile=profile,
+        )
+        engine._manager = self
+        if self._sentiment_analyzer:
+            engine.set_sentiment_analyzer(self._sentiment_analyzer)
+        if self._notifier:
+            engine.set_notifier(self._notifier)
+        return engine
+
+    async def reload_engines(self) -> dict:
+        """Rebuild engine set from current SYMBOL_PROFILES + is_enabled flags."""
+        enabled = {
+            s for s, p in SYMBOL_PROFILES.items()
+            if p.get("is_enabled") is True and "canonical" not in p
+        }
+        if not enabled:
+            # Backward compat: fall back to env-var symbol list when DB empty.
+            enabled = set(settings.symbol_list)
+
+        current = set(self.engines.keys())
+        to_add = enabled - current
+        to_remove = current - enabled
+        to_update = enabled & current
+
+        stop_coros = [self.engines.pop(s).stop() for s in to_remove]
+        if stop_coros:
+            await asyncio.gather(*stop_coros, return_exceptions=True)
+
+        for symbol in to_add:
+            try:
+                self.engines[symbol] = self._build_engine(symbol, SYMBOL_PROFILES.get(symbol, {}))
+            except Exception as e:
+                logger.error(f"BotManager: create {symbol} failed: {e}")
+
+        for symbol in to_update:
+            profile = SYMBOL_PROFILES.get(symbol)
+            if profile:
+                self.engines[symbol].apply_profile(profile)
+
+        summary = {
+            "added": sorted(to_add),
+            "removed": sorted(to_remove),
+            "updated": sorted(to_update),
+            "active": sorted(self.engines.keys()),
+        }
+        logger.info(f"BotManager reload: {summary}")
+        return summary
+
+    async def _apply_db_and_reload(self) -> None:
+        async with async_session() as session:
+            db_profiles = await symbol_svc.load_profiles_from_db(session)
+        apply_db_symbol_profiles(db_profiles)
+        await self.reload_engines()
+
+    async def start_reload_subscriber(self, debounce_seconds: float = 0.3) -> None:
+        """Subscribe to Redis reload channel; coalesce bursts within debounce window."""
+        if self._reload_task and not self._reload_task.done():
+            return
+
+        async def _run() -> None:
+            backoff = 1.0
+            while True:
+                pubsub = self.redis.pubsub()
+                try:
+                    await pubsub.subscribe(RELOAD_CHANNEL)
+                    logger.info(f"BotManager: subscribed to {RELOAD_CHANNEL}")
+                    backoff = 1.0
+                    async for msg in pubsub.listen():
+                        if msg.get("type") != "message":
+                            continue
+                        # Drain any additional messages that arrived in the debounce window
+                        await asyncio.sleep(debounce_seconds)
+                        while True:
+                            extra = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.01)
+                            if not extra:
+                                break
+                        try:
+                            await self._apply_db_and_reload()
+                        except Exception as e:
+                            logger.error(f"BotManager reload handler failed: {e}")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning(f"BotManager subscriber error (retrying in {backoff:.0f}s): {e}")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 60.0)
+                finally:
+                    try:
+                        await pubsub.unsubscribe(RELOAD_CHANNEL)
+                        await pubsub.aclose()
+                    except Exception:
+                        pass
+
+        self._reload_task = asyncio.create_task(_run())
+
+    async def stop_reload_subscriber(self) -> None:
+        if self._reload_task and not self._reload_task.done():
+            self._reload_task.cancel()
+            try:
+                await self._reload_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
     def set_sentiment_analyzer(self, analyzer, symbol: str | None = None):
         """Set sentiment analyzer on one or all engines."""
         if symbol:
@@ -166,6 +282,7 @@ class BotManager:
             if engine:
                 engine.set_sentiment_analyzer(analyzer)
         else:
+            self._sentiment_analyzer = analyzer
             for engine in self.engines.values():
                 engine.set_sentiment_analyzer(analyzer)
 
@@ -176,5 +293,6 @@ class BotManager:
             if engine:
                 engine.set_notifier(notifier)
         else:
+            self._notifier = notifier
             for engine in self.engines.values():
                 engine.set_notifier(notifier)

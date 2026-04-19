@@ -36,6 +36,7 @@ from app.api.routes import (
     runners,
     secrets,
     strategy,
+    symbols as symbols_routes,
 )
 from app.api.routes import quant
 from app.api.routes import metrics as metrics_routes
@@ -121,6 +122,20 @@ async def lifespan(app: FastAPI):
 
     # Create a persistent DB session for bot engines
     db_session = async_session()
+
+    try:
+        from app.services import symbol_config_service as symbol_svc
+        from app.config import apply_db_symbol_profiles
+        async with async_session() as _cfg_session:
+            db_profiles = await symbol_svc.load_profiles_from_db(_cfg_session)
+        if db_profiles:
+            apply_db_symbol_profiles(db_profiles)
+            enabled = [s for s, p in db_profiles.items() if p.get("is_enabled") and "canonical" not in p]
+            if enabled:
+                settings.symbols = ",".join(enabled)
+            logger.info(f"Symbol profiles loaded from DB: {len(db_profiles)} entries, enabled: {enabled}")
+    except Exception as e:
+        logger.warning(f"Symbol profile DB load failed (using static defaults): {e}")
 
     # Initialize BotManager (creates one engine per symbol)
     manager = BotManager(connector, db_session, redis_client)
@@ -278,6 +293,9 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Runner manager init failed (non-fatal): {e}")
         logger.warning("Runner features disabled — run 'alembic upgrade head' to create runner tables")
 
+    # Start symbol-config hot-reload subscriber
+    await manager.start_reload_subscriber()
+
     symbols = manager.get_symbols()
     logger.info(f"Trading Bot initialized — symbols: {symbols}")
 
@@ -290,6 +308,7 @@ async def lifespan(app: FastAPI):
     if "runner_db_session" in dir():
         await runner_db_session.close()
     scheduler.stop()
+    await manager.stop_reload_subscriber()
     await manager.stop()
     await connector.close()
     if manager._binance_connector:
@@ -371,6 +390,7 @@ app.include_router(agent_prompts.router)
 app.include_router(ai_usage.router)
 app.include_router(memory_routes.router)
 app.include_router(quant.router)
+app.include_router(symbols_routes.router)
 app.include_router(ws_router)
 app.include_router(ws_runners_router)
 

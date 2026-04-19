@@ -116,6 +116,26 @@ for _alias, _canonical in SYMBOL_ALIASES.items():
         SYMBOL_PROFILES[_alias] = _profile
 
 
+# Snapshot static defaults so repeated reloads can restore them before merging DB rows.
+_STATIC_SYMBOL_PROFILES: dict[str, dict] = {k: v.copy() for k, v in SYMBOL_PROFILES.items()}
+
+
+def apply_db_symbol_profiles(db_profiles: dict[str, dict]) -> None:
+    """Replace SYMBOL_PROFILES with static defaults overridden by DB entries."""
+    SYMBOL_PROFILES.clear()
+    SYMBOL_PROFILES.update(_STATIC_SYMBOL_PROFILES)
+    SYMBOL_PROFILES.update(db_profiles)
+
+
+def get_enabled_symbols_override() -> list[str] | None:
+    """Return enabled canonical symbols, or None if none are marked enabled."""
+    enabled = [
+        s for s, p in SYMBOL_PROFILES.items()
+        if p.get("is_enabled") is True and "canonical" not in p
+    ]
+    return enabled or None
+
+
 # Session profiles — SL/TP multiplier overrides by trading session
 SESSION_PROFILES = {
     "asian":   {"hours": (0, 8),   "sl_atr_mult": 1.2, "tp_atr_mult": 1.5, "confidence_boost": 0.05},

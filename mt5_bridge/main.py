@@ -136,6 +136,31 @@ async def get_tick(symbol: str):
     })
 
 
+@app.get("/symbol-spec/{symbol}", dependencies=[Depends(verify_api_key)])
+async def get_symbol_spec(symbol: str):
+    """Return broker-side spec for a symbol (used by Symbol Config UI to validate + auto-fill)."""
+    if not ensure_connected():
+        return mt5_response(False, error="MT5 not connected")
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        return mt5_response(False, error=f"Symbol {symbol} not found")
+    if not info.visible:
+        mt5.symbol_select(symbol, True)
+        info = mt5.symbol_info(symbol)
+    return mt5_response(True, data={
+        "symbol": info.name,
+        "digits": int(info.digits),
+        "point": float(info.point),
+        "volume_min": float(info.volume_min),
+        "volume_max": float(info.volume_max),
+        "volume_step": float(info.volume_step),
+        "trade_contract_size": float(info.trade_contract_size),
+        "trade_tick_size": float(info.trade_tick_size),
+        "trade_tick_value": float(info.trade_tick_value),
+        "visible": bool(info.visible),
+    })
+
+
 @app.get("/ohlcv/{symbol}", dependencies=[Depends(verify_api_key)])
 async def get_ohlcv(symbol: str, timeframe: str = "M15", count: int = 100):
     if not ensure_connected():
