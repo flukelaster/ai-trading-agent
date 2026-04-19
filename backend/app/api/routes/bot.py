@@ -268,7 +268,7 @@ async def apply_strategy_in_ai_mode(data: StrategyApply):
     return {"status": "applied", "strategy": data.name, "symbol": engine.symbol}
 
 
-@router.put("/settings", dependencies=[Depends(require_auth)])
+@router.put("/settings")
 async def update_settings(data: SettingsUpdate, request: Request, db: AsyncSession = Depends(get_db)):
     from app.bot.engine import _UNSET
     resolved_fixed_lot = _UNSET
@@ -325,7 +325,7 @@ async def update_settings(data: SettingsUpdate, request: Request, db: AsyncSessi
     return {"status": "updated"}
 
 
-@router.post("/reset-peak", dependencies=[Depends(require_auth)])
+@router.post("/reset-peak")
 async def reset_peak_balance():
     """Reset peak balance to current balance (fixes drawdown after account switch)."""
     engine = _get_engine()
