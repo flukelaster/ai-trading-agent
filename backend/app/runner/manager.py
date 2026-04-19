@@ -297,7 +297,7 @@ class RunnerManager:
                 value = self.vault.decrypt(secret.encrypted_value, secret.nonce)
                 decrypted[secret.key] = value
             except Exception as e:
-                logger.warning(f"Failed to decrypt secret {secret.key}: {e}")
+                logger.warning(f"Failed to decrypt a secret: {type(e).__name__}")
         return decrypted
 
     async def _log(

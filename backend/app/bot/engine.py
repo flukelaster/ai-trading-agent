@@ -79,6 +79,13 @@ from app.mt5.connector import MT5BridgeConnector
 from app.mt5.market_data import MarketDataService
 from app.mt5.order_executor import OrderExecutor
 from app.news.fetcher import NewsFetcher
+from app.risk.circuit_breaker import CircuitBreaker
+from app.risk.manager import RiskManager
+from app.strategy import get_strategy
+from app.strategy.base import BaseStrategy
+
+
+_UNSET = object()  # Sentinel for "parameter not passed" (distinct from None)
 
 
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
@@ -99,13 +106,6 @@ def _spawn_background(coro, *, name: str | None = None) -> asyncio.Task:
 
     task.add_done_callback(_done)
     return task
-from app.risk.circuit_breaker import CircuitBreaker
-from app.risk.manager import RiskManager
-from app.strategy import get_strategy
-from app.strategy.base import BaseStrategy
-
-
-_UNSET = object()  # Sentinel for "parameter not passed" (distinct from None)
 
 
 class BotState(str, enum.Enum):

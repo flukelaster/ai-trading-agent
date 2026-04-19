@@ -121,7 +121,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         is_auth_path = path in self.AUTH_PATHS
         capacity = self.auth_capacity if is_auth_path else self.capacity
         refill = self.auth_refill if is_auth_path else self.refill_rate
-        key = f"rl:{ip}:{path}"
+        # Shared bucket for all auth paths so an attacker cannot multiply the limit
+        # by spreading attempts across /login, /login/options, /login/verify, etc.
+        key = f"rl:{ip}:auth" if is_auth_path else f"rl:{ip}:{path}"
         now = time.time()
 
         try:

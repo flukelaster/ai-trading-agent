@@ -30,7 +30,16 @@ class VaultService:
     _INFO = b"secrets-encryption"
 
     def __init__(self, master_key: str | None):
-        self._salt = os.getenv("VAULT_SALT", "").encode() or self._DEFAULT_SALT
+        custom_salt = os.getenv("VAULT_SALT", "").encode()
+        self._salt = custom_salt or self._DEFAULT_SALT
+        if custom_salt:
+            # Loud warning: a non-default salt makes any rows encrypted under the
+            # previous salt undecryptable. Should only change on a fresh deployment.
+            from loguru import logger
+            logger.warning(
+                "VAULT_SALT is set to a non-default value. "
+                "Previously encrypted secrets (if any) will NOT decrypt under this salt."
+            )
         self._derived_key: bytes | None = None
         if master_key:
             self._derived_key = self._derive_key(master_key)
