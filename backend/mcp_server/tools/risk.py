@@ -5,8 +5,12 @@ from app.config import SYMBOL_PROFILES
 
 
 def _get_risk_manager(symbol: str = "GOLD") -> RiskManager:
-    """Create a RiskManager with symbol-specific profile."""
-    profile = SYMBOL_PROFILES.get(symbol, SYMBOL_PROFILES["GOLD"])
+    """Create a RiskManager with symbol-specific profile.
+
+    Falls back to defaults if symbol missing from SYMBOL_PROFILES — avoids KeyError
+    when GOLD profile is removed/renamed.
+    """
+    profile = SYMBOL_PROFILES.get(symbol) or {}
     return RiskManager(
         pip_value=profile.get("pip_value", 1.0),
         price_decimals=profile.get("price_decimals", 2),
