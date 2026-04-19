@@ -8,7 +8,8 @@ import pytest
 import pytest_asyncio
 
 from app.constants import MIN_TTL_SECONDS
-from app.risk.circuit_breaker import CircuitBreaker, MARKET_RESET_HOURS
+from app.market.sessions import get_reset_hour
+from app.risk.circuit_breaker import CircuitBreaker
 
 
 class TestCircuitBreaker:
@@ -119,11 +120,12 @@ class TestSecondsUntilReset:
         seconds = CircuitBreaker._seconds_until_reset("GOLD")
         assert seconds >= MIN_TTL_SECONDS
 
-    def test_gold_reset_hour(self):
-        assert MARKET_RESET_HOURS["GOLD"] == 22
+    def test_metal_reset_hour(self):
+        # GOLD → metal asset class → reset at 22:00 UTC
+        assert get_reset_hour("metal") == 22
 
-    def test_btc_reset_hour(self):
-        assert MARKET_RESET_HOURS["BTCUSD"] == 0
+    def test_crypto_reset_hour(self):
+        assert get_reset_hour("crypto") == 0
 
     def test_unknown_symbol_defaults_to_zero(self):
         # Unknown symbol → defaults to hour 0

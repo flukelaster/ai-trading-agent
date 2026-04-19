@@ -398,6 +398,7 @@ class SymbolConfig(Base):
     symbol: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(64))
     broker_alias: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    asset_class: Mapped[str] = mapped_column(String(16), default="forex", server_default="forex")
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 

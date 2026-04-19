@@ -16,6 +16,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 10.0,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
+        "asset_class": "metal",
     },
     "OILCash": {
         "display_name": "WTI Oil",
@@ -31,6 +32,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 0.5,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
+        "asset_class": "energy",
     },
     "BTCUSD": {
         "display_name": "Bitcoin",
@@ -46,6 +48,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 500.0,
         "ml_forward_bars": 5,     # BTC moves fast — shorter horizon
         "ml_timeframe": "H1",     # H1 better for BTC volatility
+        "asset_class": "crypto",
     },
     "USDJPY": {
         "display_name": "USD/JPY",
@@ -61,6 +64,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 0.3,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
+        "asset_class": "forex",
     },
 }
 
