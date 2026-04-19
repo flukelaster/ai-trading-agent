@@ -1,33 +1,28 @@
 """
 Circuit Breaker — tracks daily P&L via Redis, halts trading when limit is reached.
 Supports per-symbol market hour reset and cooldown-based auto-recovery.
+
+Reset hour is derived from the symbol's asset_class via app.market.sessions so
+user-added symbols inherit the correct daily reset without hardcoded lookups.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import redis.asyncio as redis
 from loguru import logger
 
-from app.config import settings
+from app.config import SYMBOL_PROFILES, settings
 from app.constants import DEFAULT_MAX_DRAWDOWN_FROM_PEAK, DEFAULT_PORTFOLIO_MAX_LOSS, MIN_TTL_SECONDS
-
-# Market hours reset time (UTC) per symbol type
-# Forex/metals reset at 17:00 EST = 22:00 UTC (21:00 during DST)
-# Crypto is 24/7, reset at midnight UTC
-MARKET_RESET_HOURS = {
-    "GOLD": 22,
-    "XAUUSD": 22,
-    "OILCash": 22,
-    "USDJPY": 22,
-    "EURUSD": 22,
-    "GBPUSD": 22,
-    "BTCUSD": 0,
-    "ETHUSD": 0,
-}
+from app.market.sessions import seconds_until_reset
 
 # Cooldown period before auto-recovery (minutes)
 DEFAULT_COOLDOWN_MINUTES = 60
+
+
+def _asset_class_for(symbol: str) -> str | None:
+    profile = SYMBOL_PROFILES.get(symbol) or {}
+    return profile.get("asset_class")
 
 
 class CircuitBreaker:
@@ -158,10 +153,8 @@ class CircuitBreaker:
 
     @staticmethod
     def _seconds_until_reset(symbol: str) -> int:
-        """Calculate seconds until daily reset based on symbol's market hours."""
-        reset_hour = MARKET_RESET_HOURS.get(symbol, 0)
-        now = datetime.now(timezone.utc)
-        reset_time = now.replace(hour=reset_hour, minute=0, second=0, microsecond=0)
-        if now >= reset_time:
-            reset_time += timedelta(days=1)
-        return max(int((reset_time - now).total_seconds()), MIN_TTL_SECONDS)
+        """Seconds until daily reset, derived from the symbol's asset class."""
+        asset_class = _asset_class_for(symbol)
+        # Strip timezone info — sessions.seconds_until_reset uses naive UTC internally
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        return max(seconds_until_reset(asset_class, now=now_naive), MIN_TTL_SECONDS)

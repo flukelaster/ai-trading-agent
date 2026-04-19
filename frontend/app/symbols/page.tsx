@@ -216,6 +216,7 @@ export default function SymbolsPage() {
                   <th className="px-4 py-3 font-medium">Symbol</th>
                   <th className="px-4 py-3 font-medium">Display</th>
                   <th className="px-4 py-3 font-medium">Broker alias</th>
+                  <th className="px-4 py-3 font-medium">Class</th>
                   <th className="px-4 py-3 font-medium">TF</th>
                   <th className="px-4 py-3 font-medium">Lot (def / max)</th>
                   <th className="px-4 py-3 font-medium">SL / TP ATR</th>
@@ -234,6 +235,9 @@ export default function SymbolsPage() {
                     <td className="px-4 py-3 text-muted-foreground">{cfg.display_name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                       {cfg.broker_alias ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground capitalize">
+                      {cfg.asset_class}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{cfg.default_timeframe}</td>
                     <td className="px-4 py-3 tabular-nums">

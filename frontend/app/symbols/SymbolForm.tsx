@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { SymbolConfig, SymbolConfigInput } from "@/lib/api";
+import { ASSET_CLASSES, type AssetClass, type SymbolConfig, type SymbolConfigInput } from "@/lib/api";
 
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"] as const;
 
@@ -26,6 +26,7 @@ type FormState = {
   symbol: string;
   display_name: string;
   broker_alias: string;
+  asset_class: AssetClass;
   default_timeframe: string;
   pip_value: string;
   default_lot: string;
@@ -45,6 +46,7 @@ function toFormState(cfg?: SymbolConfig): FormState {
     symbol: cfg?.symbol ?? "",
     display_name: cfg?.display_name ?? "",
     broker_alias: cfg?.broker_alias ?? "",
+    asset_class: cfg?.asset_class ?? "forex",
     default_timeframe: cfg?.default_timeframe ?? "M15",
     pip_value: String(cfg?.pip_value ?? ""),
     default_lot: String(cfg?.default_lot ?? ""),
@@ -65,6 +67,7 @@ function toPayload(state: FormState): SymbolConfigInput {
     symbol: state.symbol.trim(),
     display_name: state.display_name.trim(),
     broker_alias: state.broker_alias.trim() || null,
+    asset_class: state.asset_class,
     default_timeframe: state.default_timeframe,
     pip_value: Number(state.pip_value),
     default_lot: Number(state.default_lot),
@@ -181,6 +184,23 @@ export function SymbolForm({
               {TIMEFRAMES.map((tf) => (
                 <SelectItem key={tf} value={tf}>
                   {tf}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Asset class" required>
+          <Select
+            value={state.asset_class}
+            onValueChange={(v) => update("asset_class", v as AssetClass)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ASSET_CLASSES.map((cls) => (
+                <SelectItem key={cls} value={cls}>
+                  {cls}
                 </SelectItem>
               ))}
             </SelectContent>
