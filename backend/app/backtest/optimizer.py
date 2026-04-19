@@ -12,7 +12,6 @@ from app.backtest.engine import BacktestEngine, BacktestResult
 from app.risk.manager import RiskManager
 from app.strategy import get_strategy
 
-
 MAX_COMBINATIONS = 500
 
 
@@ -40,7 +39,7 @@ def generate_combinations(param_grid: dict[str, list]) -> list[dict]:
     """Generate cartesian product of parameter grid."""
     keys = list(param_grid.keys())
     values = list(param_grid.values())
-    return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
+    return [dict(zip(keys, combo, strict=False)) for combo in itertools.product(*values)]
 
 
 def score_result(result: BacktestResult, min_trades: int = 10) -> float:
@@ -80,18 +79,20 @@ def grid_search(
             bt_result = engine.run(df)
 
             s = score_result(bt_result, min_trades)
-            results.append({
-                "params": params,
-                "score": round(s, 4),
-                "total_trades": bt_result.total_trades,
-                "win_rate": round(bt_result.win_rate, 4),
-                "total_profit": round(bt_result.total_profit, 2),
-                "max_drawdown": round(bt_result.max_drawdown, 4),
-                "sharpe_ratio": round(bt_result.sharpe_ratio, 4),
-                "profit_factor": round(min(bt_result.profit_factor, 99.0), 4),
-            })
+            results.append(
+                {
+                    "params": params,
+                    "score": round(s, 4),
+                    "total_trades": bt_result.total_trades,
+                    "win_rate": round(bt_result.win_rate, 4),
+                    "total_profit": round(bt_result.total_profit, 2),
+                    "max_drawdown": round(bt_result.max_drawdown, 4),
+                    "sharpe_ratio": round(bt_result.sharpe_ratio, 4),
+                    "profit_factor": round(min(bt_result.profit_factor, 99.0), 4),
+                }
+            )
         except Exception as e:
-            logger.warning(f"Grid search combo {i+1}/{len(combinations)} failed: {e}")
+            logger.warning(f"Grid search combo {i + 1}/{len(combinations)} failed: {e}")
             continue
 
     results.sort(key=lambda x: x["score"], reverse=True)

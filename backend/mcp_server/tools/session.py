@@ -10,8 +10,7 @@ Keys use TTL for automatic cleanup:
 """
 
 import json
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import redis.asyncio as redis_lib
 
@@ -33,7 +32,7 @@ def _require_redis():
 
 
 def _daily_key(symbol: str) -> str:
-    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date = datetime.now(UTC).strftime("%Y-%m-%d")
     return f"session:agent:{symbol}:{date}"
 
 
@@ -68,7 +67,7 @@ async def save_context(symbol: str, context: dict) -> dict:
         current = {}
 
     current.update(context)
-    current["last_updated"] = datetime.now(timezone.utc).isoformat()
+    current["last_updated"] = datetime.now(UTC).isoformat()
 
     await _redis.set(key, json.dumps(current, default=str), ex=_SESSION_TTL_DAILY)
     return {"saved": True, "symbol": symbol, "keys": list(current.keys())}
@@ -121,11 +120,13 @@ async def save_learning(learning: str, category: str = "general") -> dict:
     else:
         learnings = {"entries": []}
 
-    learnings["entries"].append({
-        "text": learning,
-        "category": category,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    learnings["entries"].append(
+        {
+            "text": learning,
+            "category": category,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+    )
 
     # Keep only last 50 learnings
     learnings["entries"] = learnings["entries"][-50:]

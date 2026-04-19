@@ -36,6 +36,7 @@ class VaultService:
             # Loud warning: a non-default salt makes any rows encrypted under the
             # previous salt undecryptable. Should only change on a fresh deployment.
             from loguru import logger
+
             logger.warning(
                 "VAULT_SALT is set to a non-default value. "
                 "Previously encrypted secrets (if any) will NOT decrypt under this salt."

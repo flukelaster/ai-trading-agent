@@ -11,7 +11,6 @@ from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 from loguru import logger
 
@@ -21,7 +20,7 @@ class LogEntry:
     timestamp: datetime
     level: str
     message: str
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
 
 
 @dataclass
@@ -36,11 +35,12 @@ class ResourceMetrics:
 @dataclass
 class ProcessInfo:
     """Tracks a running subprocess."""
+
     process: asyncio.subprocess.Process
     pid: int
     started_at: datetime
     log_buffer: deque[LogEntry] = field(default_factory=lambda: deque(maxlen=1000))
-    _log_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    _log_task: asyncio.Task | None = field(default=None, repr=False)
 
 
 class RunnerBackend(ABC):
@@ -55,9 +55,7 @@ class RunnerBackend(ABC):
         """Stop a running runner."""
 
     @abstractmethod
-    async def get_logs(
-        self, runner_id: int, since: Optional[datetime] = None, limit: int = 100
-    ) -> list[LogEntry]:
+    async def get_logs(self, runner_id: int, since: datetime | None = None, limit: int = 100) -> list[LogEntry]:
         """Get recent logs from a runner."""
 
     @abstractmethod
@@ -91,7 +89,9 @@ class ProcessRunnerBackend(RunnerBackend):
         # The entrypoint is the agent script — for process backend,
         # we run a Python module that listens for jobs from Redis
         process = await asyncio.create_subprocess_exec(
-            "python", "-m", "app.runner.agent_entrypoint",
+            "python",
+            "-m",
+            "app.runner.agent_entrypoint",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             env=env,
@@ -104,9 +104,7 @@ class ProcessRunnerBackend(RunnerBackend):
         )
 
         # Start log capture task
-        info._log_task = asyncio.create_task(
-            self._capture_logs(runner_id, info)
-        )
+        info._log_task = asyncio.create_task(self._capture_logs(runner_id, info))
 
         self._processes[runner_id] = info
         logger.info(f"Runner {runner_id} started as process pid={process.pid}")
@@ -124,7 +122,7 @@ class ProcessRunnerBackend(RunnerBackend):
             info.process.terminate()
             try:
                 await asyncio.wait_for(info.process.wait(), timeout=10)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 info.process.kill()
                 logger.warning(f"Runner {runner_id} timed out on graceful stop, killed")
 
@@ -133,9 +131,7 @@ class ProcessRunnerBackend(RunnerBackend):
 
         logger.info(f"Runner {runner_id} stopped (pid={info.pid})")
 
-    async def get_logs(
-        self, runner_id: int, since: Optional[datetime] = None, limit: int = 100
-    ) -> list[LogEntry]:
+    async def get_logs(self, runner_id: int, since: datetime | None = None, limit: int = 100) -> list[LogEntry]:
         info = self._processes.get(runner_id)
         if not info:
             return []
@@ -152,6 +148,7 @@ class ProcessRunnerBackend(RunnerBackend):
 
         try:
             import psutil
+
             proc = psutil.Process(info.pid)
             mem = proc.memory_info()
             # Use interval=None (non-blocking) to avoid blocking the event loop

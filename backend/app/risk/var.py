@@ -17,12 +17,12 @@ import numpy as np
 class VaRResult:
     """Result of a VaR/CVaR calculation."""
 
-    var_95: float          # 95% VaR (positive = loss)
-    var_99: float          # 99% VaR
-    cvar_95: float         # 95% CVaR (Expected Shortfall)
-    cvar_99: float         # 99% CVaR
-    method: str            # "historical", "parametric", "cornish_fisher"
-    window: int            # number of observations used
+    var_95: float  # 95% VaR (positive = loss)
+    var_99: float  # 99% VaR
+    cvar_95: float  # 95% CVaR (Expected Shortfall)
+    cvar_99: float  # 99% CVaR
+    method: str  # "historical", "parametric", "cornish_fisher"
+    window: int  # number of observations used
     annualized_vol: float  # annualized volatility estimate
 
     def to_dict(self) -> dict:
@@ -132,12 +132,7 @@ def cornish_fisher_var(
 
     def _cf_quantile(z: float) -> float:
         """Cornish-Fisher expansion of quantile."""
-        return (
-            z
-            + (z**2 - 1) * s / 6
-            + (z**3 - 3 * z) * k / 24
-            - (2 * z**3 - 5 * z) * s**2 / 36
-        )
+        return z + (z**2 - 1) * s / 6 + (z**3 - 3 * z) * k / 24 - (2 * z**3 - 5 * z) * s**2 / 36
 
     z_95 = _cf_quantile(-1.6449)
     z_99 = _cf_quantile(-2.3263)

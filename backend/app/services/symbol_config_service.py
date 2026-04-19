@@ -70,9 +70,7 @@ async def load_profiles_from_db(db: AsyncSession) -> dict[str, dict]:
     return profiles
 
 
-async def publish_reload(
-    redis_client: redis.Redis, symbol: str, action: str
-) -> None:
+async def publish_reload(redis_client: redis.Redis, symbol: str, action: str) -> None:
     """Publish reload event so BotManager and scheduler refresh engines."""
     try:
         payload = json.dumps(

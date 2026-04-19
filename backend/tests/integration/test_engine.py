@@ -2,19 +2,14 @@
 Integration tests for BotEngine — full trading loop with mocked dependencies.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.config import settings
-
-import numpy as np
-import pandas as pd
-import pytest
 import pytest_asyncio
 
 from app.bot.engine import BotEngine, BotState
-from app.constants import MIN_LOT, PAPER_INITIAL_BALANCE, WARMUP_SECONDS
-from app.db.models import Trade
+from app.config import settings
+from app.constants import MIN_LOT
 
 
 class TestBotEngine:
@@ -51,7 +46,7 @@ class TestBotEngine:
 
     async def test_emergency_stop(self, engine):
         await engine.start()
-        result = await engine.emergency_stop()
+        await engine.emergency_stop()
         assert engine.state == BotState.STOPPED
 
     async def test_get_status(self, engine):
@@ -88,7 +83,7 @@ class TestBotEngine:
         """Paper trade should create virtual positions without calling real connector."""
         await engine.start()
         # Skip warmup
-        engine.started_at = datetime.now(timezone.utc) - timedelta(hours=3)
+        engine.started_at = datetime.now(UTC) - timedelta(hours=3)
 
         # Setup: mock market data to return a df that produces a signal
         df = make_ohlcv_df(rows=200, trend="up", base_price=2000.0)
@@ -97,14 +92,14 @@ class TestBotEngine:
         df["atr"] = 10.0
 
         engine.market_data.get_ohlcv = AsyncMock(return_value=df)
-        engine.market_data.get_current_tick = AsyncMock(
-            return_value={"ask": 2050.0, "bid": 2049.0}
-        )
+        engine.market_data.get_current_tick = AsyncMock(return_value={"ask": 2050.0, "bid": 2049.0})
         engine.strategy.calculate = MagicMock(return_value=df)
 
         # Disable MTF filter and confirmation gate to avoid data dependencies
-        with patch.object(settings, "use_mtf_filter", False), \
-             patch.dict("sys.modules", {"app.ai.confirmation_gate": None}):
+        with (
+            patch.object(settings, "use_mtf_filter", False),
+            patch.dict("sys.modules", {"app.ai.confirmation_gate": None}),
+        ):
             await engine.process_candle()
 
         # Paper position should be created
@@ -117,7 +112,7 @@ class TestBotEngine:
         await engine.start()
 
         # Pre-load large loss into circuit breaker
-        await redis_client.set(f"circuit:daily_pnl:GOLD", str(-500.0), ex=86400)
+        await redis_client.set("circuit:daily_pnl:GOLD", str(-500.0), ex=86400)
 
         await engine.process_candle()
         assert engine.state == BotState.PAUSED
@@ -128,7 +123,7 @@ class TestBotEngine:
         # engine.started_at is None → no warmup applied
         assert lot == 1.0
 
-        engine.started_at = datetime.now(timezone.utc)
+        engine.started_at = datetime.now(UTC)
         lot = engine._apply_warmup(1.0)
         # Just started → should be reduced
         assert lot < 1.0
@@ -151,9 +146,9 @@ class TestBotEngineAutoResume:
         engine.state = BotState.PAUSED
 
         # Set trigger time to 2 hours ago (cooldown is 60 min default)
-        past = datetime.now(timezone.utc) - timedelta(hours=2)
+        past = datetime.now(UTC) - timedelta(hours=2)
         await redis_client.set(
-            f"circuit:triggered_at:GOLD",
+            "circuit:triggered_at:GOLD",
             past.isoformat(),
             ex=86400,
         )
@@ -166,9 +161,9 @@ class TestBotEngineAutoResume:
         engine.state = BotState.PAUSED
 
         # Set trigger time to 10 minutes ago
-        recent = datetime.now(timezone.utc) - timedelta(minutes=10)
+        recent = datetime.now(UTC) - timedelta(minutes=10)
         await redis_client.set(
-            f"circuit:triggered_at:GOLD",
+            "circuit:triggered_at:GOLD",
             recent.isoformat(),
             ex=86400,
         )

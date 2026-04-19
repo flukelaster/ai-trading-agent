@@ -2,8 +2,8 @@
 Technical indicators — pure pandas/numpy, no external dependencies.
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def ema(series: pd.Series, length: int) -> pd.Series:
@@ -22,11 +22,14 @@ def rsi(series: pd.Series, length: int = 14) -> pd.Series:
 
 def atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> pd.Series:
     prev_close = close.shift(1)
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
     return tr.ewm(span=length, adjust=False).mean()
 
 
@@ -41,11 +44,14 @@ def adx(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> 
     prev_close = close.shift(1)
 
     # True Range
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
 
     # Directional movement
     up_move = high - prev_high

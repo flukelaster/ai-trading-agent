@@ -5,7 +5,6 @@ State machine: stopped → starting → online → degraded/error
 """
 
 from datetime import datetime
-from typing import Optional
 
 import redis.asyncio as redis_lib
 from loguru import logger
@@ -13,12 +12,12 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    JobStatus,
     Runner,
     RunnerJob,
     RunnerLog,
     RunnerMetric,
     RunnerStatus,
-    JobStatus,
     Secret,
 )
 from app.runner.backend import RunnerBackend
@@ -33,7 +32,7 @@ class RunnerManager:
         db: AsyncSession,
         redis: redis_lib.Redis,
         backend: RunnerBackend,
-        vault: Optional[VaultService] = None,
+        vault: VaultService | None = None,
     ):
         self.db = db
         self.redis = redis
@@ -47,8 +46,8 @@ class RunnerManager:
         name: str,
         image: str,
         max_concurrent_jobs: int = 3,
-        tags: Optional[list] = None,
-        resource_limits: Optional[dict] = None,
+        tags: list | None = None,
+        resource_limits: dict | None = None,
     ) -> Runner:
         """Register a new runner (does not start it)."""
         runner = Runner(
@@ -65,7 +64,7 @@ class RunnerManager:
         logger.info(f"Runner registered: {name} (id={runner.id})")
         return runner
 
-    async def get(self, runner_id: int) -> Optional[Runner]:
+    async def get(self, runner_id: int) -> Runner | None:
         result = await self.db.execute(select(Runner).where(Runner.id == runner_id))
         return result.scalar_one_or_none()
 
@@ -76,12 +75,12 @@ class RunnerManager:
     async def update_config(
         self,
         runner_id: int,
-        name: Optional[str] = None,
-        image: Optional[str] = None,
-        max_concurrent_jobs: Optional[int] = None,
-        tags: Optional[list] = None,
-        resource_limits: Optional[dict] = None,
-    ) -> Optional[Runner]:
+        name: str | None = None,
+        image: str | None = None,
+        max_concurrent_jobs: int | None = None,
+        tags: list | None = None,
+        resource_limits: dict | None = None,
+    ) -> Runner | None:
         runner = await self.get(runner_id)
         if not runner:
             return None
@@ -188,11 +187,7 @@ class RunnerManager:
 
     async def record_heartbeat(self, runner_id: int) -> None:
         """Called by heartbeat monitor when a runner responds."""
-        await self.db.execute(
-            update(Runner)
-            .where(Runner.id == runner_id)
-            .values(last_heartbeat_at=datetime.utcnow())
-        )
+        await self.db.execute(update(Runner).where(Runner.id == runner_id).values(last_heartbeat_at=datetime.utcnow()))
         await self.db.commit()
 
     async def mark_degraded(self, runner_id: int, reason: str) -> None:
@@ -208,8 +203,8 @@ class RunnerManager:
     async def get_logs(
         self,
         runner_id: int,
-        level: Optional[str] = None,
-        since: Optional[datetime] = None,
+        level: str | None = None,
+        since: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[RunnerLog]:
@@ -226,7 +221,7 @@ class RunnerManager:
     async def get_metrics(
         self,
         runner_id: int,
-        since: Optional[datetime] = None,
+        since: datetime | None = None,
         limit: int = 100,
     ) -> list[RunnerMetric]:
         """Get resource metrics history from DB."""
@@ -240,7 +235,7 @@ class RunnerManager:
     async def get_jobs(
         self,
         runner_id: int,
-        status: Optional[JobStatus] = None,
+        status: JobStatus | None = None,
         limit: int = 50,
     ) -> list[RunnerJob]:
         query = select(RunnerJob).where(RunnerJob.runner_id == runner_id)
@@ -250,7 +245,7 @@ class RunnerManager:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
-    async def collect_metrics(self, runner_id: int) -> Optional[RunnerMetric]:
+    async def collect_metrics(self, runner_id: int) -> RunnerMetric | None:
         """Collect current metrics from backend and persist to DB."""
         metrics = await self.backend.get_metrics(runner_id)
         metric = RunnerMetric(
@@ -300,9 +295,7 @@ class RunnerManager:
                 logger.warning(f"Failed to decrypt a secret: {type(e).__name__}")
         return decrypted
 
-    async def _log(
-        self, runner_id: int, level: str, message: str, metadata: Optional[dict] = None
-    ) -> None:
+    async def _log(self, runner_id: int, level: str, message: str, metadata: dict | None = None) -> None:
         """Persist a log entry to DB and publish to Redis for live streaming."""
         log = RunnerLog(
             runner_id=runner_id,
@@ -319,12 +312,14 @@ class RunnerManager:
 
             await self.redis.publish(
                 f"runner:{runner_id}:logs",
-                json.dumps({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "level": level,
-                    "message": message,
-                    "metadata": metadata,
-                }),
+                json.dumps(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "level": level,
+                        "message": message,
+                        "metadata": metadata,
+                    }
+                ),
             )
         except Exception:
             pass  # Redis publish failure is non-critical

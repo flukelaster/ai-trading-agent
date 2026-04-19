@@ -34,6 +34,7 @@ async def get_performance_analytics(
 
     if symbol:
         from app.config import resolve_broker_symbol
+
         symbol = resolve_broker_symbol(symbol)
 
     async def _compute():
@@ -72,6 +73,7 @@ async def _compute_performance(symbol, days, db, _manager, SimpleNamespace):
     if _manager is not None:
         try:
             from app.api.routes.bot import _get_engine
+
             engine = _get_engine(symbol) if symbol else next(iter(_manager.engines.values()))
             mt5_result = await engine.connector.get_history(days=days, symbol=symbol or None)
             if mt5_result.get("success"):
@@ -90,14 +92,16 @@ async def _compute_performance(symbol, days, db, _manager, SimpleNamespace):
                     deal_profit = deal.get("profit")
                     if deal_profit is None:
                         continue
-                    trades.append(SimpleNamespace(
-                        profit=deal_profit,
-                        open_time=deal_time,
-                        close_time=deal_time,
-                        expected_price=None,
-                        open_price=deal.get("open_price") or deal.get("price"),
-                        symbol=deal.get("symbol", ""),
-                    ))
+                    trades.append(
+                        SimpleNamespace(
+                            profit=deal_profit,
+                            open_time=deal_time,
+                            close_time=deal_time,
+                            expected_price=None,
+                            open_price=deal.get("open_price") or deal.get("price"),
+                            symbol=deal.get("symbol", ""),
+                        )
+                    )
         except Exception:
             pass
 
@@ -105,13 +109,28 @@ async def _compute_performance(symbol, days, db, _manager, SimpleNamespace):
 
     if not trades:
         return {
-            "total_trades": 0, "win_rate": 0, "profit_factor": 0,
-            "sharpe_ratio": 0, "sortino_ratio": 0, "calmar_ratio": 0,
-            "max_drawdown": 0, "max_drawdown_pct": 0, "recovery_factor": 0,
-            "avg_win": 0, "avg_loss": 0, "largest_win": 0, "largest_loss": 0,
-            "avg_trade_duration_min": 0, "consecutive_wins": 0, "consecutive_losses": 0,
-            "best_hour": None, "worst_hour": None, "best_day": None, "worst_day": None,
-            "equity_curve": [], "daily_returns": [],
+            "total_trades": 0,
+            "win_rate": 0,
+            "profit_factor": 0,
+            "sharpe_ratio": 0,
+            "sortino_ratio": 0,
+            "calmar_ratio": 0,
+            "max_drawdown": 0,
+            "max_drawdown_pct": 0,
+            "recovery_factor": 0,
+            "avg_win": 0,
+            "avg_loss": 0,
+            "largest_win": 0,
+            "largest_loss": 0,
+            "avg_trade_duration_min": 0,
+            "consecutive_wins": 0,
+            "consecutive_losses": 0,
+            "best_hour": None,
+            "worst_hour": None,
+            "best_day": None,
+            "worst_day": None,
+            "equity_curve": [],
+            "daily_returns": [],
         }
 
     profits = [t.profit for t in trades]
@@ -122,7 +141,7 @@ async def _compute_performance(symbol, days, db, _manager, SimpleNamespace):
     gross_profit = sum(wins) if wins else 0
     gross_loss = abs(sum(losses)) if losses else 0
     win_rate = len(wins) / len(profits) if profits else 0
-    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
 
     # Equity curve + max drawdown
     equity = []
@@ -155,7 +174,7 @@ async def _compute_performance(symbol, days, db, _manager, SimpleNamespace):
     downside = [p for p in profits if p < 0]
     if downside and len(profits) >= 2:
         mean_return = sum(profits) / len(profits)
-        downside_dev = math.sqrt(sum(p ** 2 for p in downside) / len(downside))
+        downside_dev = math.sqrt(sum(p**2 for p in downside) / len(downside))
         sortino = (mean_return / downside_dev * math.sqrt(252)) if downside_dev > 0 else 0
     else:
         sortino = 0
@@ -260,6 +279,7 @@ async def get_slippage_analysis(
     """Detailed slippage analysis: by hour, by strategy, total cost."""
     if symbol:
         from app.config import resolve_broker_symbol
+
         symbol = resolve_broker_symbol(symbol)
 
     cutoff = datetime.utcnow() - timedelta(days=days)
@@ -302,6 +322,7 @@ async def get_slippage_analysis(
 
             # Cost estimate (slip * lot * contract_size)
             from app.config import SYMBOL_PROFILES
+
             contract_size = SYMBOL_PROFILES.get(t.symbol, {}).get("contract_size", 100)
             total_cost += abs(slip) * (t.lot or 0.1) * contract_size
 
@@ -318,12 +339,6 @@ async def get_slippage_analysis(
         "p95_slippage": round(sorted_slips[int(n * 0.95)] if n >= 20 else sorted_slips[-1], 4),
         "max_slippage": round(max(slippage_data), 4),
         "total_cost_usd": round(total_cost, 2),
-        "by_hour": {
-            h: {"avg": round(sum(v) / len(v), 4), "count": len(v)}
-            for h, v in sorted(by_hour.items())
-        },
-        "by_strategy": {
-            s: {"avg": round(sum(v) / len(v), 4), "count": len(v)}
-            for s, v in by_strategy.items()
-        },
+        "by_hour": {h: {"avg": round(sum(v) / len(v), 4), "count": len(v)} for h, v in sorted(by_hour.items())},
+        "by_strategy": {s: {"avg": round(sum(v) / len(v), 4), "count": len(v)} for s, v in by_strategy.items()},
     }

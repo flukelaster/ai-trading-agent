@@ -5,7 +5,7 @@ EMA Crossover Strategy — BUY when fast EMA crosses above slow EMA, SELL on cro
 import pandas as pd
 
 from app.strategy.base import BaseStrategy
-from app.strategy.indicators import ema, atr
+from app.strategy.indicators import atr, ema
 
 
 class EMACrossoverStrategy(BaseStrategy):

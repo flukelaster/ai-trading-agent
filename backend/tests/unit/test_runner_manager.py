@@ -4,18 +4,16 @@ Unit tests for runner/manager.py — RunnerManager.
 Uses real SQLite DB session + fakeredis + mocked RunnerBackend.
 """
 
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.db.models import (
-    Runner,
+    JobStatus,
     RunnerJob,
     RunnerLog,
     RunnerMetric,
     RunnerStatus,
-    JobStatus,
     Secret,
 )
 from app.runner.backend import ResourceMetrics, RunnerBackend
@@ -26,9 +24,7 @@ from app.runner.manager import RunnerManager
 def mock_backend():
     backend = AsyncMock(spec=RunnerBackend)
     backend.start.return_value = "container-abc123"
-    backend.get_metrics.return_value = ResourceMetrics(
-        cpu_percent=10.0, memory_mb=256.0
-    )
+    backend.get_metrics.return_value = ResourceMetrics(cpu_percent=10.0, memory_mb=256.0)
     # cleanup() is on ProcessRunnerBackend, not the ABC, but manager.shutdown() calls it
     backend.cleanup = AsyncMock()
     return backend
@@ -322,7 +318,7 @@ class TestLogHelper:
         await manager._log(runner.id, "warn", "warning msg")
 
         # Check message was published
-        msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+        await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
         # fakeredis pub/sub may not deliver synchronously; just verify no error
         await pubsub.unsubscribe()
 

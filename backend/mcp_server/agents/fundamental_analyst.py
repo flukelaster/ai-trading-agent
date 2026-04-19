@@ -5,7 +5,7 @@ Uses: sentiment + history tools only (read-only, no execution).
 Model: Haiku (fast, cost-efficient for analysis tasks).
 """
 
-from mcp_server.agents.base import run_agent_loop, MODEL_SPECIALIST
+from mcp_server.agents.base import MODEL_SPECIALIST, run_agent_loop
 
 SYSTEM_PROMPT = """You are a Fundamental Analyst for a multi-symbol trading system covering {TRADABLE_SYMBOLS}.
 
@@ -57,6 +57,7 @@ async def analyze(symbol: str, timeframe: str = "M15") -> dict:
         f"Check current sentiment, recent performance, and today's P&L to form a directional bias."
     )
     from mcp_server.agents.prompt_registry import get_active_prompt
+
     active_prompt = await get_active_prompt("fundamental_analyst")
     return await run_agent_loop(
         system_prompt=active_prompt,

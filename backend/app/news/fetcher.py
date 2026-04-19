@@ -3,7 +3,7 @@ News Fetcher — retrieves headlines from RSS feeds for sentiment analysis.
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import feedparser
 from loguru import logger
@@ -20,12 +20,12 @@ class NewsFetcher:
         try:
             feed = await asyncio.to_thread(feedparser.parse, url)
             items = []
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=self.max_age_hours)
+            cutoff = datetime.now(UTC) - timedelta(hours=self.max_age_hours)
 
             for entry in feed.entries:
                 published = None
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
-                    published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                    published = datetime(*entry.published_parsed[:6], tzinfo=UTC)
 
                 # Filter by recency
                 if published and published < cutoff:
@@ -40,12 +40,14 @@ class NewsFetcher:
                     if not any(kw.lower() in text for kw in filter_keywords):
                         continue
 
-                items.append({
-                    "title": title,
-                    "summary": summary[:200],
-                    "published": published.isoformat() if published else None,
-                    "source": url,
-                })
+                items.append(
+                    {
+                        "title": title,
+                        "summary": summary[:200],
+                        "published": published.isoformat() if published else None,
+                        "source": url,
+                    }
+                )
 
             return items
         except Exception as e:
@@ -67,7 +69,7 @@ class NewsFetcher:
                 unique.append(item)
                 seen_words.append(words)
         unique.sort(key=lambda x: x.get("published") or "", reverse=True)
-        return unique[:self.max_headlines]
+        return unique[: self.max_headlines]
 
     async def fetch_all_sources(self) -> list[dict]:
         tasks = []
@@ -87,6 +89,7 @@ class NewsFetcher:
     async def fetch_for_symbol(self, symbol: str) -> list[dict]:
         from app.config import SYMBOL_PROFILES, get_canonical_symbol
         from app.news.sources import NEWS_SOURCES_BY_SYMBOL, build_generic_sources
+
         canonical = get_canonical_symbol(symbol)
         sources = NEWS_SOURCES_BY_SYMBOL.get(canonical) or NEWS_SOURCES_BY_SYMBOL.get(symbol)
         if not sources:

@@ -5,7 +5,7 @@ Uses: market_data + indicators tools only (read-only, no execution).
 Model: Haiku (fast, cost-efficient for analysis tasks).
 """
 
-from mcp_server.agents.base import run_agent_loop, MODEL_SPECIALIST
+from mcp_server.agents.base import MODEL_SPECIALIST, run_agent_loop
 
 SYSTEM_PROMPT = """You are a Technical Analyst for a multi-symbol trading system covering {TRADABLE_SYMBOLS}.
 
@@ -56,6 +56,7 @@ async def analyze(symbol: str, timeframe: str = "M15") -> dict:
         f"Use run_full_analysis to get all indicators, then provide your technical assessment."
     )
     from mcp_server.agents.prompt_registry import get_active_prompt
+
     active_prompt = await get_active_prompt("technical_analyst")
     return await run_agent_loop(
         system_prompt=active_prompt,

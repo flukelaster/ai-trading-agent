@@ -18,13 +18,13 @@ import numpy as np
 class QuantSignals:
     """Collection of quant signals for a single symbol."""
 
-    z_score: float           # Current z-score (mean reversion signal)
-    half_life: float         # Estimated mean-reversion half-life (bars)
-    hurst: float             # Hurst exponent (>0.5 trending, <0.5 mean-reverting)
-    rolling_sharpe: float    # Rolling Sharpe ratio (annualized)
-    momentum_factor: float   # Risk-adjusted momentum
-    vol_breakout: float      # Volatility breakout signal (-1, 0, or 1)
-    regime_hint: str         # "trending" or "mean_reverting" based on Hurst
+    z_score: float  # Current z-score (mean reversion signal)
+    half_life: float  # Estimated mean-reversion half-life (bars)
+    hurst: float  # Hurst exponent (>0.5 trending, <0.5 mean-reverting)
+    rolling_sharpe: float  # Rolling Sharpe ratio (annualized)
+    momentum_factor: float  # Risk-adjusted momentum
+    vol_breakout: float  # Volatility breakout signal (-1, 0, or 1)
+    regime_hint: str  # "trending" or "mean_reverting" based on Hurst
 
     def to_dict(self) -> dict:
         return {
@@ -96,7 +96,7 @@ def compute_hurst(prices: np.ndarray, max_lag: int = 20) -> float:
 
         rs_list = []
         for i in range(n_chunks):
-            chunk = returns[i * lag: (i + 1) * lag]
+            chunk = returns[i * lag : (i + 1) * lag]
             mean = chunk.mean()
             deviations = np.cumsum(chunk - mean)
             r = deviations.max() - deviations.min()
@@ -133,7 +133,7 @@ def compute_rolling_sharpe(
     if len(prices) < window + 1:
         return 0.0
 
-    returns = np.diff(np.log(prices[-window - 1:]))
+    returns = np.diff(np.log(prices[-window - 1 :]))
     if len(returns) < 5:
         return 0.0
 
@@ -154,7 +154,7 @@ def compute_momentum_factor(
     if len(prices) < lookback + 1:
         return 0.0
 
-    returns = np.diff(np.log(prices[-lookback - 1:]))
+    returns = np.diff(np.log(prices[-lookback - 1 :]))
     total_return = returns.sum()
     vol = returns.std()
 
@@ -190,7 +190,7 @@ def compute_vol_breakout(
     # Historical median ATR
     historical_atrs = []
     for i in range(atr_window, min(lookback, len(returns))):
-        historical_atrs.append(returns[i - atr_window: i].mean())
+        historical_atrs.append(returns[i - atr_window : i].mean())
 
     if not historical_atrs:
         return 0.0

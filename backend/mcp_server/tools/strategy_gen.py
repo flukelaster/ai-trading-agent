@@ -12,8 +12,6 @@ predefined indicator combinations and validated parameter ranges.
 import json
 from typing import Any
 
-from app.config import SYMBOL_PROFILES
-
 # ─── Known Strategies & Their Regime Suitability ─────────────────────────────
 
 STRATEGY_PROFILES: dict[str, dict[str, Any]] = {
@@ -82,16 +80,20 @@ def recommend_strategy(regime: str, symbol: str) -> dict:
 
     for name, profile in STRATEGY_PROFILES.items():
         if regime in profile.get("best_regime", []):
-            best_match.append({
-                "name": name,
-                "description": profile["description"],
-                "params": profile["params"],
-            })
+            best_match.append(
+                {
+                    "name": name,
+                    "description": profile["description"],
+                    "params": profile["params"],
+                }
+            )
         else:
-            alternatives.append({
-                "name": name,
-                "description": profile["description"],
-            })
+            alternatives.append(
+                {
+                    "name": name,
+                    "description": profile["description"],
+                }
+            )
 
     primary = best_match[0] if best_match else {"name": "ensemble", "params": STRATEGY_PROFILES["ensemble"]["params"]}
 

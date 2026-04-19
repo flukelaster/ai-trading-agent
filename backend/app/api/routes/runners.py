@@ -2,12 +2,12 @@
 
 from datetime import datetime
 
-from app.auth import require_auth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import log_audit
+from app.auth import require_auth
 from app.db.models import JobStatus
 from app.db.session import get_db
 
@@ -89,7 +89,9 @@ async def register_runner(
         resource_limits=req.resource_limits,
     )
     await log_audit(
-        db, "runner_registered", resource=f"runner:{runner.name}",
+        db,
+        "runner_registered",
+        resource=f"runner:{runner.name}",
         detail={"image": req.image},
         ip=request.client.host if request.client else None,
     )
@@ -147,7 +149,9 @@ async def update_runner(
         raise HTTPException(status_code=404, detail="Runner not found")
 
     await log_audit(
-        db, "runner_updated", resource=f"runner:{runner.name}",
+        db,
+        "runner_updated",
+        resource=f"runner:{runner.name}",
         ip=request.client.host if request.client else None,
     )
     return _runner_to_response(runner)
@@ -171,7 +175,9 @@ async def delete_runner(
         raise HTTPException(status_code=500, detail="Failed to remove runner")
 
     await log_audit(
-        db, "runner_deleted", resource=f"runner:{name}",
+        db,
+        "runner_deleted",
+        resource=f"runner:{name}",
         ip=request.client.host if request.client else None,
     )
     return {"status": "deleted", "name": name}
@@ -196,7 +202,9 @@ async def start_runner(
         raise HTTPException(status_code=409, detail=str(e)) from None
 
     await log_audit(
-        db, "runner_started", resource=f"runner:{runner.name}",
+        db,
+        "runner_started",
+        resource=f"runner:{runner.name}",
         ip=request.client.host if request.client else None,
     )
     return _runner_to_response(runner)
@@ -216,7 +224,9 @@ async def stop_runner(
         raise HTTPException(status_code=404, detail=str(e)) from None
 
     await log_audit(
-        db, "runner_stopped", resource=f"runner:{runner.name}",
+        db,
+        "runner_stopped",
+        resource=f"runner:{runner.name}",
         ip=request.client.host if request.client else None,
     )
     return _runner_to_response(runner)
@@ -236,7 +246,9 @@ async def restart_runner(
         raise HTTPException(status_code=404, detail=str(e)) from None
 
     await log_audit(
-        db, "runner_restarted", resource=f"runner:{runner.name}",
+        db,
+        "runner_restarted",
+        resource=f"runner:{runner.name}",
         ip=request.client.host if request.client else None,
     )
     return _runner_to_response(runner)
@@ -256,7 +268,9 @@ async def kill_runner(
         raise HTTPException(status_code=404, detail=str(e)) from None
 
     await log_audit(
-        db, "runner_killed", resource=f"runner:{runner.name}",
+        db,
+        "runner_killed",
+        resource=f"runner:{runner.name}",
         ip=request.client.host if request.client else None,
     )
     return _runner_to_response(runner)

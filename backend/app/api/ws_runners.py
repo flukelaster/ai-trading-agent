@@ -4,8 +4,6 @@ WebSocket endpoint for live runner log streaming.
 Subscribes to Redis pub/sub channel `runner:{runner_id}:logs`.
 """
 
-import asyncio
-
 import redis.asyncio as redis_lib
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from loguru import logger
@@ -22,6 +20,7 @@ async def runner_logs_stream(
     """Stream runner logs in real-time via WebSocket."""
     # Validate auth if enabled
     from app.auth import _auth_enabled, verify_token
+
     if _auth_enabled():
         if not token or not verify_token(token):
             await websocket.close(code=4001, reason="Authentication required")
@@ -34,15 +33,14 @@ async def runner_logs_stream(
     pubsub = None
     try:
         from app.config import settings
+
         redis_client = redis_lib.from_url(settings.redis_url)
         pubsub = redis_client.pubsub()
         channel = f"runner:{runner_id}:logs"
         await pubsub.subscribe(channel)
 
         while True:
-            message = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=1.0
-            )
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message and message["type"] == "message":
                 data = message["data"]
                 if isinstance(data, bytes):

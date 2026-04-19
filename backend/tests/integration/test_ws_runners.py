@@ -2,7 +2,6 @@
 Integration tests for WebSocket runner log streaming.
 """
 
-import json
 from unittest.mock import patch
 
 import pytest
@@ -11,6 +10,7 @@ from starlette.testclient import TestClient
 
 def _make_test_app():
     from fastapi import FastAPI
+
     from app.api.ws_runners import router
 
     app = FastAPI()
@@ -28,7 +28,7 @@ class TestRunnerLogsWebSocket:
             patch("app.api.ws_runners.redis_lib.from_url", return_value=redis_client),
         ):
             client = TestClient(app)
-            with client.websocket_connect("/ws/runners/1/logs") as ws:
+            with client.websocket_connect("/ws/runners/1/logs"):
                 # Connection established = success
                 pass
 
@@ -55,7 +55,7 @@ class TestRunnerLogsWebSocket:
             patch("app.api.ws_runners.redis_lib.from_url", return_value=redis_client),
         ):
             client = TestClient(app)
-            with client.websocket_connect("/ws/runners/1/logs?token=valid-token") as ws:
+            with client.websocket_connect("/ws/runners/1/logs?token=valid-token"):
                 pass  # Connection accepted = success
 
     def test_websocket_no_token_when_auth_enabled(self):

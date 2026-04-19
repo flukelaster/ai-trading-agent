@@ -22,12 +22,12 @@ class PatternRecord:
     pattern_id: str
     description: str
     discovered_at: str
-    confidence: float             # 0-1, decays over time
-    validation_layers: dict       # which layers passed
-    evidence_count: int = 0       # times pattern was confirmed
+    confidence: float  # 0-1, decays over time
+    validation_layers: dict  # which layers passed
+    evidence_count: int = 0  # times pattern was confirmed
     last_confirmed: str = ""
-    decay_rate: float = 0.02      # confidence loss per day without confirmation
-    status: str = "pending"       # pending, validated, expired, rejected
+    decay_rate: float = 0.02  # confidence loss per day without confirmation
+    status: str = "pending"  # pending, validated, expired, rejected
 
     def to_dict(self) -> dict:
         return {
@@ -118,7 +118,8 @@ class PatternValidator:
         # Layer 3: Cross-symbol validation
         if cross_symbol_results:
             passing_symbols = sum(
-                1 for r in cross_symbol_results.values()
+                1
+                for r in cross_symbol_results.values()
                 if r.get("win_rate", 0) >= self.min_win_rate and r.get("trades", 0) >= 10
             )
             layers["cross_symbol"] = {

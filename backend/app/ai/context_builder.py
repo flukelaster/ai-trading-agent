@@ -9,6 +9,7 @@ def _naive(dt: datetime) -> datetime:
     """Strip timezone for DB columns stored as TIMESTAMP WITHOUT TIME ZONE."""
     return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
 
+
 import pandas as pd
 from loguru import logger
 from sqlalchemy import select
@@ -69,9 +70,18 @@ class AIContextBuilder:
         if len(rows) < 50:
             return "Insufficient price data for analysis."
 
-        df = pd.DataFrame([{
-            "open": r.open, "high": r.high, "low": r.low, "close": r.close, "volume": r.volume,
-        } for r in rows])
+        df = pd.DataFrame(
+            [
+                {
+                    "open": r.open,
+                    "high": r.high,
+                    "low": r.low,
+                    "close": r.close,
+                    "volume": r.volume,
+                }
+                for r in rows
+            ]
+        )
 
         current_price = df["close"].iloc[-1]
         high_30d = df["high"].max()
@@ -159,14 +169,24 @@ class AIContextBuilder:
                 dow_summary.append(f"{dow_names[d]}: {wr:.0f}% ({s['total']} trades)")
 
         # AI filter performance
-        ai_agreed = [t for t in trades if t.ai_sentiment_label and (
-            (t.type == "BUY" and t.ai_sentiment_label == "bullish") or
-            (t.type == "SELL" and t.ai_sentiment_label == "bearish")
-        )]
-        ai_disagreed = [t for t in trades if t.ai_sentiment_label and (
-            (t.type == "BUY" and t.ai_sentiment_label == "bearish") or
-            (t.type == "SELL" and t.ai_sentiment_label == "bullish")
-        )]
+        ai_agreed = [
+            t
+            for t in trades
+            if t.ai_sentiment_label
+            and (
+                (t.type == "BUY" and t.ai_sentiment_label == "bullish")
+                or (t.type == "SELL" and t.ai_sentiment_label == "bearish")
+            )
+        ]
+        ai_disagreed = [
+            t
+            for t in trades
+            if t.ai_sentiment_label
+            and (
+                (t.type == "BUY" and t.ai_sentiment_label == "bearish")
+                or (t.type == "SELL" and t.ai_sentiment_label == "bullish")
+            )
+        ]
 
         lines = [
             f"Trade Patterns ({days}d): {len(trades)} trades, {total_wr:.0f}% win rate",
@@ -199,9 +219,17 @@ class AIContextBuilder:
         if len(rows) < 100:
             return "Insufficient data for historical pattern analysis."
 
-        df = pd.DataFrame([{
-            "time": r.time, "close": r.close, "high": r.high, "low": r.low,
-        } for r in rows])
+        df = pd.DataFrame(
+            [
+                {
+                    "time": r.time,
+                    "close": r.close,
+                    "high": r.high,
+                    "low": r.low,
+                }
+                for r in rows
+            ]
+        )
         df["time"] = pd.to_datetime(df["time"])
 
         # Session analysis
@@ -214,7 +242,7 @@ class AIContextBuilder:
         def session_move(sdf):
             if len(sdf) < 10:
                 return 0
-            return (sdf["close"].pct_change().mean() * 100)
+            return sdf["close"].pct_change().mean() * 100
 
         # First Friday patterns (NFP proxy)
         df["day"] = df["time"].dt.day
@@ -256,7 +284,7 @@ class AIContextBuilder:
         snapshot = await self._macro_service.get_latest_snapshot()
         if snapshot:
             lines.append("Macro Data (latest):")
-            for series_id, info in snapshot.items():
+            for _series_id, info in snapshot.items():
                 lines.append(f"  {info['name']}: {info['value']} ({info['date']})")
 
         # Correlations
@@ -264,7 +292,7 @@ class AIContextBuilder:
             correlations = await self._macro_service.compute_correlations(symbol, timeframe, days=90)
             if correlations and "error" not in correlations:
                 lines.append("Gold correlations (90d):")
-                for series_id, info in correlations.items():
+                for _series_id, info in correlations.items():
                     if info["correlation"] is not None:
                         lines.append(f"  {info['name']}: {info['correlation']:+.3f} ({info['data_points']} pts)")
         except Exception as e:
@@ -295,6 +323,7 @@ class AIContextBuilder:
         for line in patterns_str.split("\n"):
             if line.startswith("Worst hours:"):
                 import re
+
                 hours = re.findall(r"(\d{2}):00", line)
                 worst_hours = [int(h) for h in hours]
 

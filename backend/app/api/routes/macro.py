@@ -26,6 +26,7 @@ async def get_latest_macro(db: AsyncSession = Depends(get_db)):
     if _macro_service is None:
         raise HTTPException(status_code=503, detail="Macro service not initialized")
     from app.data.macro import MacroDataService
+
     svc = MacroDataService(db)
     return await svc.get_latest_snapshot()
 
@@ -36,6 +37,7 @@ async def get_correlations(days: int = 90, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=503, detail="Macro service not initialized")
     from app.config import resolve_broker_symbol
     from app.data.macro import MacroDataService
+
     svc = MacroDataService(db)
     symbol = resolve_broker_symbol(settings.symbol)
     return await svc.compute_correlations(symbol, settings.timeframe, days)

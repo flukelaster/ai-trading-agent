@@ -180,9 +180,7 @@ def create_server() -> FastMCP:
     # ─── Journal Tools (logging) ─────────────────────────────────────────
 
     @mcp.tool()
-    async def log_decision(
-        symbol: str, decision: str, reasoning: str, confidence: float | None = None
-    ) -> dict:
+    async def log_decision(symbol: str, decision: str, reasoning: str, confidence: float | None = None) -> dict:
         """Log a trading decision with full reasoning. Every trade MUST be logged."""
         return await journal.log_decision(symbol, decision, reasoning, confidence)
 

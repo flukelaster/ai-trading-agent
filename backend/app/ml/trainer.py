@@ -2,12 +2,10 @@
 ML Model Trainer — trains LightGBM classifier on OHLCV features.
 """
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 from loguru import logger
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
@@ -80,8 +78,7 @@ class ModelTrainer:
         y = y[mask].astype(int)
 
         class_counts = {c: int((y == c).sum()) for c in [-1, 0, 1]}
-        logger.info(f"Dataset: {len(X)} samples, features={len(available)}, "
-                     f"label dist: {class_counts}")
+        logger.info(f"Dataset: {len(X)} samples, features={len(available)}, label dist: {class_counts}")
 
         missing_classes = [c for c, cnt in class_counts.items() if cnt == 0]
         if missing_classes:
@@ -96,13 +93,16 @@ class ModelTrainer:
 
     def select_features(self, X, y, drop_ratio: float = 0.25):
         """Drop least important features based on permutation importance."""
-        from sklearn.inspection import permutation_importance
         import lightgbm as lgb
+        from sklearn.inspection import permutation_importance
 
         # Train a quick model to evaluate features
         temp_model = lgb.LGBMClassifier(
-            n_estimators=50, num_leaves=15, learning_rate=0.1,
-            verbose=-1, class_weight="balanced",
+            n_estimators=50,
+            num_leaves=15,
+            learning_rate=0.1,
+            verbose=-1,
+            class_weight="balanced",
         )
         temp_model.fit(X, y)
 
@@ -120,9 +120,7 @@ class ModelTrainer:
 
         return keep_cols
 
-    def train(
-        self, X: pd.DataFrame, y: pd.Series, test_size: float = 0.2
-    ) -> TrainingResult:
+    def train(self, X: pd.DataFrame, y: pd.Series, test_size: float = 0.2) -> TrainingResult:
         """Train LightGBM with chronological split."""
         label_map = {-1: 0, 0: 1, 1: 2}
         inv_map = {0: -1, 1: 0, 2: 1}
@@ -151,7 +149,8 @@ class ModelTrainer:
 
         accuracy = accuracy_score(y_test_orig, y_pred)
         report = classification_report(
-            y_test_orig, y_pred,
+            y_test_orig,
+            y_pred,
             labels=[-1, 0, 1],
             target_names=["SELL", "HOLD", "BUY"],
             output_dict=True,
@@ -162,10 +161,13 @@ class ModelTrainer:
         # Feature importance
         importance = self.model.feature_importance(importance_type="gain")
         feature_names = X_train.columns.tolist()
-        fi = dict(sorted(
-            zip(feature_names, importance.tolist()),
-            key=lambda x: x[1], reverse=True,
-        ))
+        fi = dict(
+            sorted(
+                zip(feature_names, importance.tolist(), strict=False),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+        )
 
         class_dist = {
             "SELL(-1)": int((y == -1).sum()),
@@ -177,8 +179,7 @@ class ModelTrainer:
         feat_stats = self._compute_feature_stats(X_train)
         label_dist = self._compute_label_distribution(y_train)
 
-        logger.info(f"Model trained: accuracy={accuracy:.4f}, "
-                     f"train={len(X_train)}, test={len(X_test)}")
+        logger.info(f"Model trained: accuracy={accuracy:.4f}, train={len(X_train)}, test={len(X_test)}")
 
         return TrainingResult(
             accuracy=accuracy,
@@ -238,7 +239,6 @@ class ModelTrainer:
         """Train one LightGBM model and return it."""
         import lightgbm as lgb
 
-        label_map = {-1: 0, 0: 1, 1: 2}
         class_counts = y_train_mapped.value_counts()
         total = len(y_train_mapped)
         class_weights = {c: total / (3 * count) for c, count in class_counts.items()}
@@ -256,9 +256,7 @@ class ModelTrainer:
         )
         return model
 
-    def train_walk_forward(
-        self, X: pd.DataFrame, y: pd.Series
-    ) -> TrainingResult:
+    def train_walk_forward(self, X: pd.DataFrame, y: pd.Series) -> TrainingResult:
         """
         Walk-forward validation with 3 expanding folds:
           Fold 1: train 60%, test 20%
@@ -270,9 +268,9 @@ class ModelTrainer:
         inv_map = {0: -1, 1: 0, 2: 1}
         n = len(X)
         folds = [
-            (int(n * 0.60), int(n * 0.80)),   # train 0-60%, test 60-80%
-            (int(n * 0.70), int(n * 0.80)),   # train 0-70%, test 70-80%
-            (int(n * 0.80), n),               # train 0-80%, test 80-100%
+            (int(n * 0.60), int(n * 0.80)),  # train 0-60%, test 60-80%
+            (int(n * 0.70), int(n * 0.80)),  # train 0-70%, test 70-80%
+            (int(n * 0.80), n),  # train 0-80%, test 80-100%
         ]
 
         # Optional feature selection (applied before walk-forward folds)
@@ -305,13 +303,17 @@ class ModelTrainer:
             y_pred = pd.Series(y_pred_mapped).map(inv_map).values
             acc = accuracy_score(y_test.values, y_pred)
 
-            fold_results.append({
-                "fold": fold_idx + 1,
-                "train_size": len(X_train),
-                "test_size": len(X_test),
-                "accuracy": round(acc, 4),
-            })
-            logger.info(f"Walk-forward fold {fold_idx+1}: accuracy={acc:.4f}, train={len(X_train)}, test={len(X_test)}")
+            fold_results.append(
+                {
+                    "fold": fold_idx + 1,
+                    "train_size": len(X_train),
+                    "test_size": len(X_test),
+                    "accuracy": round(acc, 4),
+                }
+            )
+            logger.info(
+                f"Walk-forward fold {fold_idx + 1}: accuracy={acc:.4f}, train={len(X_train)}, test={len(X_test)}"
+            )
 
             if acc > best_accuracy:
                 best_accuracy = acc
@@ -330,15 +332,18 @@ class ModelTrainer:
 
         accuracy = accuracy_score(y_test_final.values, y_pred)
         report = classification_report(
-            y_test_final.values, y_pred,
-            labels=[-1, 0, 1], target_names=["SELL", "HOLD", "BUY"],
-            output_dict=True, zero_division=0,
+            y_test_final.values,
+            y_pred,
+            labels=[-1, 0, 1],
+            target_names=["SELL", "HOLD", "BUY"],
+            output_dict=True,
+            zero_division=0,
         )
         conf = confusion_matrix(y_test_final.values, y_pred, labels=[-1, 0, 1]).tolist()
 
         importance = self.model.feature_importance(importance_type="gain")
         feature_names = X.columns.tolist()
-        fi = dict(sorted(zip(feature_names, importance.tolist()), key=lambda x: x[1], reverse=True))
+        fi = dict(sorted(zip(feature_names, importance.tolist(), strict=False), key=lambda x: x[1], reverse=True))
 
         class_dist = {
             "SELL(-1)": int((y == -1).sum()),
@@ -387,7 +392,10 @@ class ModelTrainer:
             return {}
         importance = self.model.feature_importance(importance_type="gain")
         feature_names = self.model.feature_name()
-        return dict(sorted(
-            zip(feature_names, importance.tolist()),
-            key=lambda x: x[1], reverse=True,
-        ))
+        return dict(
+            sorted(
+                zip(feature_names, importance.tolist(), strict=False),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+        )

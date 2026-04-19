@@ -21,27 +21,31 @@ from app.api.routes import (
     agent_prompts,
     ai_insights,
     ai_usage,
-    memory as memory_routes,
     analytics,
     backtest,
     bot,
     data,
     history,
+    integration,
     jobs,
     macro,
     market_data,
     ml,
     positions,
-    integration,
+    quant,
     rollout,
     runners,
     secrets,
     strategy,
+    webhooks,
+)
+from app.api.routes import (
+    memory as memory_routes,
+)
+from app.api.routes import metrics as metrics_routes
+from app.api.routes import (
     symbols as symbols_routes,
 )
-from app.api.routes import quant
-from app.api.routes import metrics as metrics_routes
-from app.api.routes import webhooks
 from app.api.websocket import router as ws_router
 from app.api.ws_runners import router as ws_runners_router
 from app.auth import router as auth_router
@@ -60,9 +64,9 @@ from app.db.observability import (
     long_hold_tracker,
     slow_query_tracker,
 )
-from app.db.session import async_session, engine as db_engine
+from app.db.session import async_session
+from app.db.session import engine as db_engine
 from app.health import check_health
-from app.middleware.auth import AuthMiddleware
 from app.mt5.connector import MT5BridgeConnector
 from app.notifications.telegram import TelegramNotifier
 
@@ -70,11 +74,13 @@ from app.notifications.telegram import TelegramNotifier
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.logging_config import configure_logging
+
     configure_logging()
 
     logger.info("Starting Trading Bot (multi-symbol)...")
 
     from app.auth import _assert_auth_consistent
+
     _assert_auth_consistent()
 
     # Phase 1 observability: slow query logger — attach once, survives entire app lifetime
@@ -83,6 +89,7 @@ async def lifespan(app: FastAPI):
     # Auto-add missing columns/tables (safe for production — IF NOT EXISTS guards)
     # Each statement runs in its own session to isolate transaction abort on error.
     from sqlalchemy import text
+
     schema_stmts = [
         "ALTER TABLE trades ADD COLUMN IF NOT EXISTS trade_reason VARCHAR(255)",
         "ALTER TABLE trades ADD COLUMN IF NOT EXISTS pre_trade_snapshot JSON",
@@ -121,7 +128,9 @@ async def lifespan(app: FastAPI):
 
     # Mint long-lived JWT so MCP tools can call the backend API (localhost) with auth.
     import os as _os
+
     from app.auth import mint_internal_token
+
     _internal_token = mint_internal_token()
     if _internal_token:
         _os.environ["INTERNAL_API_TOKEN"] = _internal_token
@@ -136,8 +145,9 @@ async def lifespan(app: FastAPI):
     db_session = async_session()
 
     try:
-        from app.services import symbol_config_service as symbol_svc
         from app.config import apply_db_symbol_profiles
+        from app.services import symbol_config_service as symbol_svc
+
         async with async_session() as _cfg_session:
             db_profiles = await symbol_svc.load_profiles_from_db(_cfg_session)
         if db_profiles:
@@ -197,12 +207,14 @@ async def lifespan(app: FastAPI):
 
     # Initialize metrics
     from app.metrics import Metrics, set_metrics
+
     metrics = Metrics(redis_client)
     set_metrics(metrics)
     app.state.metrics = metrics
 
     # Initialize health monitor
     from app.bot.health_monitor import HealthMonitor
+
     health_monitor = HealthMonitor(connector, manager, notifier)
     app.state.health_monitor = health_monitor
 
@@ -219,6 +231,7 @@ async def lifespan(app: FastAPI):
             logger.error(f"MCP tools init failed: {e} — AI agent trading may not work")
         try:
             from mcp_server.agents.prompt_registry import init_prompt_registry
+
             init_prompt_registry(redis_client)
             logger.info("Prompt registry initialized")
         except Exception as e:
@@ -339,6 +352,7 @@ app = FastAPI(
     openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
+
 # Security headers middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -359,6 +373,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         return response
 
+
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Phase 1 observability: warn on long-held DB connections per request
@@ -371,6 +386,7 @@ app.add_middleware(
 
 # Phase 4 rate limit — Redis token bucket per (IP, path). Fails open if Redis unavailable.
 from app.middleware.rate_limit import RateLimitMiddleware
+
 app.add_middleware(
     RateLimitMiddleware,
     sustained_per_minute=settings.rate_limit_per_minute,

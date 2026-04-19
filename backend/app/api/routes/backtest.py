@@ -39,6 +39,7 @@ def set_collector(collector):
 
 class _BacktestBase(BaseModel):
     """Shared fields for all backtest request models."""
+
     symbol: str = "GOLD"
     timeframe: str = "M15"
     initial_balance: float = Field(10000.0, ge=100.0)
@@ -100,6 +101,7 @@ async def run_backtest(req: BacktestRequest, db: AsyncSession = Depends(get_db))
         sentiment_data = await _load_sentiment(db, req.from_date, req.to_date)
 
     import asyncio
+
     engine = BacktestEngine(strategy, risk_manager, req.initial_balance)
     result = await asyncio.to_thread(engine.run, df, use_ai_filter=req.use_ai_filter, sentiment_data=sentiment_data)
 
@@ -116,6 +118,7 @@ async def run_optimization(req: OptimizeRequest):
         return {"error": "No OHLCV data available"}
 
     import asyncio
+
     result = await asyncio.to_thread(
         grid_search,
         strategy_name=req.strategy,
@@ -155,6 +158,7 @@ async def run_walk_forward(req: WalkForwardRequest):
         return {"error": "No OHLCV data available"}
 
     import asyncio
+
     result = await asyncio.to_thread(
         walk_forward_test,
         strategy_name=req.strategy,
@@ -224,6 +228,7 @@ async def run_comparison(req: CompareRequest):
 async def _load_data(symbol: str, source: str, timeframe: str, count: int, from_date: str | None, to_date: str | None):
     """Load OHLCV data from MT5 (live) or DB (historical)."""
     from app.config import resolve_broker_symbol
+
     actual_symbol = resolve_broker_symbol(symbol)
     if source == "db":
         if _collector is None:
@@ -259,6 +264,7 @@ async def run_cointegration_test(
         return {"error": "Insufficient data for one or both symbols"}
 
     import asyncio
+
     result = await asyncio.to_thread(cointegration_test, df_a["close"], df_b["close"])
     return {**result.to_dict(), "symbol_a": symbol_a, "symbol_b": symbol_b}
 
@@ -294,7 +300,9 @@ async def run_permutation_test_endpoint(req: PermutationTestRequest):
     # Run in thread to avoid blocking event loop (CPU-heavy)
     result = await asyncio.to_thread(
         permutation_test,
-        df, strategy, risk_manager,
+        df,
+        strategy,
+        risk_manager,
         initial_balance=req.initial_balance,
         n_permutations=req.n_permutations,
         include_costs=req.include_costs,
@@ -369,7 +377,9 @@ async def compute_overfitting_score_endpoint(req: OverfittingScoreRequest):
             strategy = get_strategy(req.strategy, req.params, symbol=req.symbol)
             return await asyncio.to_thread(
                 permutation_test,
-                df, strategy, risk_manager,
+                df,
+                strategy,
+                risk_manager,
                 initial_balance=req.initial_balance,
                 n_permutations=req.n_permutations,
             )
@@ -386,9 +396,7 @@ async def compute_overfitting_score_endpoint(req: OverfittingScoreRequest):
             profits = [t["profit"] for t in trades if "profit" in t]
             if len(profits) < 5:
                 return None
-            return await asyncio.to_thread(
-                monte_carlo_analysis, profits, req.n_simulations, req.initial_balance
-            )
+            return await asyncio.to_thread(monte_carlo_analysis, profits, req.n_simulations, req.initial_balance)
         except Exception as e:
             logger.error(f"Monte Carlo failed: {e}")
             return None

@@ -96,6 +96,7 @@ async def reflect(symbol: str, timeframe: str = "M15") -> dict:
         f"Save any new insights to session context and learnings."
     )
     from mcp_server.agents.prompt_registry import get_active_prompt
+
     active_prompt = await get_active_prompt("reflector")
     return await run_agent_loop(
         system_prompt=active_prompt,

@@ -11,7 +11,8 @@ import pandas as pd
 
 from app.config import get_active_symbols
 from app.strategy.base import BaseStrategy
-from app.strategy.indicators import atr, adx as calc_adx
+from app.strategy.indicators import adx as calc_adx
+from app.strategy.indicators import atr
 
 
 class MomentumRankStrategy(BaseStrategy):
@@ -50,16 +51,14 @@ class MomentumRankStrategy(BaseStrategy):
     async def _prepare_cross_data(self, market_data) -> None:
         """Fetch N-bar returns for active symbols and rank them."""
         import asyncio
+
         self._cross_returns = {}
         active = get_active_symbols()
         if len(active) < 2:
             return  # Need at least 2 symbols to rank
         try:
-            dfs = await asyncio.gather(*[
-                market_data.get_ohlcv(sym, "M15", self._lookback + 10)
-                for sym in active
-            ])
-            for sym, df in zip(active, dfs):
+            dfs = await asyncio.gather(*[market_data.get_ohlcv(sym, "M15", self._lookback + 10) for sym in active])
+            for sym, df in zip(active, dfs, strict=False):
                 if df is not None and not df.empty and len(df) >= self._lookback + 1:
                     close_now = df["close"].iloc[-1]
                     close_prev = df["close"].iloc[-self._lookback]

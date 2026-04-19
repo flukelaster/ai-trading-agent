@@ -13,6 +13,23 @@ exclude = ["alembic/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    # FastAPI `Depends(...)`, `Query(...)`, `Body(...)` in default args — framework idiom
+    "B008",
+    # Long lines — keep legacy 120+ lines out of CI blocks; fix opportunistically
+    "E501",
+    # Module-level lazy imports (TYPE_CHECKING, circular-import guards) are common here
+    "E402",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "F841",  # unused variable (fixture holders)
+    "B007",  # unused loop variable
+    "B017",  # pytest.raises(Exception) — fine in tests
+    "B011",  # assert False — fine in tests
+    "E741",  # ambiguous variable name
+]
 
 [tool.mypy]
 python_version = "3.12"

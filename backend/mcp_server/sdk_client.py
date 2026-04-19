@@ -12,16 +12,14 @@ import sys
 import time
 from typing import Any
 
-from loguru import logger
-
 from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
     AssistantMessage,
+    ClaudeAgentOptions,
     ResultMessage,
+    query,
 )
 from claude_agent_sdk.types import TextBlock, ToolUseBlock
-
+from loguru import logger
 
 # MCP server name used in server.py — must match for allowed_tools prefix
 MCP_SERVER_NAME = "trading-agent-tools"
@@ -183,10 +181,12 @@ async def sdk_agent_loop(
                     if isinstance(block, TextBlock):
                         text_parts.append(block.text)
                     elif isinstance(block, ToolUseBlock):
-                        tool_calls.append({
-                            "tool": block.name,
-                            "input": block.input,
-                        })
+                        tool_calls.append(
+                            {
+                                "tool": block.name,
+                                "input": block.input,
+                            }
+                        )
                         logger.info(f"[Agent] Tool: {block.name}")
 
             elif isinstance(msg, ResultMessage):

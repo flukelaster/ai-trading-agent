@@ -7,11 +7,8 @@ Tools are served via MCP server (server.py), dispatched by Claude Agent SDK.
 import json
 from pathlib import Path
 
-from loguru import logger
-
-from mcp_server.agents.base import run_agent_loop, MODEL_ORCHESTRATOR
+from mcp_server.agents.base import MODEL_ORCHESTRATOR, run_agent_loop
 from mcp_server.guardrails import AGENT_TIMEOUT, MAX_AGENT_TURNS
-
 
 # ─── System Prompt ───────────────────────────────────────────────────────────
 
@@ -28,6 +25,7 @@ def _load_system_prompt() -> str:
 
 # ─── Agent Entry Points ─────────────────────────────────────────────────────
 
+
 async def run_agent(
     job_type: str,
     job_input: dict | None,
@@ -35,6 +33,7 @@ async def run_agent(
 ) -> dict:
     """Run single-agent loop."""
     from mcp_server.agents.prompt_registry import get_active_prompt
+
     system_prompt = await get_active_prompt("single_agent") or _load_system_prompt()
     user_message = _build_user_message(job_type, job_input)
 
@@ -70,6 +69,7 @@ async def run_multi_agent(
 ) -> dict:
     """Run multi-agent pipeline."""
     from mcp_server.agents.orchestrator import run_multi_agent as _run
+
     return await _run(job_type, job_input)
 
 

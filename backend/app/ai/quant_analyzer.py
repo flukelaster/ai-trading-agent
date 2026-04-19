@@ -19,12 +19,12 @@ class QuantAnalysis:
     """Result of AI quant analysis."""
 
     timestamp: str
-    garch_accuracy: dict           # forecast vs realized comparison
-    regime_accuracy: dict          # predicted regime vs actual performance
-    correlation_changes: list      # significant correlation shifts
-    strategy_performance: dict     # per-strategy metrics in current regime
-    suggestions: list[dict]        # parameter change suggestions
-    reasoning: str                 # overall AI reasoning
+    garch_accuracy: dict  # forecast vs realized comparison
+    regime_accuracy: dict  # predicted regime vs actual performance
+    correlation_changes: list  # significant correlation shifts
+    strategy_performance: dict  # per-strategy metrics in current regime
+    suggestions: list[dict]  # parameter change suggestions
+    reasoning: str  # overall AI reasoning
 
     def to_dict(self) -> dict:
         return {
@@ -111,9 +111,7 @@ Respond in JSON format:
         user_prompt += f"\n\nRecent trades (last 7 days): {len(recent_trades)} trades"
 
     try:
-        result = await ai_client.complete_json_async(
-            system_prompt, user_prompt, max_tokens=1024, agent_id="quant"
-        )
+        result = await ai_client.complete_json_async(system_prompt, user_prompt, max_tokens=1024, agent_id="quant")
 
         if result is None:
             return QuantAnalysis(

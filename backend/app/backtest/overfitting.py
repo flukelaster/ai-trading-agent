@@ -118,15 +118,16 @@ def compute_composite_score(
             "oos_sharpe": round(wf_result.aggregate_oos_sharpe, 4),
             "oos_sharpe_ci": (
                 [round(wf_result.oos_sharpe_ci[0], 4), round(wf_result.oos_sharpe_ci[1], 4)]
-                if wf_result.oos_sharpe_ci else None
+                if wf_result.oos_sharpe_ci
+                else None
             ),
             "param_stability_score": (
-                round(wf_result.param_stability_score, 4)
-                if wf_result.param_stability_score is not None else None
+                round(wf_result.param_stability_score, 4) if wf_result.param_stability_score is not None else None
             ),
             "param_stability_detail": (
                 {k: round(v, 4) for k, v in wf_result.param_stability_detail.items()}
-                if wf_result.param_stability_detail else None
+                if wf_result.param_stability_detail
+                else None
             ),
         }
     else:
@@ -178,8 +179,7 @@ def compute_composite_score(
     composite = _clamp(composite)
 
     logger.info(
-        f"Overfitting score: {composite:.1f}% ({_classify_grade(composite)}) "
-        f"components={list(components.keys())}"
+        f"Overfitting score: {composite:.1f}% ({_classify_grade(composite)}) components={list(components.keys())}"
     )
 
     return OverfittingScoreResult(

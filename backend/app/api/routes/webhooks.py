@@ -49,6 +49,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         # Try vault
         try:
             from app.vault import VaultService
+
             vault_key = os.environ.get("VAULT_MASTER_KEY", "")
             if vault_key:
                 vault = VaultService(vault_key)
@@ -60,6 +61,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         raise HTTPException(status_code=503, detail="TradingView webhook key not configured")
 
     import hmac
+
     if not hmac.compare_digest(alert.key, expected_key):
         logger.warning(f"TradingView webhook: invalid key from {request.client.host if request.client else 'unknown'}")
         raise HTTPException(status_code=401, detail="Invalid webhook key")
@@ -69,6 +71,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         raise HTTPException(status_code=400, detail="timestamp and nonce required")
 
     import time
+
     now = int(time.time())
     if abs(now - alert.timestamp) > WEBHOOK_MAX_AGE_SECONDS:
         raise HTTPException(status_code=401, detail="webhook expired")
@@ -91,11 +94,12 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
 
     # Get engine for symbol (resolves aliases, e.g., GOLD → GOLDmicro)
     from app.api.routes.bot import _get_engine
+
     try:
         engine = _get_engine(symbol)
-    except HTTPException:
+    except HTTPException as e:
         available = list(_manager.engines.keys())
-        raise HTTPException(status_code=400, detail=f"Symbol {symbol} not active. Available: {available}")
+        raise HTTPException(status_code=400, detail=f"Symbol {symbol} not active. Available: {available}") from e
 
     signal = 1 if action == "BUY" else -1
 
@@ -114,6 +118,7 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
 
         # Check event filter
         from app.constants import EVENT_BLOCK_HOURS
+
         near_event = engine._event_calendar.is_near_event(hours_before=EVENT_BLOCK_HOURS)
 
         # Place order through engine (applies all risk checks)
@@ -131,9 +136,10 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
         # Telegram notification
         if engine.notifier:
             import asyncio
-            asyncio.create_task(engine.notifier.send_message(
-                f"<b>TradingView Webhook</b>\n{action} {symbol} (external signal)"
-            ))
+
+            asyncio.create_task(
+                engine.notifier.send_message(f"<b>TradingView Webhook</b>\n{action} {symbol} (external signal)")
+            )
 
         return {
             "executed": True,

@@ -1,7 +1,8 @@
 """MCP tools for technical indicators — wraps backend/app/strategy/indicators.py."""
 
 import pandas as pd
-from app.strategy.indicators import ema, rsi, atr, adx, bollinger_bands, stochastic
+
+from app.strategy.indicators import adx, atr, bollinger_bands, ema, rsi, stochastic
 from mcp_server.tools.market_data import get_ohlcv
 
 
@@ -86,7 +87,7 @@ async def calculate_atr(symbol: str, period: int = 14, timeframe: str = "M15", c
         return data
     df = _candles_to_df(data["candles"])
     if len(df) < period + 1:
-        return {"error": f"Insufficient data"}
+        return {"error": "Insufficient data"}
     values = atr(df["high"], df["low"], df["close"], period)
     return {
         "symbol": symbol,

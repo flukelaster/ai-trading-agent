@@ -1,7 +1,7 @@
 """MCP tools for risk management — wraps backend/app/risk/manager.py."""
 
-from app.risk.manager import RiskManager
 from app.config import SYMBOL_PROFILES
+from app.risk.manager import RiskManager
 
 
 def _get_risk_manager(symbol: str = "GOLD") -> RiskManager:

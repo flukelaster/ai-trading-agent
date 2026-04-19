@@ -31,6 +31,7 @@ EXCLUDED_PREFIXES = (
 def _verify_jwt(token: str) -> dict | None:
     """Verify JWT and return payload."""
     from jose import jwt
+
     try:
         return jwt.decode(token, settings.secret_key, algorithms=["HS256"])
     except Exception:
@@ -113,9 +114,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             async with async_session() as db:
                 result = await db.execute(select(Owner).limit(1))
                 owner = result.scalar_one_or_none()
-                AuthMiddleware._setup_complete = bool(
-                    owner and owner.is_setup_complete
-                )
+                AuthMiddleware._setup_complete = bool(owner and owner.is_setup_complete)
         except Exception as e:
             logger.warning(f"Auth middleware: DB check failed ({e}), allowing request")
             return False

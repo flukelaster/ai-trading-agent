@@ -26,6 +26,7 @@ async def get_sentiment_df_for_ml(session: AsyncSession, from_date: str | None =
         query = select(NewsSentiment).order_by(NewsSentiment.created_at)
         if from_date:
             from datetime import datetime
+
             cutoff = datetime.strptime(from_date, "%Y-%m-%d")
             query = query.where(NewsSentiment.created_at >= cutoff)
 
@@ -40,12 +41,14 @@ async def get_sentiment_df_for_ml(session: AsyncSession, from_date: str | None =
             dt = r.created_at or r.published_at
             if not dt:
                 continue
-            records.append({
-                "date": dt.date(),
-                "score": r.sentiment_score or 0.0,
-                "confidence": r.confidence or 0.0,
-                "label": r.sentiment_label or "neutral",
-            })
+            records.append(
+                {
+                    "date": dt.date(),
+                    "score": r.sentiment_score or 0.0,
+                    "confidence": r.confidence or 0.0,
+                    "label": r.sentiment_label or "neutral",
+                }
+            )
 
         if not records:
             return None
@@ -54,13 +57,17 @@ async def get_sentiment_df_for_ml(session: AsyncSession, from_date: str | None =
         df["date"] = pd.to_datetime(df["date"])
 
         # Aggregate per day
-        daily = df.groupby("date").agg(
-            sent_score_mean=("score", "mean"),
-            sent_confidence_mean=("confidence", "mean"),
-            sent_count=("score", "count"),
-            bullish_count=("label", lambda x: (x == "bullish").sum()),
-            bearish_count=("label", lambda x: (x == "bearish").sum()),
-        ).reset_index()
+        daily = (
+            df.groupby("date")
+            .agg(
+                sent_score_mean=("score", "mean"),
+                sent_confidence_mean=("confidence", "mean"),
+                sent_count=("score", "count"),
+                bullish_count=("label", lambda x: (x == "bullish").sum()),
+                bearish_count=("label", lambda x: (x == "bearish").sum()),
+            )
+            .reset_index()
+        )
 
         daily["sent_bullish_ratio"] = daily["bullish_count"] / daily["sent_count"]
         daily["sent_bearish_ratio"] = daily["bearish_count"] / daily["sent_count"]

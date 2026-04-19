@@ -2,7 +2,6 @@
 WebSocket endpoint — pushes real-time updates to connected clients.
 """
 
-import asyncio
 import json
 
 import redis.asyncio as redis
@@ -24,6 +23,7 @@ CHANNELS = [
 async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(None)):
     # Validate auth if enabled
     from app.auth import _auth_enabled, verify_token
+
     if _auth_enabled():
         if not token or not verify_token(token):
             await websocket.close(code=4001, reason="Authentication required")
@@ -36,6 +36,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(Non
     pubsub = None
     try:
         from app.config import settings
+
         redis_client = redis.from_url(settings.redis_url)
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(*CHANNELS)
@@ -44,8 +45,12 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(Non
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message and message["type"] == "message":
                 data = {
-                    "channel": message["channel"].decode() if isinstance(message["channel"], bytes) else message["channel"],
-                    "data": json.loads(message["data"]) if isinstance(message["data"], (str, bytes)) else message["data"],
+                    "channel": message["channel"].decode()
+                    if isinstance(message["channel"], bytes)
+                    else message["channel"],
+                    "data": json.loads(message["data"])
+                    if isinstance(message["data"], (str, bytes))
+                    else message["data"],
                 }
                 await websocket.send_json(data)
 

@@ -2,13 +2,11 @@
 Unit tests for ML Strategy.
 """
 
+from unittest.mock import MagicMock
+
 import numpy as np
-import pandas as pd
-import pytest
-from unittest.mock import MagicMock, patch
 
 from app.strategy.ml_strategy import MLStrategy
-from app.constants import ADX_RANGING_THRESHOLD, ATR_PERCENTILE_LOW, RANGING_CONFIDENCE_FACTOR
 
 
 class TestMLStrategy:

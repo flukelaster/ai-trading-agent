@@ -2,17 +2,16 @@
 Unit tests for runner/agent_entrypoint.py — agent job executor and helpers.
 """
 
-import asyncio
 import json
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
 from app.runner.agent_entrypoint import (
-    execute_job,
-    _log,
     PENDING_QUEUE_KEY,
     RUNNING_SET_KEY,
+    _log,
+    execute_job,
 )
 
 
@@ -143,15 +142,17 @@ class TestMainLoopJobProcessing:
         # Publish completion event
         await redis_client.publish(
             f"runner:{runner_id}:job_complete",
-            json.dumps({
-                "job_id": job_id,
-                "status": "completed",
-                "output": {"result": "no trade"},
-            }),
+            json.dumps(
+                {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "output": {"result": "no trade"},
+                }
+            ),
         )
 
         # Verify message received
-        msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+        await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
         # fakeredis pub/sub timing may vary
         await pubsub.unsubscribe()
 
@@ -177,7 +178,7 @@ class TestMainLoopJobProcessing:
         try:
             data = json.loads(raw)
             _job_id = data["job_id"]
-            assert False, "Should have raised"
+            raise AssertionError("Should have raised")
         except (json.JSONDecodeError, KeyError):
             pass  # Expected — entrypoint logs and continues
 
@@ -188,6 +189,6 @@ class TestMainLoopJobProcessing:
         try:
             data = json.loads(raw)
             _job_id = data["job_id"]
-            assert False, "Should have raised KeyError"
+            raise AssertionError("Should have raised KeyError")
         except KeyError:
             pass  # Expected

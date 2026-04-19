@@ -5,12 +5,10 @@ Statistical Tests — validate trading edges with math, not intuition.
 - Permutation Test: prove strategy beats random
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from loguru import logger
-
 
 # ─── Cointegration Test ──────────────────────────────────────────────────────
 
@@ -34,8 +32,9 @@ class CointegrationResult:
             "hedge_ratio": round(self.hedge_ratio, 4),
             "n_observations": self.n_observations,
             "significance": self.significance,
-            "verdict": "Cointegrated — pair spread is valid" if self.is_cointegrated
-                       else "NOT cointegrated — pair spread may not work",
+            "verdict": "Cointegrated — pair spread is valid"
+            if self.is_cointegrated
+            else "NOT cointegrated — pair spread may not work",
         }
 
 
@@ -99,8 +98,9 @@ class PermutationTestResult:
             "is_significant": self.is_significant,
             "n_permutations": self.n_permutations,
             "significance": self.significance,
-            "verdict": "Significant — strategy has edge over random" if self.is_significant
-                       else "NOT significant — strategy may not beat random",
+            "verdict": "Significant — strategy has edge over random"
+            if self.is_significant
+            else "NOT significant — strategy may not beat random",
         }
 
 

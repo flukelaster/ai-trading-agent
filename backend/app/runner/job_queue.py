@@ -7,14 +7,13 @@ On restart, pending jobs are rebuilt from DB.
 
 import json
 from datetime import datetime
-from typing import Optional
 
 import redis.asyncio as redis_lib
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import RunnerJob, JobStatus, Runner, RunnerStatus
+from app.db.models import JobStatus, Runner, RunnerJob, RunnerStatus
 
 PENDING_QUEUE_KEY = "runner:jobs:pending"
 RUNNING_SET_KEY = "runner:jobs:running"
@@ -30,8 +29,8 @@ class JobQueue:
     async def enqueue(
         self,
         job_type: str,
-        input_data: Optional[dict] = None,
-        runner_id: Optional[int] = None,
+        input_data: dict | None = None,
+        runner_id: int | None = None,
     ) -> RunnerJob:
         """Create a new job and add to pending queue."""
         job = RunnerJob(
@@ -47,18 +46,21 @@ class JobQueue:
         # Push to Redis pending queue
         await self.redis.lpush(
             PENDING_QUEUE_KEY,
-            json.dumps({
-                "job_id": job.id,
-                "runner_id": runner_id,
-                "job_type": job_type,
-                "input": input_data,
-            }, default=str),
+            json.dumps(
+                {
+                    "job_id": job.id,
+                    "runner_id": runner_id,
+                    "job_type": job_type,
+                    "input": input_data,
+                },
+                default=str,
+            ),
         )
 
         logger.info(f"Job {job.id} enqueued: type={job_type}")
         return job
 
-    async def dispatch(self) -> Optional[RunnerJob]:
+    async def dispatch(self) -> RunnerJob | None:
         """Pop next pending job and assign to an available runner.
 
         Returns the job if dispatched, None if no pending jobs or no available runners.
@@ -73,9 +75,7 @@ class JobQueue:
         preferred_runner_id = data.get("runner_id")
 
         # Get the job from DB
-        result = await self.db.execute(
-            select(RunnerJob).where(RunnerJob.id == job_id)
-        )
+        result = await self.db.execute(select(RunnerJob).where(RunnerJob.id == job_id))
         job = result.scalar_one_or_none()
         if not job or job.status != JobStatus.PENDING:
             return None
@@ -103,11 +103,9 @@ class JobQueue:
         logger.info(f"Job {job.id} dispatched to runner {runner_id}")
         return job
 
-    async def complete(self, job_id: int, output: Optional[dict] = None) -> RunnerJob:
+    async def complete(self, job_id: int, output: dict | None = None) -> RunnerJob:
         """Mark a job as completed."""
-        result = await self.db.execute(
-            select(RunnerJob).where(RunnerJob.id == job_id)
-        )
+        result = await self.db.execute(select(RunnerJob).where(RunnerJob.id == job_id))
         job = result.scalar_one_or_none()
         if not job:
             raise ValueError(f"Job {job_id} not found")
@@ -127,9 +125,7 @@ class JobQueue:
 
     async def fail(self, job_id: int, error: str) -> RunnerJob:
         """Mark a job as failed."""
-        result = await self.db.execute(
-            select(RunnerJob).where(RunnerJob.id == job_id)
-        )
+        result = await self.db.execute(select(RunnerJob).where(RunnerJob.id == job_id))
         job = result.scalar_one_or_none()
         if not job:
             raise ValueError(f"Job {job_id} not found")
@@ -149,9 +145,7 @@ class JobQueue:
 
     async def cancel(self, job_id: int) -> RunnerJob:
         """Cancel a pending or running job."""
-        result = await self.db.execute(
-            select(RunnerJob).where(RunnerJob.id == job_id)
-        )
+        result = await self.db.execute(select(RunnerJob).where(RunnerJob.id == job_id))
         job = result.scalar_one_or_none()
         if not job:
             raise ValueError(f"Job {job_id} not found")
@@ -170,9 +164,7 @@ class JobQueue:
 
     async def retry(self, job_id: int) -> RunnerJob:
         """Re-enqueue a failed job."""
-        result = await self.db.execute(
-            select(RunnerJob).where(RunnerJob.id == job_id)
-        )
+        result = await self.db.execute(select(RunnerJob).where(RunnerJob.id == job_id))
         job = result.scalar_one_or_none()
         if not job:
             raise ValueError(f"Job {job_id} not found")
@@ -189,17 +181,15 @@ class JobQueue:
         logger.info(f"Job {job_id} retried as new job {new_job.id}")
         return new_job
 
-    async def get(self, job_id: int) -> Optional[RunnerJob]:
-        result = await self.db.execute(
-            select(RunnerJob).where(RunnerJob.id == job_id)
-        )
+    async def get(self, job_id: int) -> RunnerJob | None:
+        result = await self.db.execute(select(RunnerJob).where(RunnerJob.id == job_id))
         return result.scalar_one_or_none()
 
     async def list_jobs(
         self,
-        status: Optional[JobStatus] = None,
-        runner_id: Optional[int] = None,
-        job_type: Optional[str] = None,
+        status: JobStatus | None = None,
+        runner_id: int | None = None,
+        job_type: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[RunnerJob]:
@@ -225,27 +215,26 @@ class JobQueue:
 
         # Re-queue pending jobs
         result = await self.db.execute(
-            select(RunnerJob)
-            .where(RunnerJob.status == JobStatus.PENDING)
-            .order_by(RunnerJob.created_at.asc())
+            select(RunnerJob).where(RunnerJob.status == JobStatus.PENDING).order_by(RunnerJob.created_at.asc())
         )
         pending_jobs = result.scalars().all()
 
         for job in pending_jobs:
             await self.redis.lpush(
                 PENDING_QUEUE_KEY,
-                json.dumps({
-                    "job_id": job.id,
-                    "runner_id": job.runner_id,
-                    "job_type": job.job_type,
-                    "input": job.input,
-                }, default=str),
+                json.dumps(
+                    {
+                        "job_id": job.id,
+                        "runner_id": job.runner_id,
+                        "job_type": job.job_type,
+                        "input": job.input,
+                    },
+                    default=str,
+                ),
             )
 
         # Mark stale running jobs as failed
-        result = await self.db.execute(
-            select(RunnerJob).where(RunnerJob.status == JobStatus.RUNNING)
-        )
+        result = await self.db.execute(select(RunnerJob).where(RunnerJob.status == JobStatus.RUNNING))
         stale_jobs = result.scalars().all()
         for job in stale_jobs:
             job.status = JobStatus.FAILED
@@ -256,9 +245,7 @@ class JobQueue:
 
         count = len(pending_jobs)
         if count or stale_jobs:
-            logger.info(
-                f"Job queue rebuilt: {count} pending re-queued, {len(stale_jobs)} stale marked failed"
-            )
+            logger.info(f"Job queue rebuilt: {count} pending re-queued, {len(stale_jobs)} stale marked failed")
         return count
 
     async def pending_count(self) -> int:
@@ -269,9 +256,9 @@ class JobQueue:
 
     # ─── Internal ────────────────────────────────────────────────────────────
 
-    async def _find_available_runner(self) -> Optional[int]:
+    async def _find_available_runner(self) -> int | None:
         """Find a runner that has capacity for more jobs (single query)."""
-        from sqlalchemy import func, literal_column
+        from sqlalchemy import func
 
         # Subquery: count running jobs per runner
         running_counts = (
@@ -289,9 +276,7 @@ class JobQueue:
             select(Runner.id)
             .outerjoin(running_counts, Runner.id == running_counts.c.runner_id)
             .where(Runner.status == RunnerStatus.ONLINE)
-            .where(
-                func.coalesce(running_counts.c.running_count, 0) < Runner.max_concurrent_jobs
-            )
+            .where(func.coalesce(running_counts.c.running_count, 0) < Runner.max_concurrent_jobs)
             .limit(1)
         )
 

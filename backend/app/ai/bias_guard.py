@@ -22,7 +22,7 @@ class BiasAlert:
     """Alert when bias is detected."""
 
     bias_type: str
-    severity: str          # "warning" or "critical"
+    severity: str  # "warning" or "critical"
     detail: str
     recommendation: str
     timestamp: str
@@ -105,7 +105,7 @@ class BiasGuard:
 
         # 3. Recency bias
         if recent_pnls and len(recent_pnls) >= self.recency_window:
-            recent = recent_pnls[-self.recency_window:]
+            recent = recent_pnls[-self.recency_window :]
             all_data = recent_pnls
 
             recent_mean = np.mean(recent)
@@ -121,7 +121,7 @@ class BiasGuard:
                             bias_type="recency_bias",
                             severity="warning",
                             detail=f"Recent {self.recency_window} trades mean ({recent_mean:.2f}) "
-                                   f"significantly different from overall ({overall_mean:.2f}), z={z:.1f}",
+                            f"significantly different from overall ({overall_mean:.2f}), z={z:.1f}",
                             recommendation="Don't over-adjust based on recent streak — use full sample",
                             timestamp=now,
                         )
@@ -155,6 +155,7 @@ class BiasGuard:
             return {"total_alerts": 0, "by_type": {}, "most_common": None}
 
         from collections import Counter
+
         type_counts = Counter(a.bias_type for a in self._alerts)
 
         return {

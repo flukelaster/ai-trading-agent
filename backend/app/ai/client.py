@@ -23,6 +23,7 @@ class AIClient:
     ) -> str | None:
         try:
             from mcp_server.sdk_client import sdk_complete
+
             return await sdk_complete(user_prompt, system_prompt, model=MODEL, agent_id=agent_id)
         except Exception as e:
             logger.error(f"AI call failed: {e}")

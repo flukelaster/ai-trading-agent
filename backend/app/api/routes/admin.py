@@ -26,12 +26,11 @@ async def archive_trades_before(
         cutoff = datetime.strptime(before, "%Y-%m-%d")
     except ValueError as exc:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD") from exc
 
     result = await db.execute(
-        update(Trade)
-        .where(Trade.open_time < cutoff, Trade.is_archived.is_(False))
-        .values(is_archived=True)
+        update(Trade).where(Trade.open_time < cutoff, Trade.is_archived.is_(False)).values(is_archived=True)
     )
     await db.commit()
 
@@ -53,12 +52,11 @@ async def unarchive_trades_before(
         cutoff = datetime.strptime(before, "%Y-%m-%d")
     except ValueError as exc:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD") from exc
 
     result = await db.execute(
-        update(Trade)
-        .where(Trade.open_time < cutoff, Trade.is_archived.is_(True))
-        .values(is_archived=False)
+        update(Trade).where(Trade.open_time < cutoff, Trade.is_archived.is_(True)).values(is_archived=False)
     )
     await db.commit()
 
@@ -76,9 +74,8 @@ async def get_archive_count(
 ):
     """Count archived vs active trades."""
     from sqlalchemy import func, select
-    result = await db.execute(
-        select(Trade.is_archived, func.count(Trade.id)).group_by(Trade.is_archived)
-    )
+
+    result = await db.execute(select(Trade.is_archived, func.count(Trade.id)).group_by(Trade.is_archived))
     rows = result.all()
     counts = {str(r[0]): r[1] for r in rows}
     return {

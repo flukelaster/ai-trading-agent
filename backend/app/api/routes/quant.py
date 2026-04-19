@@ -14,7 +14,6 @@ router = APIRouter(prefix="/api/quant", tags=["quant"], dependencies=[Depends(re
 async def get_var():
     """Get current VaR/CVaR per symbol + portfolio."""
     try:
-
         from app.api.routes.bot import get_manager
         from app.risk.var import compute_var
 
@@ -29,7 +28,9 @@ async def get_var():
                     var_result = compute_var(prices, method="historical", window=60)
                     results[sym] = var_result.to_dict()
                 else:
-                    logger.debug(f"VaR skipped [{sym}]: OHLCV empty or too short ({len(df) if df is not None else 'None'})")
+                    logger.debug(
+                        f"VaR skipped [{sym}]: OHLCV empty or too short ({len(df) if df is not None else 'None'})"
+                    )
             except Exception as e:
                 logger.warning(f"VaR calculation failed for {sym}: {e}")
 
@@ -64,7 +65,6 @@ async def get_regime():
 async def get_correlation():
     """Get rolling correlation matrix."""
     try:
-
         from app.api.routes.bot import get_manager
         from app.risk.correlation import compute_rolling_correlation
 
@@ -127,7 +127,6 @@ async def get_volatility():
 async def get_portfolio():
     """Get optimal portfolio weights and risk contribution."""
     try:
-
         from app.api.routes.bot import get_manager
         from app.risk.portfolio_optimizer import max_sharpe, risk_parity
 

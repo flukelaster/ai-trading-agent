@@ -16,11 +16,11 @@ import numpy as np
 class KalmanState:
     """State of the Kalman filter."""
 
-    value: float             # filtered value (e.g., hedge ratio or smoothed price)
-    variance: float          # estimation uncertainty
-    residual: float          # innovation (prediction error)
-    residual_z: float        # z-score of residual
-    gain: float              # Kalman gain (0-1, higher = more responsive)
+    value: float  # filtered value (e.g., hedge ratio or smoothed price)
+    variance: float  # estimation uncertainty
+    residual: float  # innovation (prediction error)
+    residual_z: float  # z-score of residual
+    gain: float  # Kalman gain (0-1, higher = more responsive)
 
     def to_dict(self) -> dict:
         return {
@@ -52,9 +52,9 @@ class KalmanFilter1D:
             process_noise: Q — how much the true state changes per step (small = smooth)
             measurement_noise: R — observation noise (large = more smoothing)
         """
-        self.x = initial_value      # state estimate
-        self.P = 1.0                # estimation error covariance
-        self.Q = process_noise      # process noise
+        self.x = initial_value  # state estimate
+        self.P = 1.0  # estimation error covariance
+        self.Q = process_noise  # process noise
         self.R = measurement_noise  # measurement noise
         self._residuals: list[float] = []
         self._max_residuals = 100
@@ -128,7 +128,7 @@ class KalmanHedgeRatio:
     ):
         # State: [intercept, slope/hedge_ratio]
         self.beta = np.array([0.0, 1.0])  # [alpha, beta]
-        self.P = np.eye(2) * 1.0          # state covariance
+        self.P = np.eye(2) * 1.0  # state covariance
         self.Q = np.eye(2) * process_noise
         self.R = measurement_noise
         self._spread_residuals: list[float] = []
@@ -184,9 +184,7 @@ class KalmanHedgeRatio:
             "spread_z": spread_z,
         }
 
-    def process_series(
-        self, y_prices: np.ndarray, x_prices: np.ndarray
-    ) -> list[dict]:
+    def process_series(self, y_prices: np.ndarray, x_prices: np.ndarray) -> list[dict]:
         """Run filter over price pair series."""
         n = min(len(y_prices), len(x_prices))
         results = []

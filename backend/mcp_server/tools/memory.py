@@ -7,7 +7,8 @@ Backed by PostgreSQL via the backend API.
 
 import httpx
 
-from mcp_server.tools import auth_headers, backend_url as _backend_url
+from mcp_server.tools import auth_headers
+from mcp_server.tools import backend_url as _backend_url
 
 
 async def save_memory(

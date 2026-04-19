@@ -4,7 +4,6 @@ Unit tests for Breakout Strategy.
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from app.strategy.breakout import BreakoutStrategy
 
@@ -23,19 +22,23 @@ class TestBreakoutStrategy:
         """Price breaks above N-period high channel → BUY (volume filter disabled)."""
         strategy = BreakoutStrategy(lookback=20, atr_period=14, atr_threshold=0.5, volume_filter=False)
         n = 80
-        close = np.concatenate([
-            np.full(50, 100.0) + np.random.RandomState(42).randn(50) * 0.5,
-            np.linspace(105, 160, 30),  # strong breakout
-        ])
+        close = np.concatenate(
+            [
+                np.full(50, 100.0) + np.random.RandomState(42).randn(50) * 0.5,
+                np.linspace(105, 160, 30),  # strong breakout
+            ]
+        )
         high = close + 1
         low = close - 1
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close,
-            "high": high,
-            "low": low,
-            "close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close,
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+        )
         result = strategy.calculate(df)
         buy_signals = result[result["signal"] == 1]
         assert len(buy_signals) > 0
@@ -44,19 +47,23 @@ class TestBreakoutStrategy:
         """Price breaks below N-period low channel → SELL (volume filter disabled)."""
         strategy = BreakoutStrategy(lookback=20, atr_period=14, atr_threshold=0.5, volume_filter=False)
         n = 80
-        close = np.concatenate([
-            np.full(50, 100.0) + np.random.RandomState(42).randn(50) * 0.5,
-            np.linspace(95, 40, 30),  # strong breakdown
-        ])
+        close = np.concatenate(
+            [
+                np.full(50, 100.0) + np.random.RandomState(42).randn(50) * 0.5,
+                np.linspace(95, 40, 30),  # strong breakdown
+            ]
+        )
         high = close + 1
         low = close - 1
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close,
-            "high": high,
-            "low": low,
-            "close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close,
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+        )
         result = strategy.calculate(df)
         sell_signals = result[result["signal"] == -1]
         assert len(sell_signals) > 0
@@ -71,17 +78,21 @@ class TestBreakoutStrategy:
     def test_no_volume_column_still_works(self):
         """Strategy should work without tick_volume column."""
         n = 60
-        close = np.concatenate([
-            np.full(40, 100.0),
-            np.linspace(100, 130, 20),
-        ])
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close,
-            "high": close + 2,
-            "low": close - 2,
-            "close": close,
-        })
+        close = np.concatenate(
+            [
+                np.full(40, 100.0),
+                np.linspace(100, 130, 20),
+            ]
+        )
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close,
+                "high": close + 2,
+                "low": close - 2,
+                "close": close,
+            }
+        )
         strategy = BreakoutStrategy(lookback=20, volume_filter=True)
         result = strategy.calculate(df)
         assert "signal" in result.columns
@@ -90,18 +101,22 @@ class TestBreakoutStrategy:
         """Volume filter disabled should still produce signals."""
         strategy = BreakoutStrategy(lookback=20, volume_filter=False)
         n = 60
-        close = np.concatenate([
-            np.full(40, 100.0),
-            np.linspace(100, 130, 20),
-        ])
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close,
-            "high": close + 2,
-            "low": close - 2,
-            "close": close,
-            "tick_volume": np.full(n, 500.0),
-        })
+        close = np.concatenate(
+            [
+                np.full(40, 100.0),
+                np.linspace(100, 130, 20),
+            ]
+        )
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close,
+                "high": close + 2,
+                "low": close - 2,
+                "close": close,
+                "tick_volume": np.full(n, 500.0),
+            }
+        )
         result = strategy.calculate(df)
         assert "signal" in result.columns
 

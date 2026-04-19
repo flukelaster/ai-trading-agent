@@ -6,10 +6,7 @@ All specialist agents and the orchestrator use run_agent_loop().
 
 from typing import Any
 
-from loguru import logger
-
 from mcp_server.sdk_client import sdk_agent_loop
-
 
 # ─── Model Constants ─────────────────────────────────────────────────────────
 
@@ -18,6 +15,7 @@ MODEL_SPECIALIST = "claude-haiku-4-5-20251001"
 
 
 # ─── Shared Agent Loop ──────────────────────────────────────────────────────
+
 
 async def run_agent_loop(
     system_prompt: str,

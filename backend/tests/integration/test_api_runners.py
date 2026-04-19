@@ -2,19 +2,20 @@
 Integration tests for Runner Management API routes.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app.db.models import RunnerStatus, JobStatus, Runner, RunnerJob, RunnerLog, RunnerMetric
+from app.db.models import JobStatus, RunnerJob, RunnerLog, RunnerMetric
 from app.db.session import get_db
-from app.runner.backend import RunnerBackend, ResourceMetrics
+from app.runner.backend import ResourceMetrics, RunnerBackend
 
 
 def _make_test_app(db_session, runner_manager):
     from fastapi import FastAPI
+
     from app.api.routes import runners
 
     app = FastAPI()
@@ -41,9 +42,7 @@ async def setup(db_session, redis_client, mock_backend):
     """Create a RunnerManager and return (client, manager, db_session)."""
     from app.runner.manager import RunnerManager
 
-    manager = RunnerManager(
-        db=db_session, redis=redis_client, backend=mock_backend, vault=None
-    )
+    manager = RunnerManager(db=db_session, redis=redis_client, backend=mock_backend, vault=None)
     app = _make_test_app(db_session, manager)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -54,11 +53,14 @@ class TestRunnerCRUD:
     @pytest.mark.asyncio
     async def test_register_runner(self, setup):
         client, manager, _ = setup
-        resp = await client.post("/api/runners", json={
-            "name": "gold-agent",
-            "image": "agent:v1",
-            "max_concurrent_jobs": 5,
-        })
+        resp = await client.post(
+            "/api/runners",
+            json={
+                "name": "gold-agent",
+                "image": "agent:v1",
+                "max_concurrent_jobs": 5,
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["name"] == "gold-agent"
@@ -105,10 +107,13 @@ class TestRunnerCRUD:
         client, manager, _ = setup
         runner = await manager.register("old", "img")
 
-        resp = await client.put(f"/api/runners/{runner.id}", json={
-            "name": "new-name",
-            "max_concurrent_jobs": 10,
-        })
+        resp = await client.put(
+            f"/api/runners/{runner.id}",
+            json={
+                "name": "new-name",
+                "max_concurrent_jobs": 10,
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["name"] == "new-name"
         assert resp.json()["max_concurrent_jobs"] == 10
@@ -278,6 +283,7 @@ class TestManagerNotInitialized:
     @pytest.mark.asyncio
     async def test_503_when_no_manager(self, db_session):
         from fastapi import FastAPI
+
         from app.api.routes import runners
 
         app = FastAPI()

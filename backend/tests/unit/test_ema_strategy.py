@@ -2,9 +2,7 @@
 Unit tests for EMA Crossover Strategy.
 """
 
-import numpy as np
 import pandas as pd
-import pytest
 
 from app.strategy.ema_crossover import EMACrossoverStrategy
 
@@ -39,13 +37,15 @@ class TestEMACrossoverStrategy:
     def test_no_signal_flat_market(self):
         # Constant price → EMAs are identical → no crossover
         n = 100
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": [2000.0] * n,
-            "high": [2001.0] * n,
-            "low": [1999.0] * n,
-            "close": [2000.0] * n,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": [2000.0] * n,
+                "high": [2001.0] * n,
+                "low": [1999.0] * n,
+                "close": [2000.0] * n,
+            }
+        )
         result = self.strategy.calculate(df)
         signals = result[result["signal"] != 0]
         assert len(signals) == 0, "Constant price should produce zero crossovers"
@@ -65,13 +65,15 @@ class TestEMACrossoverStrategy:
 
     def test_insufficient_bars(self):
         # Only 10 bars — less than min_bars_required
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=10, freq="15min"),
-            "open": [100.0] * 10,
-            "high": [101.0] * 10,
-            "low": [99.0] * 10,
-            "close": [100.0] * 10,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=10, freq="15min"),
+                "open": [100.0] * 10,
+                "high": [101.0] * 10,
+                "low": [99.0] * 10,
+                "close": [100.0] * 10,
+            }
+        )
         result = self.strategy.calculate(df)
         assert "signal" in result.columns
         # Should not crash, signals should be 0

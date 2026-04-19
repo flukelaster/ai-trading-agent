@@ -23,7 +23,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-
 # Lua script: atomic token bucket check + decrement
 # KEYS[1] = bucket key
 # ARGV[1] = capacity (max tokens)

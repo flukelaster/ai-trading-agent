@@ -7,8 +7,7 @@ Supports both live (api.binance.com) and testnet (testnet.binance.vision).
 import hashlib
 import hmac
 import time
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -18,8 +17,13 @@ from app.config import settings
 
 # Binance timeframe mapping (MT5 style → Binance style)
 TIMEFRAME_MAP = {
-    "M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m",
-    "H1": "1h", "H4": "4h", "D1": "1d",
+    "M1": "1m",
+    "M5": "5m",
+    "M15": "15m",
+    "M30": "30m",
+    "H1": "1h",
+    "H4": "4h",
+    "D1": "1d",
 }
 
 
@@ -51,9 +55,7 @@ class BinanceConnector:
         """Add timestamp and HMAC-SHA256 signature to request params."""
         params["timestamp"] = int(time.time() * 1000)
         query = urlencode(params)
-        signature = hmac.new(
-            self.api_secret.encode(), query.encode(), hashlib.sha256
-        ).hexdigest()
+        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
         params["signature"] = signature
         return params
 
@@ -129,7 +131,7 @@ class BinanceConnector:
                 "bid": bid,
                 "ask": ask,
                 "spread": round(ask - bid, 8),
-                "time": datetime.now(timezone.utc).isoformat(),
+                "time": datetime.now(UTC).isoformat(),
             },
         }
 
@@ -137,22 +139,29 @@ class BinanceConnector:
         """Get OHLCV candles."""
         sym = self._to_binance_symbol(symbol)
         interval = TIMEFRAME_MAP.get(timeframe, "15m")
-        data = await self._public_get("/api/v3/klines", {
-            "symbol": sym, "interval": interval, "limit": count,
-        })
+        data = await self._public_get(
+            "/api/v3/klines",
+            {
+                "symbol": sym,
+                "interval": interval,
+                "limit": count,
+            },
+        )
         if not data or not isinstance(data, list):
             return {"success": False, "data": None, "error": "No OHLCV data"}
 
         candles = []
         for k in data:
-            candles.append({
-                "time": datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc).isoformat(),
-                "open": float(k[1]),
-                "high": float(k[2]),
-                "low": float(k[3]),
-                "close": float(k[4]),
-                "volume": float(k[5]),
-            })
+            candles.append(
+                {
+                    "time": datetime.fromtimestamp(k[0] / 1000, tz=UTC).isoformat(),
+                    "open": float(k[1]),
+                    "high": float(k[2]),
+                    "low": float(k[3]),
+                    "close": float(k[4]),
+                    "volume": float(k[5]),
+                }
+            )
         return {"success": True, "data": candles}
 
     async def get_account(self) -> dict:
@@ -190,25 +199,31 @@ class BinanceConnector:
 
         positions = []
         for order in data:
-            positions.append({
-                "ticket": order["orderId"],
-                "symbol": self._from_binance_symbol(order["symbol"]),
-                "type": order["side"],
-                "lot": float(order["origQty"]),
-                "open_price": float(order["price"]),
-                "current_price": float(order["price"]),
-                "sl": 0,
-                "tp": 0,
-                "profit": 0,
-                "open_time": datetime.fromtimestamp(
-                    order["time"] / 1000, tz=timezone.utc
-                ).isoformat(),
-            })
+            positions.append(
+                {
+                    "ticket": order["orderId"],
+                    "symbol": self._from_binance_symbol(order["symbol"]),
+                    "type": order["side"],
+                    "lot": float(order["origQty"]),
+                    "open_price": float(order["price"]),
+                    "current_price": float(order["price"]),
+                    "sl": 0,
+                    "tp": 0,
+                    "profit": 0,
+                    "open_time": datetime.fromtimestamp(order["time"] / 1000, tz=UTC).isoformat(),
+                }
+            )
         return {"success": True, "data": positions}
 
     async def place_order(
-        self, symbol: str, order_type: str, lot: float,
-        sl: float = 0, tp: float = 0, comment: str = "", magic: int = 0,
+        self,
+        symbol: str,
+        order_type: str,
+        lot: float,
+        sl: float = 0,
+        tp: float = 0,
+        comment: str = "",
+        magic: int = 0,
     ) -> dict:
         """Place a market order on Binance Spot, with optional OCO stop orders."""
         sym = self._to_binance_symbol(symbol)
@@ -301,22 +316,30 @@ class BinanceConnector:
         current_start = start_ms
 
         while current_start < end_ms:
-            data = await self._public_get("/api/v3/klines", {
-                "symbol": sym, "interval": interval,
-                "startTime": current_start, "endTime": end_ms, "limit": 1000,
-            })
+            data = await self._public_get(
+                "/api/v3/klines",
+                {
+                    "symbol": sym,
+                    "interval": interval,
+                    "startTime": current_start,
+                    "endTime": end_ms,
+                    "limit": 1000,
+                },
+            )
             if not data or not isinstance(data, list) or len(data) == 0:
                 break
 
             for k in data:
-                all_candles.append({
-                    "time": datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc).isoformat(),
-                    "open": float(k[1]),
-                    "high": float(k[2]),
-                    "low": float(k[3]),
-                    "close": float(k[4]),
-                    "volume": float(k[5]),
-                })
+                all_candles.append(
+                    {
+                        "time": datetime.fromtimestamp(k[0] / 1000, tz=UTC).isoformat(),
+                        "open": float(k[1]),
+                        "high": float(k[2]),
+                        "low": float(k[3]),
+                        "close": float(k[4]),
+                        "volume": float(k[5]),
+                    }
+                )
             current_start = int(data[-1][0]) + 1  # next candle after last
 
         return {"success": True, "data": all_candles}
@@ -324,27 +347,33 @@ class BinanceConnector:
     async def get_history(self, days: int = 1, symbol: str = "BTCUSD") -> dict:
         """Get recent trade history."""
         sym = self._to_binance_symbol(symbol)
-        data = await self._signed_get("/api/v3/myTrades", {
-            "symbol": sym, "limit": 100,
-        })
+        data = await self._signed_get(
+            "/api/v3/myTrades",
+            {
+                "symbol": sym,
+                "limit": 100,
+            },
+        )
         if not isinstance(data, list):
             return {"success": True, "data": []}
 
-        cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
+        cutoff = datetime.now(UTC).timestamp() - (days * 86400)
         trades = []
         for t in data:
             trade_time = t["time"] / 1000
             if trade_time < cutoff:
                 continue
-            trades.append({
-                "ticket": t["id"],
-                "symbol": symbol,
-                "type": "BUY" if t["isBuyer"] else "SELL",
-                "lot": float(t["qty"]),
-                "price": float(t["price"]),
-                "profit": 0,  # Spot doesn't track PnL per trade
-                "time": datetime.fromtimestamp(trade_time, tz=timezone.utc).isoformat(),
-            })
+            trades.append(
+                {
+                    "ticket": t["id"],
+                    "symbol": symbol,
+                    "type": "BUY" if t["isBuyer"] else "SELL",
+                    "lot": float(t["qty"]),
+                    "price": float(t["price"]),
+                    "profit": 0,  # Spot doesn't track PnL per trade
+                    "time": datetime.fromtimestamp(trade_time, tz=UTC).isoformat(),
+                }
+            )
         return {"success": True, "data": trades}
 
     # ── Symbol mapping helpers ──

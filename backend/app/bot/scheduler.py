@@ -21,19 +21,21 @@ def is_market_open(symbol: str) -> bool:
     conservative forex schedule (weekend closed + 22:00-23:00 UTC maintenance).
     """
     from app.config import get_canonical_symbol
+
     canonical = get_canonical_symbol(symbol)
     profile = SYMBOL_PROFILES.get(canonical) or SYMBOL_PROFILES.get(symbol) or {}
     return _session_is_open(profile.get("asset_class"), now=datetime.utcnow())
 
+
 # Timeframe → cron schedule mapping
 TIMEFRAME_CRON = {
-    "M1":  {"minute": "*"},                          # every 1 min
-    "M5":  {"minute": "0,5,10,15,20,25,30,35,40,45,50,55"},  # every 5 min
-    "M15": {"minute": "0,15,30,45"},                 # every 15 min
-    "M30": {"minute": "0,30"},                       # every 30 min
-    "H1":  {"minute": "0"},                          # every hour
-    "H4":  {"minute": "0", "hour": "0,4,8,12,16,20"},  # every 4 hours
-    "D1":  {"minute": "0", "hour": "0"},             # daily
+    "M1": {"minute": "*"},  # every 1 min
+    "M5": {"minute": "0,5,10,15,20,25,30,35,40,45,50,55"},  # every 5 min
+    "M15": {"minute": "0,15,30,45"},  # every 15 min
+    "M30": {"minute": "0,30"},  # every 30 min
+    "H1": {"minute": "0"},  # every hour
+    "H4": {"minute": "0", "hour": "0,4,8,12,16,20"},  # every 4 hours
+    "D1": {"minute": "0", "hour": "0"},  # daily
 }
 
 
@@ -402,9 +404,11 @@ class BotScheduler:
             if self.manager:
                 for engine in self.manager.engines.values():
                     if engine.notifier:
-                        await engine._notify(engine.notifier.send_error_alert(
-                            "⚠️ AI agent unavailable (mcp_server not importable) — trading disabled"
-                        ))
+                        await engine._notify(
+                            engine.notifier.send_error_alert(
+                                "⚠️ AI agent unavailable (mcp_server not importable) — trading disabled"
+                            )
+                        )
                         break  # one notification is enough
             return
 
@@ -447,28 +451,35 @@ class BotScheduler:
                 # Hallucination check — validate AI claims against real data
                 try:
                     from app.ai.hallucination_check import check_hallucination
+
                     hc = await check_hallucination(decision, sym, engine.market_data)
                     engine._last_ai_decision["hallucination_check"] = hc
                     if hc.get("high_severity_count", 0) > 0:
-                        logger.warning(f"AI hallucination [{sym}]: {hc['high_severity_count']} high-severity flags: {hc['flags']}")
+                        logger.warning(
+                            f"AI hallucination [{sym}]: {hc['high_severity_count']} high-severity flags: {hc['flags']}"
+                        )
                 except Exception as e:
                     logger.debug(f"Hallucination check failed [{sym}]: {e}")
 
                 # Log AI analysis to DB for activity page
                 from app.db.models import BotEventType
+
                 summary = f"[{sym}] {decision[:500]}"
                 if tool_calls:
                     summary += f" | Tools: {len(tool_calls)}, {duration:.1f}s"
                 await engine._log_event(BotEventType.AI_ANALYSIS, summary)
 
                 # Publish to WebSocket for real-time dashboard update
-                await engine._push_event("bot_event", {
-                    "type": "AI_ANALYSIS",
-                    "symbol": sym,
-                    "decision": decision[:3000],
-                    "strategy": result.get("strategy_used", "ai_autonomous"),
-                    "turns": result.get("turns", 0),
-                })
+                await engine._push_event(
+                    "bot_event",
+                    {
+                        "type": "AI_ANALYSIS",
+                        "symbol": sym,
+                        "decision": decision[:3000],
+                        "strategy": result.get("strategy_used", "ai_autonomous"),
+                        "turns": result.get("turns", 0),
+                    },
+                )
             except Exception as e:
                 logger.warning(f"AI agent [{sym}] error: {e}")
 
@@ -488,10 +499,15 @@ class BotScheduler:
             try:
                 result = await engine._optimizer.optimize(engine.strategy.get_params())
                 if result:
-                    logger.info(f"Optimization result [{engine.symbol}]: {result.assessment} (confidence={result.confidence})")
-                    await engine._notify(engine.notifier.send_optimization_report(
-                        result.assessment, result.confidence,
-                    ))
+                    logger.info(
+                        f"Optimization result [{engine.symbol}]: {result.assessment} (confidence={result.confidence})"
+                    )
+                    await engine._notify(
+                        engine.notifier.send_optimization_report(
+                            result.assessment,
+                            result.confidence,
+                        )
+                    )
                     # Auto-apply if feature flag ON and backtest confirms improvement.
                     # Read from Redis (not in-memory settings) so the flag survives restarts.
                     if result.backtest_validation and result.backtest_validation.get("suggested_better"):
@@ -499,13 +515,15 @@ class BotScheduler:
                         flag_on = (flag_raw == b"1" or flag_raw == "1") if flag_raw else False
                         if flag_on:
                             from mcp_server.strategy_switch_guard import StrategySwitchGuard
+
                             guard = StrategySwitchGuard(engine.redis)
                             strategy_name = engine.strategy.name if engine.strategy else "ema_crossover"
                             validation = await guard.validate_switch(engine.symbol, strategy_name)
                             if validation.allowed:
                                 await engine.update_strategy(strategy_name, result.suggested_params)
                                 await guard.record_switch(
-                                    engine.symbol, strategy_name,
+                                    engine.symbol,
+                                    strategy_name,
                                     f"Weekly optimizer: confidence={result.confidence}",
                                 )
                                 logger.info(
@@ -513,9 +531,7 @@ class BotScheduler:
                                     f"params={result.suggested_params} confidence={result.confidence}"
                                 )
                             else:
-                                logger.info(
-                                    f"[Optimizer Auto-Apply] [{engine.symbol}] blocked: {validation.reason}"
-                                )
+                                logger.info(f"[Optimizer Auto-Apply] [{engine.symbol}] blocked: {validation.reason}")
             except Exception as e:
                 logger.error(f"Weekly optimization error [{engine.symbol}]: {e}")
 
@@ -523,7 +539,7 @@ class BotScheduler:
         logger.info("Daily macro collection triggered")
         # Macro data is global, just use first engine
         for engine in self._engines_snapshot().values():
-            if hasattr(engine, '_macro_service') and engine._macro_service:
+            if hasattr(engine, "_macro_service") and engine._macro_service:
                 try:
                     stats = await engine._macro_service.collect_all()
                     logger.info(f"Macro data collected: {stats}")
@@ -558,9 +574,7 @@ class BotScheduler:
 
             cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=90)
             async with async_session() as db:
-                result = await db.execute(
-                    delete(AIUsageLog).where(AIUsageLog.timestamp < cutoff)
-                )
+                result = await db.execute(delete(AIUsageLog).where(AIUsageLog.timestamp < cutoff))
                 await db.commit()
                 logger.info(f"AI usage cleanup: deleted {result.rowcount} rows older than 90d")
         except Exception as e:
@@ -587,12 +601,14 @@ class BotScheduler:
                 # Get today's closed trades — use an isolated session so a
                 # dirty engine.db doesn't taint the daily summary job.
                 today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-                stmt = select(Trade).where(and_(
-                    Trade.symbol == symbol,
-                    Trade.close_time >= today_start,
-                    Trade.profit.isnot(None),
-                    Trade.is_archived.is_(False),
-                ))
+                stmt = select(Trade).where(
+                    and_(
+                        Trade.symbol == symbol,
+                        Trade.close_time >= today_start,
+                        Trade.profit.isnot(None),
+                        Trade.is_archived.is_(False),
+                    )
+                )
                 async with async_session() as session:
                     result = await session.execute(stmt)
                     trades = result.scalars().all()
@@ -603,12 +619,14 @@ class BotScheduler:
                 total_trades += len(trades)
                 total_wins += wins
 
-                symbol_stats.append({
-                    "symbol": symbol,
-                    "pnl": round(pnl, 2),
-                    "trades": len(trades),
-                    "regime": engine.risk_manager.current_regime,
-                })
+                symbol_stats.append(
+                    {
+                        "symbol": symbol,
+                        "pnl": round(pnl, 2),
+                        "trades": len(trades),
+                        "regime": engine.risk_manager.current_regime,
+                    }
+                )
 
             total_win_rate = total_wins / total_trades if total_trades > 0 else 0
 
@@ -636,6 +654,7 @@ class BotScheduler:
             return
         try:
             import json as _json
+
             from app.config import SYMBOL_PROFILES as _PROFILES
 
             status = self.manager.get_status()
@@ -696,6 +715,7 @@ class BotScheduler:
         """Write ml_status back to symbol_configs so the UI badge reflects reality."""
         try:
             from sqlalchemy import update
+
             from app.db.models import SymbolConfig
             from app.db.session import async_session
 
@@ -703,9 +723,7 @@ class BotScheduler:
             if mark_trained:
                 values["ml_last_trained_at"] = datetime.utcnow()
             async with async_session() as session:
-                await session.execute(
-                    update(SymbolConfig).where(SymbolConfig.symbol == symbol).values(**values)
-                )
+                await session.execute(update(SymbolConfig).where(SymbolConfig.symbol == symbol).values(**values))
                 await session.commit()
         except Exception as e:
             logger.warning(f"ml_status writeback [{symbol}] failed: {e}")
@@ -730,9 +748,7 @@ class BotScheduler:
             # Phase 1: short session — read current accuracy + load training data, then release.
             async with async_session() as session:
                 result = await session.execute(
-                    select(MLModelLog)
-                    .where(MLModelLog.is_active == True, MLModelLog.model_name == model_name)
-                    .limit(1)
+                    select(MLModelLog).where(MLModelLog.is_active, MLModelLog.model_name == model_name).limit(1)
                 )
                 current_log = result.scalar_one_or_none()
                 current_accuracy = 0.0
@@ -752,6 +768,7 @@ class BotScheduler:
                 macro_df = None
                 try:
                     from app.data.macro import MacroDataService
+
                     macro_service = MacroDataService(session)
                     macro_df = await macro_service.get_macro_df_for_ml(from_date=from_date)
                 except Exception as e:
@@ -760,12 +777,14 @@ class BotScheduler:
                 sentiment_df = None
                 try:
                     from app.ml.sentiment_features import get_sentiment_df_for_ml
+
                     sentiment_df = await get_sentiment_df_for_ml(session, from_date=from_date)
                 except Exception as e:
                     logger.debug(f"ML retrain [{symbol}]: sentiment data unavailable ({e})")
 
             # Session released — heavy CPU training runs without holding a DB connection.
             from app.ml.trainer import ModelTrainer
+
             trainer = ModelTrainer()
             X, y = trainer.prepare_dataset(df, macro_df=macro_df, sentiment_df=sentiment_df)
             if len(X) < 200:
@@ -783,6 +802,7 @@ class BotScheduler:
                 available = [c for c in trainer.feature_columns if c in X_val.columns]
                 val_preds = trainer.model.predict(X_val[available])
                 import numpy as np
+
                 val_pred_classes = np.array([p.argmax() for p in val_preds])
                 signal_map = {0: -1, 1: 0, 2: 1}
                 val_pred_signals = np.array([signal_map[c] for c in val_pred_classes])
@@ -794,8 +814,9 @@ class BotScheduler:
 
             if new_accuracy < current_accuracy * 1.05:
                 logger.info(f"ML retrain [{symbol}]: new model not better — keeping existing")
-                msg = (f"ML Retrain [{symbol}]: {new_accuracy:.1%} did NOT beat "
-                       f"{current_accuracy:.1%} — keeping existing")
+                msg = (
+                    f"ML Retrain [{symbol}]: {new_accuracy:.1%} did NOT beat {current_accuracy:.1%} — keeping existing"
+                )
             else:
                 trainer.save_model(model_path)
 
@@ -807,7 +828,7 @@ class BotScheduler:
                 async with async_session() as session:
                     await session.execute(
                         update(MLModelLog)
-                        .where(MLModelLog.is_active == True, MLModelLog.model_name == model_name)
+                        .where(MLModelLog.is_active, MLModelLog.model_name == model_name)
                         .values(is_active=False)
                     )
                     log = MLModelLog(
@@ -826,15 +847,14 @@ class BotScheduler:
                     session.add(log)
                     await session.commit()
 
-                if hasattr(engine, 'strategy') and hasattr(engine.strategy, '_model_loaded'):
+                if hasattr(engine, "strategy") and hasattr(engine.strategy, "_model_loaded"):
                     engine.strategy._model_loaded = False
                     await engine.strategy._ensure_model()
 
-                msg = (f"ML Retrain [{symbol}]: accuracy {current_accuracy:.1%} → "
-                       f"{new_accuracy:.1%} — deployed!")
+                msg = f"ML Retrain [{symbol}]: accuracy {current_accuracy:.1%} → {new_accuracy:.1%} — deployed!"
                 logger.info(msg)
 
-            if hasattr(engine, 'notifier') and engine.notifier:
+            if hasattr(engine, "notifier") and engine.notifier:
                 try:
                     await engine.notifier.send_message(msg)
                 except Exception:

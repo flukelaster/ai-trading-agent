@@ -18,11 +18,11 @@ from loguru import logger
 class CalibrationResult:
     """Result of calibration analysis."""
 
-    brier_score: float                    # 0 = perfect, 1 = worst
-    brier_score_calibrated: float         # after calibration
-    reliability_bins: list[dict]          # [{predicted, actual, count}] for diagram
-    calibration_method: str               # "platt" or "isotonic"
-    improvement_pct: float                # % improvement from calibration
+    brier_score: float  # 0 = perfect, 1 = worst
+    brier_score_calibrated: float  # after calibration
+    reliability_bins: list[dict]  # [{predicted, actual, count}] for diagram
+    calibration_method: str  # "platt" or "isotonic"
+    improvement_pct: float  # % improvement from calibration
 
     def to_dict(self) -> dict:
         return {
@@ -57,11 +57,13 @@ def reliability_diagram(
     for i in range(n_bins):
         mask = (predicted >= bins[i]) & (predicted < bins[i + 1])
         if mask.sum() > 0:
-            result.append({
-                "predicted": round(float(predicted[mask].mean()), 3),
-                "actual": round(float(actual[mask].mean()), 3),
-                "count": int(mask.sum()),
-            })
+            result.append(
+                {
+                    "predicted": round(float(predicted[mask].mean()), 3),
+                    "actual": round(float(actual[mask].mean()), 3),
+                    "count": int(mask.sum()),
+                }
+            )
 
     return result
 

@@ -42,14 +42,13 @@ class BotManager:
         # re-register cron candle jobs for newly-added symbols.
         self._scheduler = None
         # Prefer DB-sourced enable flags; fall back to env-var symbol list when empty.
-        db_enabled = [
-            s for s, p in SYMBOL_PROFILES.items()
-            if p.get("is_enabled") is True and "canonical" not in p
-        ]
+        db_enabled = [s for s, p in SYMBOL_PROFILES.items() if p.get("is_enabled") is True and "canonical" not in p]
         initial = db_enabled or settings.symbol_list
         for symbol in initial:
             if symbol not in SYMBOL_PROFILES:
-                logger.warning(f"BotManager: Symbol '{symbol}' missing from SYMBOL_PROFILES — using defaults (review contract_size!)")
+                logger.warning(
+                    f"BotManager: Symbol '{symbol}' missing from SYMBOL_PROFILES — using defaults (review contract_size!)"
+                )
 
         for symbol in initial:
             profile = SYMBOL_PROFILES.get(symbol, {})
@@ -205,10 +204,7 @@ class BotManager:
         cannot produce partial dict state visible to iterating scheduler jobs.
         """
         async with self._engines_lock:
-            enabled = {
-                s for s, p in SYMBOL_PROFILES.items()
-                if p.get("is_enabled") is True and "canonical" not in p
-            }
+            enabled = {s for s, p in SYMBOL_PROFILES.items() if p.get("is_enabled") is True and "canonical" not in p}
             if not enabled:
                 enabled = set(settings.symbol_list)
 

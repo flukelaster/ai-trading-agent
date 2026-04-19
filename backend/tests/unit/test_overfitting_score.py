@@ -4,19 +4,16 @@ Unit tests for composite overfitting score — backend/app/backtest/overfitting.
 
 import pytest
 
+from app.backtest.monte_carlo import MonteCarloResult
 from app.backtest.overfitting import (
-    OverfittingScoreResult,
-    auto_param_grid,
-    compute_composite_score,
     _clamp,
     _classify_grade,
     _redistribute_weights,
-    DEFAULT_WEIGHTS,
+    auto_param_grid,
+    compute_composite_score,
 )
-from app.backtest.walk_forward import WalkForwardResult
 from app.backtest.statistical_tests import PermutationTestResult
-from app.backtest.monte_carlo import MonteCarloResult
-
+from app.backtest.walk_forward import WalkForwardResult
 
 # ─── Helper builders ────────────────────────────────────────────────────────
 

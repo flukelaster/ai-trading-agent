@@ -6,8 +6,7 @@ Reset hour is derived from the symbol's asset_class via app.market.sessions so
 user-added symbols inherit the correct daily reset without hardcoded lookups.
 """
 
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import redis.asyncio as redis
 from loguru import logger
@@ -26,7 +25,9 @@ def _asset_class_for(symbol: str) -> str | None:
 
 
 class CircuitBreaker:
-    def __init__(self, redis_client: redis.Redis, symbol: str = "GOLD", cooldown_minutes: int = DEFAULT_COOLDOWN_MINUTES):
+    def __init__(
+        self, redis_client: redis.Redis, symbol: str = "GOLD", cooldown_minutes: int = DEFAULT_COOLDOWN_MINUTES
+    ):
         self.redis = redis_client
         self.symbol = symbol
         self.pnl_key = f"circuit:daily_pnl:{symbol}"
@@ -45,7 +46,9 @@ class CircuitBreaker:
         new_count = int(count) + 1 if count else 1
         await self.redis.set(self.trade_count_key, str(new_count), ex=ttl)
 
-        logger.info(f"Circuit breaker [{self.symbol}]: recorded profit={profit:.2f}, daily_pnl={new_pnl:.2f}, trades={new_count}")
+        logger.info(
+            f"Circuit breaker [{self.symbol}]: recorded profit={profit:.2f}, daily_pnl={new_pnl:.2f}, trades={new_count}"
+        )
 
     async def get_daily_pnl(self) -> float:
         val = await self.redis.get(self.pnl_key)
@@ -74,8 +77,10 @@ class CircuitBreaker:
 
         if triggered:
             # Record trigger time for cooldown
-            await self.redis.set(self.triggered_key, datetime.now(timezone.utc).isoformat(), ex=86400)
-            logger.warning(f"Circuit breaker [{self.symbol}] TRIGGERED: daily_pnl={daily_pnl:.2f}, limit=-{max_loss:.2f}")
+            await self.redis.set(self.triggered_key, datetime.now(UTC).isoformat(), ex=86400)
+            logger.warning(
+                f"Circuit breaker [{self.symbol}] TRIGGERED: daily_pnl={daily_pnl:.2f}, limit=-{max_loss:.2f}"
+            )
         return triggered
 
     async def can_resume(self) -> bool:
@@ -85,13 +90,15 @@ class CircuitBreaker:
             return True
 
         try:
-            triggered_at = datetime.fromisoformat(triggered_at_str.decode() if isinstance(triggered_at_str, bytes) else triggered_at_str)
+            triggered_at = datetime.fromisoformat(
+                triggered_at_str.decode() if isinstance(triggered_at_str, bytes) else triggered_at_str
+            )
             if triggered_at.tzinfo is None:
-                triggered_at = triggered_at.replace(tzinfo=timezone.utc)
+                triggered_at = triggered_at.replace(tzinfo=UTC)
         except (ValueError, TypeError):
             return True
 
-        elapsed = (datetime.now(timezone.utc) - triggered_at).total_seconds() / 60
+        elapsed = (datetime.now(UTC) - triggered_at).total_seconds() / 60
         if elapsed < self.cooldown_minutes:
             logger.debug(f"Circuit breaker [{self.symbol}] cooldown: {self.cooldown_minutes - elapsed:.0f}m remaining")
             return False
@@ -113,7 +120,9 @@ class CircuitBreaker:
         return sum(float(v) for v in values if v)
 
     @staticmethod
-    async def is_global_triggered(redis_client, symbols: list[str], balance: float, max_portfolio_loss: float = DEFAULT_PORTFOLIO_MAX_LOSS) -> bool:
+    async def is_global_triggered(
+        redis_client, symbols: list[str], balance: float, max_portfolio_loss: float = DEFAULT_PORTFOLIO_MAX_LOSS
+    ) -> bool:
         """Check if total daily loss across all symbols exceeds portfolio limit."""
         total_pnl = await CircuitBreaker.get_global_daily_pnl(redis_client, symbols)
         max_loss = balance * max_portfolio_loss
@@ -135,7 +144,8 @@ class CircuitBreaker:
 
     @staticmethod
     async def is_drawdown_halted(
-        redis_client, balance: float,
+        redis_client,
+        balance: float,
         max_drawdown_pct: float = DEFAULT_MAX_DRAWDOWN_FROM_PEAK,
     ) -> bool:
         """Check if balance dropped > X% from peak. Returns True to halt trading."""
@@ -156,5 +166,5 @@ class CircuitBreaker:
         """Seconds until daily reset, derived from the symbol's asset class."""
         asset_class = _asset_class_for(symbol)
         # Strip timezone info — sessions.seconds_until_reset uses naive UTC internally
-        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_naive = datetime.now(UTC).replace(tzinfo=None)
         return max(seconds_until_reset(asset_class, now=now_naive), MIN_TTL_SECONDS)

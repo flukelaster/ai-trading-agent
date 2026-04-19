@@ -16,11 +16,11 @@ import numpy as np
 class PortfolioRiskResult:
     """Portfolio-level risk metrics."""
 
-    portfolio_var_95: float          # 95% portfolio VaR
-    portfolio_var_99: float          # 99% portfolio VaR
-    marginal_var: dict[str, float]   # per-symbol marginal VaR
+    portfolio_var_95: float  # 95% portfolio VaR
+    portfolio_var_99: float  # 99% portfolio VaR
+    marginal_var: dict[str, float]  # per-symbol marginal VaR
     component_var: dict[str, float]  # per-symbol risk contribution (sums to portfolio VaR)
-    diversification_ratio: float     # < 1.0 means diversification benefit
+    diversification_ratio: float  # < 1.0 means diversification benefit
     max_position_by_var: dict[str, float]  # max lot based on marginal VaR limit
 
     def to_dict(self) -> dict:
@@ -67,7 +67,7 @@ def compute_portfolio_risk(
         if len(p) < window + 1:
             returns_matrix.append(np.zeros(window))
         else:
-            r = np.diff(np.log(p[-(window + 1):]))
+            r = np.diff(np.log(p[-(window + 1) :]))
             returns_matrix.append(r[:window])
         weights.append(positions[sym] / total_exposure if total_exposure > 0 else 0)
 

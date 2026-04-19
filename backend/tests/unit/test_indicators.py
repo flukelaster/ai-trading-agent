@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.strategy.indicators import atr, bollinger_bands, ema, rsi, stochastic, adx
+from app.strategy.indicators import adx, atr, bollinger_bands, ema, rsi, stochastic
 
 
 class TestEMA:
@@ -120,8 +120,7 @@ class TestBollingerBands:
         result = bollinger_bands(series, 20, 2.0)
         # Most prices should be within bands
         valid_idx = result["upper"].dropna().index
-        within = ((series[valid_idx] <= result["upper"][valid_idx]) &
-                  (series[valid_idx] >= result["lower"][valid_idx]))
+        within = (series[valid_idx] <= result["upper"][valid_idx]) & (series[valid_idx] >= result["lower"][valid_idx])
         assert within.sum() / len(within) > 0.8
 
     def test_bb_bandwidth_positive(self):

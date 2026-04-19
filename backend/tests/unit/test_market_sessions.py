@@ -11,7 +11,6 @@ from app.market.sessions import (
     supported_asset_classes,
 )
 
-
 # ─── Reset hour ─────────────────────────────────────────────────────────────
 
 

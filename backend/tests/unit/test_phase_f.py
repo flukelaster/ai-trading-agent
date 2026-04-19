@@ -2,17 +2,15 @@
 Unit tests for Phase F — rollout modes, broker enforcement, deploy readiness.
 """
 
-import json
 import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from mcp_server.guardrails import (
-    TradingGuardrails,
-    ROLLOUT_MODES,
     MICRO_MAX_LOT,
     GuardrailResult,
+    TradingGuardrails,
 )
 
 
@@ -85,8 +83,8 @@ class TestBrokerRolloutMode:
     @pytest.mark.asyncio
     async def test_shadow_mode_logs_only(self):
         """In shadow mode, place_order should NOT execute and should return would_execute."""
-        from mcp_server.tools import broker
         from mcp_server.guardrails import TradingGuardrails
+        from mcp_server.tools import broker
 
         mock_connector = AsyncMock()
         mock_connector.get_account.return_value = {"success": True, "data": {"balance": 10000, "profit": 0}}
@@ -112,8 +110,8 @@ class TestBrokerRolloutMode:
     @pytest.mark.asyncio
     async def test_paper_mode_simulates(self):
         """Paper mode should simulate execution with a fake ticket."""
-        from mcp_server.tools import broker
         from mcp_server.guardrails import TradingGuardrails
+        from mcp_server.tools import broker
 
         mock_connector = AsyncMock()
         mock_connector.get_account.return_value = {"success": True, "data": {"balance": 10000, "profit": 0}}
@@ -139,8 +137,8 @@ class TestBrokerRolloutMode:
     @pytest.mark.asyncio
     async def test_micro_mode_caps_lot(self):
         """Micro mode should cap lot at MICRO_MAX_LOT and execute for real."""
-        from mcp_server.tools import broker
         from mcp_server.guardrails import TradingGuardrails
+        from mcp_server.tools import broker
 
         mock_connector = AsyncMock()
         mock_connector.get_account.return_value = {"success": True, "data": {"balance": 10000, "profit": 0}}
@@ -169,8 +167,8 @@ class TestBrokerRolloutMode:
     @pytest.mark.asyncio
     async def test_live_mode_full_execution(self):
         """Live mode should execute at full lot size."""
-        from mcp_server.tools import broker
         from mcp_server.guardrails import TradingGuardrails
+        from mcp_server.tools import broker
 
         mock_connector = AsyncMock()
         mock_connector.get_account.return_value = {"success": True, "data": {"balance": 10000, "profit": 0}}
@@ -199,10 +197,12 @@ class TestBrokerRolloutMode:
 class TestRolloutAPI:
     @pytest.fixture
     def app_and_client(self, db_session, redis_client):
+        from unittest.mock import MagicMock
+
         from fastapi import FastAPI
+
         from app.api.routes import rollout
         from app.db.session import get_db
-        from unittest.mock import MagicMock
 
         app = FastAPI()
         app.include_router(rollout.router)

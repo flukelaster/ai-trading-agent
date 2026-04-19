@@ -19,19 +19,18 @@ import json
 import os
 import signal
 import sys
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import redis.asyncio as redis_lib
 
-
 # ─── Structured logging (JSON to stdout, captured by ProcessRunnerBackend) ───
 
-def _log(level: str, message: str, metadata: Optional[dict] = None) -> None:
+
+def _log(level: str, message: str, metadata: dict | None = None) -> None:
     entry = {
         "level": level,
         "message": message,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
     if metadata:
         entry["metadata"] = metadata
@@ -57,6 +56,7 @@ try:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
     from mcp_server.agent_config import run_agent, run_multi_agent
     from mcp_server.tools import init_mcp_tools
+
     _AGENT_AVAILABLE = True
     _MULTI_AGENT_AVAILABLE = True
 except ImportError:
@@ -66,9 +66,9 @@ except ImportError:
 async def execute_job(
     job_id: int,
     job_type: str,
-    job_input: Optional[dict],
+    job_input: dict | None,
     runner_id: int,
-    redis_client: Optional[object] = None,
+    redis_client: object | None = None,
 ) -> dict:
     """Execute an agent job.
 
@@ -76,11 +76,15 @@ async def execute_job(
     using Claude Max subscription. Otherwise falls back to stub executor.
     No API key needed — SDK uses CLI auth automatically.
     """
-    _log("info", f"[Agent] Executing job {job_id}: type={job_type}", {
-        "job_id": job_id,
-        "job_type": job_type,
-        "input": job_input,
-    })
+    _log(
+        "info",
+        f"[Agent] Executing job {job_id}: type={job_type}",
+        {
+            "job_id": job_id,
+            "job_type": job_type,
+            "input": job_input,
+        },
+    )
 
     if _AGENT_AVAILABLE:
         # Choose single-agent or multi-agent mode
@@ -93,11 +97,15 @@ async def execute_job(
                     job_type=job_type,
                     job_input=job_input,
                 )
-                _log("info", f"[Agent] Job {job_id} completed via multi-agent", {
-                    "orchestrator_turns": result.get("orchestrator_turns"),
-                    "total_tool_calls": result.get("total_tool_calls"),
-                    "total_duration_s": result.get("total_duration_s"),
-                })
+                _log(
+                    "info",
+                    f"[Agent] Job {job_id} completed via multi-agent",
+                    {
+                        "orchestrator_turns": result.get("orchestrator_turns"),
+                        "total_tool_calls": result.get("total_tool_calls"),
+                        "total_duration_s": result.get("total_duration_s"),
+                    },
+                )
                 return result
             except Exception as e:
                 _log("error", f"[Agent] Multi-agent error: {e}, falling back to single agent")
@@ -109,11 +117,15 @@ async def execute_job(
                 job_type=job_type,
                 job_input=job_input,
             )
-            _log("info", f"[Agent] Job {job_id} completed via Claude agent", {
-                "turns": result.get("turns"),
-                "duration_s": result.get("duration_s"),
-                "tool_calls_count": len(result.get("tool_calls", [])),
-            })
+            _log(
+                "info",
+                f"[Agent] Job {job_id} completed via Claude agent",
+                {
+                    "turns": result.get("turns"),
+                    "duration_s": result.get("duration_s"),
+                    "tool_calls_count": len(result.get("tool_calls", [])),
+                },
+            )
             return result
         except Exception as e:
             _log("error", f"[Agent] Claude agent error: {e}, falling back to stub")
@@ -141,23 +153,18 @@ async def execute_job(
 
 # ─── Health Check Server ────────────────────────────────────────────────────
 
+
 async def _handle_health(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     """Minimal HTTP health check on port 8090."""
     await reader.read(4096)  # consume request
     body = json.dumps({"status": "ok"})
-    response = (
-        f"HTTP/1.1 200 OK\r\n"
-        f"Content-Type: application/json\r\n"
-        f"Content-Length: {len(body)}\r\n"
-        f"\r\n"
-        f"{body}"
-    )
+    response = f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\n\r\n{body}"
     writer.write(response.encode())
     await writer.drain()
     writer.close()
 
 
-async def start_health_server() -> Optional[asyncio.Server]:
+async def start_health_server() -> asyncio.Server | None:
     """Start a minimal TCP health server on port 8090."""
     try:
         server = await asyncio.start_server(_handle_health, "0.0.0.0", 8090)
@@ -169,6 +176,7 @@ async def start_health_server() -> Optional[asyncio.Server]:
 
 
 # ─── Main Loop ──────────────────────────────────────────────────────────────
+
 
 async def main() -> None:
     runner_id = int(os.environ.get("RUNNER_ID", "0"))
@@ -224,7 +232,7 @@ async def main() -> None:
                 try:
                     await redis_client.publish(
                         f"runner:{runner_id}:heartbeat",
-                        json.dumps({"runner_id": runner_id, "timestamp": datetime.now(timezone.utc).isoformat()}),
+                        json.dumps({"runner_id": runner_id, "timestamp": datetime.now(UTC).isoformat()}),
                     )
                     last_heartbeat = now
                 except Exception:
@@ -249,7 +257,9 @@ async def main() -> None:
                 job_id = data["job_id"]
                 preferred_runner_id = data.get("runner_id")
             except (json.JSONDecodeError, KeyError) as e:
-                _log("error", f"Invalid job payload: {e}", {"raw": raw.decode() if isinstance(raw, bytes) else str(raw)})
+                _log(
+                    "error", f"Invalid job payload: {e}", {"raw": raw.decode() if isinstance(raw, bytes) else str(raw)}
+                )
                 continue
 
             # Check if this job is targeted to a different runner
@@ -274,19 +284,25 @@ async def main() -> None:
                 )
 
                 # Update job status in Redis (for UI polling)
-                await redis_client.hset(f"job:{job_id}:result", mapping={
-                    "status": "completed",
-                    "output": json.dumps(output, default=str),
-                })
+                await redis_client.hset(
+                    f"job:{job_id}:result",
+                    mapping={
+                        "status": "completed",
+                        "output": json.dumps(output, default=str),
+                    },
+                )
                 await redis_client.expire(f"job:{job_id}:result", 3600)
 
                 _log("info", f"Job {job_id} completed", {"output_preview": str(output)[:200]})
             except Exception as e:
                 _log("error", f"Job {job_id} failed: {e}")
-                await redis_client.hset(f"job:{job_id}:result", mapping={
-                    "status": "failed",
-                    "error": str(e),
-                })
+                await redis_client.hset(
+                    f"job:{job_id}:result",
+                    mapping={
+                        "status": "failed",
+                        "error": str(e),
+                    },
+                )
             finally:
                 # Remove from running set
                 await redis_client.srem(RUNNING_SET_KEY, str(job_id))

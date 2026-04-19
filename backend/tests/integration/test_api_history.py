@@ -4,10 +4,8 @@ Integration tests for History API routes.
 
 from datetime import datetime
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Trade
 from app.db.session import get_db
@@ -15,7 +13,9 @@ from app.db.session import get_db
 
 def _make_test_app(db_session):
     from fastapi import FastAPI
+
     from app.api.routes.history import router
+
     app = FastAPI()
     app.include_router(router)
 
@@ -39,18 +39,32 @@ async def seeded_db(db_session):
     """Insert sample trades for testing."""
     trades = [
         Trade(
-            ticket=1001, symbol="GOLD", type="BUY", lot=0.1,
-            open_price=2000.0, close_price=2010.0, sl=1990.0, tp=2020.0,
+            ticket=1001,
+            symbol="GOLD",
+            type="BUY",
+            lot=0.1,
+            open_price=2000.0,
+            close_price=2010.0,
+            sl=1990.0,
+            tp=2020.0,
             open_time=datetime(2025, 1, 1, 10, 0),
             close_time=datetime(2025, 1, 1, 12, 0),
-            profit=100.0, strategy_name="ema_crossover",
+            profit=100.0,
+            strategy_name="ema_crossover",
         ),
         Trade(
-            ticket=1002, symbol="GOLD", type="SELL", lot=0.1,
-            open_price=2010.0, close_price=2020.0, sl=2020.0, tp=2000.0,
+            ticket=1002,
+            symbol="GOLD",
+            type="SELL",
+            lot=0.1,
+            open_price=2010.0,
+            close_price=2020.0,
+            sl=2020.0,
+            tp=2000.0,
             open_time=datetime(2025, 1, 2, 10, 0),
             close_time=datetime(2025, 1, 2, 12, 0),
-            profit=-100.0, strategy_name="ema_crossover",
+            profit=-100.0,
+            strategy_name="ema_crossover",
         ),
     ]
     for t in trades:

@@ -22,9 +22,7 @@ class HistoricalDataCollector:
         # session to avoid racing with the scheduler's long-lived shared session.
         self.db = db_session
 
-    async def collect(
-        self, symbol: str, timeframe: str, from_date: str, to_date: str
-    ) -> dict:
+    async def collect(self, symbol: str, timeframe: str, from_date: str, to_date: str) -> dict:
         """
         Fetch historical OHLCV from MT5 in 30-day chunks and upsert into DB.
 
@@ -71,22 +69,22 @@ class HistoricalDataCollector:
             "new_bars_inserted": total_new,
         }
 
-    async def _upsert_bars(
-        self, session: AsyncSession, symbol: str, timeframe: str, df: pd.DataFrame
-    ) -> int:
+    async def _upsert_bars(self, session: AsyncSession, symbol: str, timeframe: str, df: pd.DataFrame) -> int:
         """Insert bars, skip duplicates via ON CONFLICT DO NOTHING."""
         rows = []
         for time_idx, row in df.iterrows():
-            rows.append({
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "time": time_idx.to_pydatetime(),
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
-                "volume": float(row.get("tick_volume", row.get("volume", 0))),
-            })
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "time": time_idx.to_pydatetime(),
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                    "volume": float(row.get("tick_volume", row.get("volume", 0))),
+                }
+            )
 
         if not rows:
             return 0
@@ -119,14 +117,17 @@ class HistoricalDataCollector:
         if not rows:
             return pd.DataFrame()
 
-        data = [{
-            "time": r.time,
-            "open": r.open,
-            "high": r.high,
-            "low": r.low,
-            "close": r.close,
-            "tick_volume": r.volume,
-        } for r in rows]
+        data = [
+            {
+                "time": r.time,
+                "open": r.open,
+                "high": r.high,
+                "low": r.low,
+                "close": r.close,
+                "tick_volume": r.volume,
+            }
+            for r in rows
+        ]
 
         df = pd.DataFrame(data)
         df = df.assign(time=pd.to_datetime(df["time"])).set_index("time")
@@ -163,10 +164,13 @@ class HistoricalDataCollector:
             """)
             result = await self.db.execute(query)
         rows = result.fetchall()
-        return [{
-            "symbol": r[0],
-            "timeframe": r[1],
-            "first_bar": r[2].isoformat() if r[2] else None,
-            "last_bar": r[3].isoformat() if r[3] else None,
-            "bar_count": r[4],
-        } for r in rows]
+        return [
+            {
+                "symbol": r[0],
+                "timeframe": r[1],
+                "first_bar": r[2].isoformat() if r[2] else None,
+                "last_bar": r[3].isoformat() if r[3] else None,
+                "bar_count": r[4],
+            }
+            for r in rows
+        ]

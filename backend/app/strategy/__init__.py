@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from app.strategy.base import BaseStrategy
 from app.strategy.breakout import BreakoutStrategy
 from app.strategy.dca import DCAStrategy
@@ -26,6 +24,7 @@ STRATEGIES: dict[str, type[BaseStrategy]] = {
 # Conditionally register ML strategy if model exists
 try:
     from app.strategy.ml_strategy import MLStrategy
+
     STRATEGIES["ml_signal"] = MLStrategy
 except ImportError:
     pass  # lightgbm not installed

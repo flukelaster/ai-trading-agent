@@ -2,27 +2,25 @@
 Unit tests for Phase E features — learning, session memory, strategy generation, reflector.
 """
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from mcp_server.tools.strategy_gen import (
-    get_strategy_profiles,
-    recommend_strategy,
-    generate_strategy_config,
-    generate_ensemble_config,
-    STRATEGY_PROFILES,
-)
 from mcp_server.tools.session import (
+    clear_context,
+    get_context,
+    get_learnings,
     init_session,
     save_context,
-    get_context,
     save_learning,
-    get_learnings,
-    clear_context,
 )
-
+from mcp_server.tools.strategy_gen import (
+    STRATEGY_PROFILES,
+    generate_ensemble_config,
+    generate_strategy_config,
+    get_strategy_profiles,
+    recommend_strategy,
+)
 
 # ─── Strategy Generation Tests ──────────────────────────────────────────────
 
@@ -36,7 +34,7 @@ class TestGetStrategyProfiles:
 
     def test_profiles_have_required_fields(self):
         result = get_strategy_profiles()
-        for name, profile in result["strategies"].items():
+        for _name, profile in result["strategies"].items():
             assert "description" in profile
             assert "best_regime" in profile
             assert "params" in profile
@@ -94,9 +92,7 @@ class TestGenerateStrategyConfig:
 
 class TestGenerateEnsembleConfig:
     def test_valid_ensemble(self):
-        result = generate_ensemble_config(
-            {"ema_crossover": 0.4, "breakout": 0.3, "mean_reversion": 0.3}
-        )
+        result = generate_ensemble_config({"ema_crossover": 0.4, "breakout": 0.3, "mean_reversion": 0.3})
         assert result["base_strategy"] == "ensemble"
         assert "composition" in result["params"]
         assert "ema_crossover:0.4" in result["params"]["composition"]
@@ -194,6 +190,7 @@ class TestLearningTools:
         }
         with patch("mcp_server.tools.indicators.full_analysis", AsyncMock(return_value=mock_analysis)):
             from mcp_server.tools.learning import detect_regime
+
             result = await detect_regime("GOLD", "M15")
 
         assert result["regime"] == "trending"
@@ -203,11 +200,16 @@ class TestLearningTools:
     @pytest.mark.asyncio
     async def test_detect_regime_ranging(self):
         mock_analysis = {
-            "adx": 15.0, "atr": 5.0, "trend": "neutral", "trend_strength": "weak",
-            "rsi": 50.0, "price_vs_bb": "inside",
+            "adx": 15.0,
+            "atr": 5.0,
+            "trend": "neutral",
+            "trend_strength": "weak",
+            "rsi": 50.0,
+            "price_vs_bb": "inside",
         }
         with patch("mcp_server.tools.indicators.full_analysis", AsyncMock(return_value=mock_analysis)):
             from mcp_server.tools.learning import detect_regime
+
             result = await detect_regime("GOLD")
 
         assert result["regime"] == "ranging"
@@ -217,6 +219,7 @@ class TestLearningTools:
     async def test_detect_regime_handles_error(self):
         with patch("mcp_server.tools.indicators.full_analysis", AsyncMock(return_value={"error": "MT5 down"})):
             from mcp_server.tools.learning import detect_regime
+
             result = await detect_regime("GOLD")
         assert "error" in result
 
@@ -227,6 +230,7 @@ class TestLearningTools:
 class TestReflectorAgent:
     def test_reflector_tool_names(self):
         from mcp_server.agents.reflector import TOOL_NAMES
+
         assert "analyze_recent_trades" in TOOL_NAMES
         assert "detect_regime" in TOOL_NAMES
         assert "get_learnings" in TOOL_NAMES
@@ -235,11 +239,13 @@ class TestReflectorAgent:
 
     def test_reflector_has_no_execution_tools(self):
         from mcp_server.agents.reflector import TOOL_NAMES
+
         execution_tools = {"place_order", "modify_position", "close_position"}
         assert not set(TOOL_NAMES) & execution_tools
 
     def test_all_reflector_tools_are_strings(self):
         from mcp_server.agents.reflector import TOOL_NAMES
+
         assert len(TOOL_NAMES) > 0
         for name in TOOL_NAMES:
             assert isinstance(name, str), f"Tool name must be str, got {type(name)}"
@@ -289,11 +295,13 @@ class TestOrchestratorWithReflection:
         """Multi-agent pipeline should run reflector as Phase 0."""
         from mcp_server.agents.orchestrator import run_multi_agent
 
-        mock_reflector = AsyncMock(return_value={
-            "response": "7-day win rate 65%, trending regime",
-            "tool_calls": [{"tool": "analyze_recent_trades"}],
-            "turns": 3,
-        })
+        mock_reflector = AsyncMock(
+            return_value={
+                "response": "7-day win rate 65%, trending regime",
+                "tool_calls": [{"tool": "analyze_recent_trades"}],
+                "turns": 3,
+            }
+        )
         mock_tech = AsyncMock(return_value={"response": "bullish", "tool_calls": [], "turns": 1})
         mock_fund = AsyncMock(return_value={"response": "neutral", "tool_calls": [], "turns": 1})
         mock_risk = AsyncMock(return_value={"response": "approved", "tool_calls": [], "turns": 1})

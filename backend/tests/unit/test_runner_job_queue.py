@@ -6,8 +6,8 @@ Uses real SQLite DB session + fakeredis for dual-storage testing.
 
 import pytest
 
-from app.db.models import JobStatus, Runner, RunnerJob, RunnerStatus
-from app.runner.job_queue import JobQueue, PENDING_QUEUE_KEY, RUNNING_SET_KEY
+from app.db.models import JobStatus, Runner, RunnerStatus
+from app.runner.job_queue import PENDING_QUEUE_KEY, RUNNING_SET_KEY, JobQueue
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ class TestEnqueue:
 
     @pytest.mark.asyncio
     async def test_enqueue_pushes_to_redis(self, queue, redis_client):
-        job = await queue.enqueue("candle_analysis")
+        await queue.enqueue("candle_analysis")
         count = await redis_client.llen(PENDING_QUEUE_KEY)
         assert count == 1
 
@@ -67,7 +67,7 @@ class TestDispatch:
         await _create_runner(db_session)
         await queue.enqueue("candle_analysis")
 
-        dispatched = await queue.dispatch()
+        await queue.dispatch()
         count = await redis_client.scard(RUNNING_SET_KEY)
         assert count == 1
 
@@ -104,7 +104,7 @@ class TestDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_with_preferred_runner(self, queue, db_session):
-        runner1 = await _create_runner(db_session, name="r1")
+        await _create_runner(db_session, name="r1")
         runner2 = await _create_runner(db_session, name="r2")
         await queue.enqueue("task", runner_id=runner2.id)
 
@@ -116,7 +116,7 @@ class TestDispatch:
 class TestComplete:
     @pytest.mark.asyncio
     async def test_complete_updates_status(self, queue, db_session, redis_client):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("task")
         job = await queue.dispatch()
 
@@ -128,7 +128,7 @@ class TestComplete:
 
     @pytest.mark.asyncio
     async def test_complete_removes_from_running_set(self, queue, db_session, redis_client):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("task")
         job = await queue.dispatch()
 
@@ -145,7 +145,7 @@ class TestComplete:
 class TestFail:
     @pytest.mark.asyncio
     async def test_fail_updates_status(self, queue, db_session, redis_client):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("task")
         job = await queue.dispatch()
 
@@ -169,7 +169,7 @@ class TestCancel:
 
     @pytest.mark.asyncio
     async def test_cancel_running_job(self, queue, db_session):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("task")
         job = await queue.dispatch()
 
@@ -178,7 +178,7 @@ class TestCancel:
 
     @pytest.mark.asyncio
     async def test_cancel_completed_job_raises(self, queue, db_session):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("task")
         job = await queue.dispatch()
         await queue.complete(job.id)
@@ -195,7 +195,7 @@ class TestCancel:
 class TestRetry:
     @pytest.mark.asyncio
     async def test_retry_failed_job_creates_new(self, queue, db_session, redis_client):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("candle_analysis", input_data={"symbol": "GOLD"})
         job = await queue.dispatch()
         await queue.fail(job.id, "error")
@@ -236,10 +236,10 @@ class TestListAndGet:
 
     @pytest.mark.asyncio
     async def test_list_filter_by_status(self, queue, db_session):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("task1")
         await queue.enqueue("task2")
-        job = await queue.dispatch()
+        await queue.dispatch()
 
         pending_jobs = await queue.list_jobs(status=JobStatus.PENDING)
         assert len(pending_jobs) == 1
@@ -280,13 +280,13 @@ class TestRebuildFromDb:
 
     @pytest.mark.asyncio
     async def test_rebuild_marks_stale_running_as_failed(self, queue, db_session, redis_client):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("task")
         job = await queue.dispatch()
         assert job.status == JobStatus.RUNNING
 
         # Simulate restart
-        count = await queue.rebuild_from_db()
+        await queue.rebuild_from_db()
 
         # Refresh the job
         refreshed = await queue.get(job.id)
@@ -303,7 +303,7 @@ class TestCounts:
 
     @pytest.mark.asyncio
     async def test_running_count(self, queue, db_session, redis_client):
-        runner = await _create_runner(db_session)
+        await _create_runner(db_session)
         await queue.enqueue("t1")
         await queue.dispatch()
         assert await queue.running_count() == 1

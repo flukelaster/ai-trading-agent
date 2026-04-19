@@ -4,8 +4,8 @@ Includes stale data detection and OHLCV gap validation.
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 import pandas as pd
 from loguru import logger
@@ -38,8 +38,8 @@ class MarketDataService:
                 try:
                     tick_time = datetime.fromisoformat(tick_time_str.replace("Z", "+00:00"))
                     if tick_time.tzinfo is None:
-                        tick_time = tick_time.replace(tzinfo=timezone.utc)
-                    age = (datetime.now(timezone.utc) - tick_time).total_seconds()
+                        tick_time = tick_time.replace(tzinfo=UTC)
+                    age = (datetime.now(UTC) - tick_time).total_seconds()
                     if age > MAX_TICK_AGE_SECONDS:
                         logger.warning(f"Stale tick for {symbol}: {age:.0f}s old (max {MAX_TICK_AGE_SECONDS}s)")
                         return None
@@ -62,7 +62,9 @@ class MarketDataService:
 
         return tick
 
-    async def get_ohlcv(self, symbol: str, timeframe: str = "M15", count: int = 100, validate: bool = True) -> pd.DataFrame:
+    async def get_ohlcv(
+        self, symbol: str, timeframe: str = "M15", count: int = 100, validate: bool = True
+    ) -> pd.DataFrame:
         symbol = to_broker_alias(symbol)
         result = await self.connector.get_ohlcv(symbol, timeframe, count)
         if not result.get("success") or not result.get("data"):

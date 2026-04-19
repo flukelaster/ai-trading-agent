@@ -4,7 +4,6 @@ Generalizes the original H1-only _get_h1_trend() to support multiple timeframes.
 """
 
 import pandas as pd
-from loguru import logger
 
 from app.constants import MTF_ADX_TRENDING_THRESHOLD, MTF_EMA_ABOVE, MTF_EMA_BELOW
 
@@ -18,6 +17,7 @@ def get_trend(df: pd.DataFrame, timeframe: str = "", ema_period: int = 21) -> in
         return 0
     try:
         from app.strategy.indicators import ema as _ema
+
         closes = df["close"]
         ema_val = _ema(closes, ema_period).iloc[-1]
         current_price = closes.iloc[-1]
@@ -36,6 +36,7 @@ def get_trend_strength(df: pd.DataFrame) -> float:
         return 0
     try:
         from app.strategy.indicators import adx
+
         result = adx(df["high"], df["low"], df["close"], 14)
         val = result["adx"].iloc[-1]
         return float(val) if pd.notna(val) else 0

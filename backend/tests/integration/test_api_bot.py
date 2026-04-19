@@ -14,6 +14,7 @@ from app.api.routes.bot import set_manager
 def _make_test_app():
     """Create a minimal FastAPI app for testing."""
     from fastapi import FastAPI
+
     from app.api.routes.bot import router
     from app.db.session import get_db
 
@@ -63,20 +64,22 @@ def mock_engine():
     engine.emergency_stop = AsyncMock(return_value={"success": True})
     engine.update_strategy = AsyncMock()
     engine.update_settings = AsyncMock()
-    engine.get_status = MagicMock(return_value={
-        "state": "STOPPED",
-        "strategy": "ema_crossover",
-        "strategy_params": {"fast_period": 20, "slow_period": 50},
-        "symbol": "GOLD",
-        "timeframe": "M15",
-        "started_at": None,
-        "use_ai_filter": True,
-        "paper_trade": False,
-        "max_risk_per_trade": 0.01,
-        "max_daily_loss": 0.03,
-        "max_concurrent_trades": 3,
-        "max_lot": 1.0,
-    })
+    engine.get_status = MagicMock(
+        return_value={
+            "state": "STOPPED",
+            "strategy": "ema_crossover",
+            "strategy_params": {"fast_period": 20, "slow_period": 50},
+            "symbol": "GOLD",
+            "timeframe": "M15",
+            "started_at": None,
+            "use_ai_filter": True,
+            "paper_trade": False,
+            "max_risk_per_trade": 0.01,
+            "max_daily_loss": 0.03,
+            "max_concurrent_trades": 3,
+            "max_lot": 1.0,
+        }
+    )
     return engine
 
 
@@ -88,9 +91,11 @@ def mock_manager(mock_engine):
     manager.start = AsyncMock()
     manager.stop = AsyncMock()
     manager.emergency_stop = AsyncMock(return_value={"success": True})
-    manager.get_status = MagicMock(return_value={
-        "GOLD": mock_engine.get_status(),
-    })
+    manager.get_status = MagicMock(
+        return_value={
+            "GOLD": mock_engine.get_status(),
+        }
+    )
     return manager
 
 
@@ -132,32 +137,44 @@ class TestBotRoutes:
         assert data["symbol"] == "GOLD"
 
     async def test_update_strategy(self, client, mock_engine):
-        resp = await client.put("/api/bot/strategy", json={
-            "name": "breakout",
-            "symbol": "GOLD",
-        })
+        resp = await client.put(
+            "/api/bot/strategy",
+            json={
+                "name": "breakout",
+                "symbol": "GOLD",
+            },
+        )
         assert resp.status_code == 200
         mock_engine.update_strategy.assert_called_once()
 
     async def test_update_settings(self, client, mock_engine):
-        resp = await client.put("/api/bot/settings", json={
-            "symbol": "GOLD",
-            "max_risk_per_trade": 0.02,
-            "ai_confidence_threshold": 0.8,
-        })
+        resp = await client.put(
+            "/api/bot/settings",
+            json={
+                "symbol": "GOLD",
+                "max_risk_per_trade": 0.02,
+                "ai_confidence_threshold": 0.8,
+            },
+        )
         assert resp.status_code == 200
         mock_engine.update_settings.assert_called_once()
 
     async def test_settings_validation_rejects_invalid(self, client):
-        resp = await client.put("/api/bot/settings", json={
-            "max_risk_per_trade": 0.5,  # > 0.10 → invalid
-        })
+        resp = await client.put(
+            "/api/bot/settings",
+            json={
+                "max_risk_per_trade": 0.5,  # > 0.10 → invalid
+            },
+        )
         assert resp.status_code == 422
 
     async def test_settings_validation_rejects_negative(self, client):
-        resp = await client.put("/api/bot/settings", json={
-            "ai_confidence_threshold": -0.1,  # < 0 → invalid
-        })
+        resp = await client.put(
+            "/api/bot/settings",
+            json={
+                "ai_confidence_threshold": -0.1,  # < 0 → invalid
+            },
+        )
         assert resp.status_code == 422
 
 

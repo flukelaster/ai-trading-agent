@@ -2,15 +2,14 @@
 AI Insights API routes — sentiment and optimization.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-
-from app.auth import require_auth
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.bot import _get_engine, get_manager
+from app.api.routes.bot import _get_engine
+from app.auth import require_auth
 from app.cache import cached
 from app.db.models import AIOptimizationLog, NewsSentiment
 from app.db.session import get_db
@@ -68,13 +67,12 @@ async def get_sentiment_history(
 
 @router.get("/optimization/latest")
 async def get_latest_optimization(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(AIOptimizationLog).order_by(desc(AIOptimizationLog.created_at)).limit(1)
-    )
+    result = await db.execute(select(AIOptimizationLog).order_by(desc(AIOptimizationLog.created_at)).limit(1))
     log = result.scalar_one_or_none()
     if not log:
         return {"message": "No optimization runs yet"}
     import json
+
     return {
         "id": log.id,
         "period_start": log.period_start.isoformat(),
@@ -121,6 +119,7 @@ async def apply_optimization(log_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Optimization log not found")
 
     import json
+
     suggested = json.loads(log.suggested_params)
     if bot.strategy is None:
         raise HTTPException(status_code=400, detail="Cannot apply optimization in AI Autonomous mode")

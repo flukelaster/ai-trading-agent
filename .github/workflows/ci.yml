@@ -25,15 +25,13 @@ jobs:
 
       - name: Lint (ruff check)
         run: ruff check .
-        continue-on-error: true
 
       - name: Format check (ruff format)
         run: ruff format --check .
-        continue-on-error: true
 
       - name: Type check (mypy)
         run: mypy app/ --ignore-missing-imports
-        continue-on-error: true
+        continue-on-error: true  # typing baseline debt — tighten once cleaned
 
       - name: Run tests with coverage
         run: pytest --cov=app --cov-report=term-missing --cov-fail-under=25
@@ -57,11 +55,9 @@ jobs:
 
       - name: Lint (ESLint)
         run: npx eslint .
-        continue-on-error: true
 
       - name: Type check (TypeScript)
         run: npx tsc --noEmit
-        continue-on-error: true
 
       - name: Build
         run: npm run build

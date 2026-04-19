@@ -7,7 +7,8 @@ Used by the Reflector agent before each trading session.
 
 import httpx
 
-from mcp_server.tools import auth_headers, backend_url as _backend_url
+from mcp_server.tools import auth_headers
+from mcp_server.tools import backend_url as _backend_url
 
 
 async def analyze_recent_trades(days: int = 7, symbol: str | None = None) -> dict:
@@ -63,7 +64,7 @@ async def analyze_recent_trades(days: int = 7, symbol: str | None = None) -> dic
                 strategy_stats[strat]["wins"] += 1
             strategy_stats[strat]["total_pnl"] += t.get("profit", 0)
 
-        for strat, stats in strategy_stats.items():
+        for stats in strategy_stats.values():
             stats["win_rate"] = round(stats["wins"] / stats["count"], 2) if stats["count"] > 0 else 0
 
         # Average win/loss size
@@ -78,8 +79,13 @@ async def analyze_recent_trades(days: int = 7, symbol: str | None = None) -> dic
             "avg_win": round(avg_win, 2),
             "avg_loss": round(avg_loss, 2),
             "risk_reward_ratio": round(abs(avg_win / avg_loss), 2) if avg_loss != 0 else 0,
-            "best_trades": [{"profit": t.get("profit"), "symbol": t.get("symbol"), "strategy": t.get("strategy_name")} for t in best],
-            "worst_trades": [{"profit": t.get("profit"), "symbol": t.get("symbol"), "strategy": t.get("strategy_name")} for t in worst],
+            "best_trades": [
+                {"profit": t.get("profit"), "symbol": t.get("symbol"), "strategy": t.get("strategy_name")} for t in best
+            ],
+            "worst_trades": [
+                {"profit": t.get("profit"), "symbol": t.get("symbol"), "strategy": t.get("strategy_name")}
+                for t in worst
+            ],
             "strategy_performance": strategy_stats,
             "overall_performance": performance,
         }
@@ -140,7 +146,7 @@ async def detect_regime(symbol: str, timeframe: str = "M15") -> dict:
         regime_detail = f"Low directional movement (ADX={adx:.0f}), price inside bands"
     elif atr > 0 and bb_position in ("above_upper", "below_lower"):
         regime = "volatile"
-        regime_detail = f"Price at Bollinger extremes, ATR elevated"
+        regime_detail = "Price at Bollinger extremes, ATR elevated"
     else:
         regime = "transitional"
         regime_detail = f"Mixed signals (ADX={adx:.0f}, trend={trend})"

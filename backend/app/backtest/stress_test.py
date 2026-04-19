@@ -18,10 +18,10 @@ class StressScenario:
 
     name: str
     description: str
-    vol_multiplier: float       # multiply current vol by this factor
-    correlation_shift: float    # shift all correlations toward +1 (0 = no change, 1 = perfect)
-    return_shock: float         # immediate return shock (e.g., -0.05 = -5%)
-    duration_bars: int          # how many bars the stress lasts
+    vol_multiplier: float  # multiply current vol by this factor
+    correlation_shift: float  # shift all correlations toward +1 (0 = no change, 1 = perfect)
+    return_shock: float  # immediate return shock (e.g., -0.05 = -5%)
+    duration_bars: int  # how many bars the stress lasts
 
     def to_dict(self) -> dict:
         return {
@@ -39,12 +39,12 @@ class StressResult:
     """Result of a stress test."""
 
     scenario: str
-    portfolio_impact: float      # total P&L impact (%)
-    max_drawdown: float          # max drawdown during stress
-    worst_symbol: str            # symbol with worst impact
-    worst_impact: float          # worst single-symbol impact
-    recovery_bars: int           # estimated bars to recover (0 if no recovery)
-    var_breach: bool             # whether VaR limit would be breached
+    portfolio_impact: float  # total P&L impact (%)
+    max_drawdown: float  # max drawdown during stress
+    worst_symbol: str  # symbol with worst impact
+    worst_impact: float  # worst single-symbol impact
+    recovery_bars: int  # estimated bars to recover (0 if no recovery)
+    var_breach: bool  # whether VaR limit would be breached
 
     def to_dict(self) -> dict:
         return {
@@ -157,10 +157,7 @@ def run_stress_test(
         impacts[sym] = cum_return
 
     # Portfolio impact
-    weighted_impact = sum(
-        impacts.get(sym, 0) * (positions[sym] / total_exposure)
-        for sym in symbols
-    )
+    weighted_impact = sum(impacts.get(sym, 0) * (positions[sym] / total_exposure) for sym in symbols)
 
     # Max drawdown (simplified: peak-to-trough of cumulative path)
     worst_sym = min(impacts, key=impacts.get) if impacts else ""

@@ -54,16 +54,14 @@ class RiskParityStrategy(BaseStrategy):
     async def _prepare_cross_data(self, market_data) -> None:
         """Fetch ATR of active symbols and compute inverse-volatility weights."""
         import asyncio
+
         atr_pcts = {}
         active = get_active_symbols()
         if len(active) < 2:
             return
         try:
-            dfs = await asyncio.gather(*[
-                market_data.get_ohlcv(sym, "M15", self._vol_lookback + 20)
-                for sym in active
-            ])
-            for sym, df in zip(active, dfs):
+            dfs = await asyncio.gather(*[market_data.get_ohlcv(sym, "M15", self._vol_lookback + 20) for sym in active])
+            for sym, df in zip(active, dfs, strict=False):
                 if df is not None and not df.empty and len(df) >= self._atr_period + 2:
                     atr_val = atr(df["high"], df["low"], df["close"], self._atr_period).iloc[-1]
                     price = df["close"].iloc[-1]

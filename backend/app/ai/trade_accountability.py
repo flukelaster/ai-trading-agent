@@ -23,13 +23,13 @@ class AccountabilityRecord:
 
     trade_id: str
     symbol: str
-    direction: str              # BUY or SELL
+    direction: str  # BUY or SELL
     pnl: float
-    pre_trade_setup: str        # what AI expected
-    actual_outcome: str         # what actually happened
+    pre_trade_setup: str  # what AI expected
+    actual_outcome: str  # what actually happened
     reasoning_correct: bool
-    classification: str         # skilled_win, correct_process, lucky_win, real_mistake
-    lessons: list[str]          # what was learned
+    classification: str  # skilled_win, correct_process, lucky_win, real_mistake
+    lessons: list[str]  # what was learned
     timestamp: str
 
     def to_dict(self) -> dict:

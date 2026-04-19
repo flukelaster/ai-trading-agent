@@ -5,7 +5,7 @@ AI usage monitoring API — token consumption and equivalent USD cost.
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_auth
@@ -33,9 +33,7 @@ async def get_summary(
     db: AsyncSession = Depends(get_db),
 ):
     cutoff = datetime.utcnow() - timedelta(days=days)
-    result = await db.execute(
-        select(AIUsageLog).where(AIUsageLog.timestamp >= cutoff)
-    )
+    result = await db.execute(select(AIUsageLog).where(AIUsageLog.timestamp >= cutoff))
     rows = result.scalars().all()
 
     total_calls = len(rows)
@@ -83,24 +81,25 @@ async def get_timeseries(
     db: AsyncSession = Depends(get_db),
 ):
     cutoff = datetime.utcnow() - timedelta(days=days)
-    result = await db.execute(
-        select(AIUsageLog).where(AIUsageLog.timestamp >= cutoff).order_by(AIUsageLog.timestamp)
-    )
+    result = await db.execute(select(AIUsageLog).where(AIUsageLog.timestamp >= cutoff).order_by(AIUsageLog.timestamp))
     rows = result.scalars().all()
 
     fmt = "%Y-%m-%d" if granularity == "day" else "%Y-%m-%d %H:00"
     buckets: dict[str, dict] = {}
     for r in rows:
         key = r.timestamp.strftime(fmt)
-        b = buckets.setdefault(key, {
-            "date": key,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cache_read": 0,
-            "cache_write": 0,
-            "cost_usd": 0.0,
-            "calls": 0,
-        })
+        b = buckets.setdefault(
+            key,
+            {
+                "date": key,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read": 0,
+                "cache_write": 0,
+                "cost_usd": 0.0,
+                "calls": 0,
+            },
+        )
         b["input_tokens"] += r.input_tokens
         b["output_tokens"] += r.output_tokens
         b["cache_read"] += r.cache_read_tokens
@@ -120,27 +119,28 @@ async def get_breakdown(
     db: AsyncSession = Depends(get_db),
 ):
     cutoff = datetime.utcnow() - timedelta(days=days)
-    result = await db.execute(
-        select(AIUsageLog).where(AIUsageLog.timestamp >= cutoff)
-    )
+    result = await db.execute(select(AIUsageLog).where(AIUsageLog.timestamp >= cutoff))
     rows = result.scalars().all()
 
     groups: dict[tuple[str, str], dict] = {}
     for r in rows:
         key = (r.agent_id, r.model)
-        g = groups.setdefault(key, {
-            "agent_id": r.agent_id,
-            "model": r.model,
-            "calls": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cache_read": 0,
-            "cache_write": 0,
-            "cost_usd": 0.0,
-            "total_duration_ms": 0,
-            "tool_calls": 0,
-            "success_count": 0,
-        })
+        g = groups.setdefault(
+            key,
+            {
+                "agent_id": r.agent_id,
+                "model": r.model,
+                "calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read": 0,
+                "cache_write": 0,
+                "cost_usd": 0.0,
+                "total_duration_ms": 0,
+                "tool_calls": 0,
+                "success_count": 0,
+            },
+        )
         g["calls"] += 1
         g["input_tokens"] += r.input_tokens
         g["output_tokens"] += r.output_tokens
@@ -155,12 +155,14 @@ async def get_breakdown(
     items = []
     for g in groups.values():
         calls = g["calls"]
-        items.append({
-            **g,
-            "avg_duration_ms": round(g["total_duration_ms"] / calls) if calls else 0,
-            "cost_usd": round(g["cost_usd"], 4),
-            "success_rate": round(g["success_count"] / calls, 4) if calls else 0,
-        })
+        items.append(
+            {
+                **g,
+                "avg_duration_ms": round(g["total_duration_ms"] / calls) if calls else 0,
+                "cost_usd": round(g["cost_usd"], 4),
+                "success_rate": round(g["success_count"] / calls, 4) if calls else 0,
+            }
+        )
     items.sort(key=lambda x: x["cost_usd"], reverse=True)
     return {"items": items, "period_days": days}
 
@@ -170,9 +172,7 @@ async def get_recent(
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(AIUsageLog).order_by(desc(AIUsageLog.timestamp)).limit(limit)
-    )
+    result = await db.execute(select(AIUsageLog).order_by(desc(AIUsageLog.timestamp)).limit(limit))
     rows = result.scalars().all()
     return {
         "items": [

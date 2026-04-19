@@ -15,14 +15,14 @@ from loguru import logger
 class GARCHResult:
     """Result of GARCH volatility forecast."""
 
-    current_vol: float       # current conditional volatility (annualized)
-    forecast_1: float        # 1-step ahead forecast
-    forecast_5: float        # 5-step ahead forecast
-    long_run_vol: float      # unconditional (long-run) volatility
-    method: str              # "garch" or "ewma" (fallback)
-    omega: float = 0.0       # GARCH omega parameter
-    alpha: float = 0.0       # GARCH alpha (news impact)
-    beta: float = 0.0        # GARCH beta (persistence)
+    current_vol: float  # current conditional volatility (annualized)
+    forecast_1: float  # 1-step ahead forecast
+    forecast_5: float  # 5-step ahead forecast
+    long_run_vol: float  # unconditional (long-run) volatility
+    method: str  # "garch" or "ewma" (fallback)
+    omega: float = 0.0  # GARCH omega parameter
+    alpha: float = 0.0  # GARCH alpha (news impact)
+    beta: float = 0.0  # GARCH beta (persistence)
 
     def to_dict(self) -> dict:
         return {

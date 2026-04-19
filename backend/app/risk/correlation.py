@@ -11,8 +11,8 @@ from loguru import logger
 
 # Fallback static correlations (used when no market data available)
 STATIC_CORRELATIONS = {
-    ("GOLD", "USDJPY"): -0.7,    # Gold and USDJPY often move inversely
-    ("GOLD", "BTCUSD"): 0.3,     # Weak positive (both risk hedges)
+    ("GOLD", "USDJPY"): -0.7,  # Gold and USDJPY often move inversely
+    ("GOLD", "BTCUSD"): 0.3,  # Weak positive (both risk hedges)
     ("OILCash", "USDJPY"): 0.2,  # Weak positive
 }
 
@@ -67,13 +67,13 @@ def compute_rolling_correlation(
         p = price_series[sym]
         if len(p) < window + 1:
             continue
-        r = np.diff(np.log(p[-window - 1:]))
+        r = np.diff(np.log(p[-window - 1 :]))
         if len(r) == window:
             returns[sym] = r
 
     # Pairwise correlation
     for i, sym_a in enumerate(symbols):
-        for sym_b in symbols[i + 1:]:
+        for sym_b in symbols[i + 1 :]:
             if sym_a in returns and sym_b in returns:
                 corr = np.corrcoef(returns[sym_a], returns[sym_b])[0, 1]
                 if not np.isnan(corr):
@@ -103,13 +103,15 @@ def detect_correlation_change(
 
         if change >= threshold:
             alert_level = "critical" if change >= 0.5 else "warning"
-            alerts.append({
-                "pair": f"{pair[0]}/{pair[1]}",
-                "old_corr": round(old_corr, 3),
-                "new_corr": round(new_corr, 3),
-                "change": round(change, 3),
-                "alert_level": alert_level,
-            })
+            alerts.append(
+                {
+                    "pair": f"{pair[0]}/{pair[1]}",
+                    "old_corr": round(old_corr, 3),
+                    "new_corr": round(new_corr, 3),
+                    "change": round(change, 3),
+                    "alert_level": alert_level,
+                }
+            )
             logger.warning(
                 f"Correlation change [{pair[0]}/{pair[1]}]: "
                 f"{old_corr:.2f} → {new_corr:.2f} (Δ{change:.2f}) [{alert_level}]"
@@ -133,6 +135,7 @@ def check_correlation_conflict(
     """
     # Resolve aliases (e.g., GOLDmicro → GOLD) for correlation lookup
     from app.config import get_canonical_symbol
+
     canonical = get_canonical_symbol(symbol)
 
     corr_map = correlations if correlations is not None else CORRELATIONS
@@ -166,18 +169,22 @@ def check_correlation_conflict(
         # For negatively correlated pairs: same direction = conflict
         if corr < -0.5:
             if (signal == 1 and other_is_long) or (signal == -1 and not other_is_long):
-                reason = (f"Correlation conflict: {symbol} {'BUY' if signal == 1 else 'SELL'} "
-                         f"vs {other} {'LONG' if other_is_long else 'SHORT'} "
-                         f"(correlation: {corr:.1f})")
+                reason = (
+                    f"Correlation conflict: {symbol} {'BUY' if signal == 1 else 'SELL'} "
+                    f"vs {other} {'LONG' if other_is_long else 'SHORT'} "
+                    f"(correlation: {corr:.1f})"
+                )
                 logger.warning(reason)
                 return True, reason
 
         # For positively correlated pairs: opposite direction = conflict
         if corr > 0.5:
             if (signal == 1 and not other_is_long) or (signal == -1 and other_is_long):
-                reason = (f"Correlation conflict: {symbol} {'BUY' if signal == 1 else 'SELL'} "
-                         f"vs {other} {'LONG' if other_is_long else 'SHORT'} "
-                         f"(correlation: {corr:.1f})")
+                reason = (
+                    f"Correlation conflict: {symbol} {'BUY' if signal == 1 else 'SELL'} "
+                    f"vs {other} {'LONG' if other_is_long else 'SHORT'} "
+                    f"(correlation: {corr:.1f})"
+                )
                 logger.warning(reason)
                 return True, reason
 

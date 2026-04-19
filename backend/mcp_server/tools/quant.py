@@ -16,6 +16,7 @@ async def get_var_analysis(symbol: str, timeframe: str = "M15", count: int = 200
         Dict with VaR metrics (historical, parametric, expected shortfall).
     """
     from mcp_server.tools.market_data import get_ohlcv
+
     data = await get_ohlcv(symbol, timeframe, count)
     if "error" in data:
         return data
@@ -31,6 +32,7 @@ async def get_var_analysis(symbol: str, timeframe: str = "M15", count: int = 200
 
     # Parametric VaR (assumes normal distribution)
     from scipy.stats import norm
+
     mu = float(np.mean(returns))
     sigma = float(np.std(returns))
     param_var = float(mu + sigma * norm.ppf(1 - confidence))
@@ -45,7 +47,7 @@ async def get_var_analysis(symbol: str, timeframe: str = "M15", count: int = 200
         "historical_var": round(hist_var * 100, 4),
         "parametric_var": round(param_var * 100, 4),
         "expected_shortfall": round(es * 100, 4),
-        "interpretation": f"At {confidence*100:.0f}% confidence, daily loss should not exceed {abs(hist_var)*100:.2f}%",
+        "interpretation": f"At {confidence * 100:.0f}% confidence, daily loss should not exceed {abs(hist_var) * 100:.2f}%",
     }
 
 
@@ -61,6 +63,7 @@ async def get_volatility_forecast(symbol: str, timeframe: str = "M15", count: in
         Dict with current, forecast, and long-run volatility.
     """
     from mcp_server.tools.market_data import get_ohlcv
+
     data = await get_ohlcv(symbol, timeframe, count)
     if "error" in data:
         return data
@@ -71,6 +74,7 @@ async def get_volatility_forecast(symbol: str, timeframe: str = "M15", count: in
 
     try:
         from app.risk.garch import fit_garch
+
         result = fit_garch(prices)
         d = result.to_dict()
         return {
@@ -104,11 +108,13 @@ async def get_quant_signals(symbol: str, timeframe: str = "M15", count: int = 20
         Dict with signal values and interpretations.
     """
     from mcp_server.tools.market_data import get_ohlcv
+
     data = await get_ohlcv(symbol, timeframe, count)
     if "error" in data:
         return data
 
     import pandas as pd
+
     df = pd.DataFrame(data["candles"])
     for col in ("open", "high", "low", "close"):
         df[col] = df[col].astype(float)
@@ -131,6 +137,7 @@ async def get_quant_signals(symbol: str, timeframe: str = "M15", count: int = 20
 
     # Volatility breakout (ATR ratio)
     from app.strategy.indicators import atr
+
     atr_values = atr(high, low, close, 14)
     atr_avg = float(atr_values.rolling(50).mean().iloc[-1])
     atr_current = float(atr_values.iloc[-1])
@@ -141,7 +148,11 @@ async def get_quant_signals(symbol: str, timeframe: str = "M15", count: int = 20
         "momentum_roc_20": round(roc_20, 4),
         "momentum_signal": "bullish" if roc_20 > 1 else "bearish" if roc_20 < -1 else "neutral",
         "mean_reversion_zscore": round(z_score, 4),
-        "mean_reversion_signal": "oversold (buy)" if z_score < -2 else "overbought (sell)" if z_score > 2 else "neutral",
+        "mean_reversion_signal": "oversold (buy)"
+        if z_score < -2
+        else "overbought (sell)"
+        if z_score > 2
+        else "neutral",
         "volatility_atr_ratio": round(atr_ratio, 4),
         "volatility_signal": "high (breakout)" if atr_ratio > 1.5 else "low (ranging)" if atr_ratio < 0.7 else "normal",
     }

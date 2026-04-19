@@ -7,13 +7,11 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from loguru import logger
-
 
 # PSI thresholds
-PSI_LOW = 0.10      # no significant drift
-PSI_MEDIUM = 0.25   # moderate drift — monitor
-PSI_HIGH = 0.50     # severe drift — alert
+PSI_LOW = 0.10  # no significant drift
+PSI_MEDIUM = 0.25  # moderate drift — monitor
+PSI_HIGH = 0.50  # severe drift — alert
 
 
 @dataclass
@@ -112,7 +110,7 @@ def compute_prediction_drift(
     if not recent_predictions or not training_label_dist:
         return {}
 
-    n = len(recent_predictions)
+    len(recent_predictions)
     preds = np.array(recent_predictions)
 
     actual_dist = {
@@ -151,9 +149,7 @@ def check_drift(
 
     if live_features is not None and training_stats:
         report.feature_drift = compute_feature_drift(live_features, training_stats)
-        report.drifted_features = [
-            f for f, psi in report.feature_drift.items() if psi > psi_threshold
-        ]
+        report.drifted_features = [f for f, psi in report.feature_drift.items() if psi > psi_threshold]
 
     if recent_predictions and training_label_dist:
         report.prediction_drift = compute_prediction_drift(recent_predictions, training_label_dist)
@@ -162,7 +158,9 @@ def check_drift(
     report.alert = n_drifted >= min_drifted_features
 
     if report.alert:
-        report.summary = f"DRIFT ALERT: {n_drifted} features shifted (PSI > {psi_threshold}): {report.drifted_features[:5]}"
+        report.summary = (
+            f"DRIFT ALERT: {n_drifted} features shifted (PSI > {psi_threshold}): {report.drifted_features[:5]}"
+        )
     elif n_drifted > 0:
         report.summary = f"Minor drift: {n_drifted} features (below alert threshold of {min_drifted_features})"
     else:

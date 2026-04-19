@@ -2,7 +2,7 @@
 Macro Data Service — fetches economic indicators from FRED API and stores in DB.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pandas as pd
@@ -66,10 +66,12 @@ class MacroDataService:
             for obs in observations:
                 if obs["value"] == ".":  # FRED uses "." for missing data
                     continue
-                result.append({
-                    "date": obs["date"],
-                    "value": float(obs["value"]),
-                })
+                result.append(
+                    {
+                        "date": obs["date"],
+                        "value": float(obs["value"]),
+                    }
+                )
             return result
         except Exception as e:
             logger.error(f"FRED fetch failed for {series_id}: {e}")
@@ -78,9 +80,9 @@ class MacroDataService:
     async def collect_all(self, from_date: str | None = None, to_date: str | None = None) -> dict:
         """Fetch all tracked FRED series and store in DB."""
         if not from_date:
-            from_date = (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d")
+            from_date = (datetime.now(UTC) - timedelta(days=365)).strftime("%Y-%m-%d")
         if not to_date:
-            to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            to_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
         stats = {}
         for series_id, series_name in FRED_SERIES.items():
@@ -90,12 +92,15 @@ class MacroDataService:
                 continue
 
             # Upsert into DB
-            rows = [{
-                "series_id": series_id,
-                "series_name": series_name,
-                "date": datetime.fromisoformat(obs["date"]),
-                "value": obs["value"],
-            } for obs in observations]
+            rows = [
+                {
+                    "series_id": series_id,
+                    "series_name": series_name,
+                    "date": datetime.fromisoformat(obs["date"]),
+                    "value": obs["value"],
+                }
+                for obs in observations
+            ]
 
             stmt = text("""
                 INSERT INTO macro_data (series_id, series_name, date, value)
@@ -114,10 +119,7 @@ class MacroDataService:
         snapshot = {}
         for series_id, series_name in FRED_SERIES.items():
             result = await self.db.execute(
-                select(MacroData)
-                .where(MacroData.series_id == series_id)
-                .order_by(MacroData.date.desc())
-                .limit(1)
+                select(MacroData).where(MacroData.series_id == series_id).order_by(MacroData.date.desc()).limit(1)
             )
             row = result.scalar_one_or_none()
             if row:

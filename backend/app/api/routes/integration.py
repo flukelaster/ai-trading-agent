@@ -8,11 +8,10 @@ import time
 import httpx
 from fastapi import APIRouter, Depends, Request
 from loguru import logger
-
-from app.auth import require_auth
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import require_auth
 from app.config import settings
 from app.db.session import get_db
 
@@ -21,12 +20,15 @@ router = APIRouter(prefix="/api/integration", tags=["integration"])
 
 # ─── Config helpers (Vault-first, env fallback) ─────────────────────────────
 
+
 async def _get_vault_value(db: AsyncSession, key: str) -> str | None:
     """Read a value from Secrets Vault."""
     try:
         from sqlalchemy import select
+
         from app.db.models import Secret
         from app.vault import vault
+
         result = await db.execute(select(Secret).where(Secret.key == key, Secret.is_deleted == False))  # noqa
         secret = result.scalar_one_or_none()
         if secret and vault and vault._derived_key:
@@ -40,8 +42,10 @@ async def _set_vault_value(db: AsyncSession, key: str, value: str, category: str
     """Save a value to Secrets Vault (encrypted)."""
     try:
         from sqlalchemy import select
+
         from app.db.models import Secret
         from app.vault import vault
+
         if not vault or not vault._derived_key:
             return
 
@@ -53,6 +57,7 @@ async def _set_vault_value(db: AsyncSession, key: str, value: str, category: str
             existing.nonce = nonce
             existing.is_deleted = False
             from datetime import datetime
+
             existing.updated_at = datetime.utcnow()
             existing.last_rotated_at = datetime.utcnow()
         else:
@@ -73,7 +78,8 @@ async def _get_config_value(db: AsyncSession, vault_key: str, env_fallback: str)
 async def _test_anthropic() -> dict:
     """Test Claude AI connectivity via Agent SDK (Max subscription)."""
     import os
-    start = time.time()
+
+    time.time()
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     if token:
         return {"name": "Claude AI (Max)", "status": "connected", "latency_ms": 0, "detail": "OAuth token configured"}
@@ -91,7 +97,12 @@ async def _test_mt5() -> dict:
             )
         latency = int((time.time() - start) * 1000)
         if resp.status_code == 200:
-            return {"name": "MT5 Bridge", "status": "connected", "latency_ms": latency, "detail": f"VPS: {settings.mt5_bridge_url}"}
+            return {
+                "name": "MT5 Bridge",
+                "status": "connected",
+                "latency_ms": latency,
+                "detail": f"VPS: {settings.mt5_bridge_url}",
+            }
         return {"name": "MT5 Bridge", "status": "error", "latency_ms": latency, "detail": f"HTTP {resp.status_code}"}
     except Exception as e:
         return {"name": "MT5 Bridge", "status": "error", "latency_ms": 0, "detail": str(e)}
@@ -138,6 +149,7 @@ async def _test_telegram() -> dict:
 async def get_integration_status(request: Request):
     """Test all integrations and return status."""
     import asyncio
+
     results = await asyncio.gather(
         _test_anthropic(),
         _test_mt5(),
@@ -158,8 +170,18 @@ async def _test_economic_calendar() -> dict:
         if resp.status_code == 200:
             events = resp.json()
             count = len(events) if isinstance(events, list) else 0
-            return {"name": "Economic Calendar", "status": "connected", "latency_ms": latency, "detail": f"{count} events this week"}
-        return {"name": "Economic Calendar", "status": "error", "latency_ms": latency, "detail": f"HTTP {resp.status_code}"}
+            return {
+                "name": "Economic Calendar",
+                "status": "connected",
+                "latency_ms": latency,
+                "detail": f"{count} events this week",
+            }
+        return {
+            "name": "Economic Calendar",
+            "status": "error",
+            "latency_ms": latency,
+            "detail": f"HTTP {resp.status_code}",
+        }
     except Exception as e:
         return {"name": "Economic Calendar", "status": "error", "latency_ms": 0, "detail": str(e)}
 
@@ -232,6 +254,7 @@ async def get_integration_config(db: AsyncSession = Depends(get_db)):
     """Get all integration configs (masked, Vault-first then env fallback)."""
     # Read from Vault first, fallback to env
     import os
+
     claude_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     mt5_url = await _get_config_value(db, "MT5_BRIDGE_URL", settings.mt5_bridge_url)
     mt5_key = await _get_config_value(db, "MT5_BRIDGE_API_KEY", getattr(settings, "mt5_bridge_api_key", ""))
@@ -251,7 +274,10 @@ async def get_integration_config(db: AsyncSession = Depends(get_db)):
                     "Specialist Model": "claude-haiku-4-5-20251001",
                 },
                 "tools": [
-                    {"name": "run_full_analysis", "description": "Comprehensive technical analysis (EMA, RSI, ATR, ADX, Bollinger)"},
+                    {
+                        "name": "run_full_analysis",
+                        "description": "Comprehensive technical analysis (EMA, RSI, ATR, ADX, Bollinger)",
+                    },
                     {"name": "get_tick", "description": "Get current bid/ask price"},
                     {"name": "get_ohlcv", "description": "Get OHLCV candlestick data"},
                     {"name": "calculate_ema", "description": "Calculate Exponential Moving Average"},
@@ -337,62 +363,77 @@ async def diagnose_claude_cli():
 
     # 1. Check claude binary
     claude_path = shutil.which("claude")
-    result["checks"].append({
-        "name": "claude_binary",
-        "ok": claude_path is not None,
-        "detail": claude_path or "NOT FOUND in PATH",
-    })
+    result["checks"].append(
+        {
+            "name": "claude_binary",
+            "ok": claude_path is not None,
+            "detail": claude_path or "NOT FOUND in PATH",
+        }
+    )
 
     # 2. Check node
     node_path = shutil.which("node")
-    result["checks"].append({
-        "name": "node_binary",
-        "ok": node_path is not None,
-        "detail": node_path or "NOT FOUND",
-    })
+    result["checks"].append(
+        {
+            "name": "node_binary",
+            "ok": node_path is not None,
+            "detail": node_path or "NOT FOUND",
+        }
+    )
 
     # 3. Check token env
     token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     has_space = " " in token
-    result["checks"].append({
-        "name": "oauth_token",
-        "ok": bool(token) and not has_space,
-        "detail": f"set ({len(token)} chars, has_space={has_space})" if token else "NOT SET",
-    })
+    result["checks"].append(
+        {
+            "name": "oauth_token",
+            "ok": bool(token) and not has_space,
+            "detail": f"set ({len(token)} chars, has_space={has_space})" if token else "NOT SET",
+        }
+    )
 
     # 4. Check current user (must NOT be root)
     uid = os.getuid()
-    result["checks"].append({
-        "name": "non_root_user",
-        "ok": uid != 0,
-        "detail": f"uid={uid} user={os.environ.get('USER', 'unknown')}",
-    })
+    result["checks"].append(
+        {
+            "name": "non_root_user",
+            "ok": uid != 0,
+            "detail": f"uid={uid} user={os.environ.get('USER', 'unknown')}",
+        }
+    )
 
     # 5. Try running claude --version
     if claude_path:
         try:
             proc = subprocess.run(
                 [claude_path, "--version"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
-            result["checks"].append({
-                "name": "claude_version",
-                "ok": proc.returncode == 0,
-                "detail": (proc.stdout.strip() or proc.stderr.strip())[:200],
-            })
+            result["checks"].append(
+                {
+                    "name": "claude_version",
+                    "ok": proc.returncode == 0,
+                    "detail": (proc.stdout.strip() or proc.stderr.strip())[:200],
+                }
+            )
         except Exception as e:
-            result["checks"].append({
-                "name": "claude_version",
-                "ok": False,
-                "detail": str(e)[:200],
-            })
+            result["checks"].append(
+                {
+                    "name": "claude_version",
+                    "ok": False,
+                    "detail": str(e)[:200],
+                }
+            )
 
     # 6. Try a minimal SDK query
     stderr_out: list[str] = []
     text_out: list[str] = []
     try:
-        from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage
+        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, query
         from claude_agent_sdk.types import TextBlock
+
         async for msg in query(
             prompt="Reply with exactly: OK",
             options=ClaudeAgentOptions(
@@ -407,18 +448,22 @@ async def diagnose_claude_cli():
                     if isinstance(block, TextBlock):
                         text_out.append(block.text)
 
-        result["checks"].append({
-            "name": "sdk_query",
-            "ok": bool(text_out),
-            "detail": "".join(text_out)[:200] or "empty response",
-        })
+        result["checks"].append(
+            {
+                "name": "sdk_query",
+                "ok": bool(text_out),
+                "detail": "".join(text_out)[:200] or "empty response",
+            }
+        )
     except Exception as e:
-        result["checks"].append({
-            "name": "sdk_query",
-            "ok": False,
-            "detail": str(e)[:300],
-            "stderr": "".join(stderr_out[-5:])[:500] if stderr_out else "empty",
-        })
+        result["checks"].append(
+            {
+                "name": "sdk_query",
+                "ok": False,
+                "detail": str(e)[:300],
+                "stderr": "".join(stderr_out[-5:])[:500] if stderr_out else "empty",
+            }
+        )
 
     result["all_ok"] = all(c["ok"] for c in result["checks"])
     return result

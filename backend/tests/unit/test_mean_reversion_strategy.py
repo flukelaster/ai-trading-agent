@@ -4,7 +4,6 @@ Unit tests for Mean Reversion Strategy.
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from app.strategy.mean_reversion import MeanReversionStrategy
 
@@ -12,8 +11,11 @@ from app.strategy.mean_reversion import MeanReversionStrategy
 class TestMeanReversionStrategy:
     def setup_method(self):
         self.strategy = MeanReversionStrategy(
-            bb_period=20, bb_std=2.0,
-            rsi_period=14, rsi_overbought=70, rsi_oversold=30,
+            bb_period=20,
+            bb_std=2.0,
+            rsi_period=14,
+            rsi_overbought=70,
+            rsi_oversold=30,
             min_bandwidth=0.005,
         )
 
@@ -28,19 +30,23 @@ class TestMeanReversionStrategy:
         n = 80
         np.random.seed(42)
         # Start with normal range, then sharp drop to trigger oversold + lower band
-        close = np.concatenate([
-            np.full(50, 100.0) + np.random.randn(50) * 2,
-            np.linspace(100, 80, 30),  # sharp drop
-        ])
+        close = np.concatenate(
+            [
+                np.full(50, 100.0) + np.random.randn(50) * 2,
+                np.linspace(100, 80, 30),  # sharp drop
+            ]
+        )
         high = close + 3
         low = close - 3
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close + np.random.randn(n),
-            "high": high,
-            "low": low,
-            "close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close + np.random.randn(n),
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+        )
         result = self.strategy.calculate(df)
         buy_signals = result[result["signal"] == 1]
         assert len(buy_signals) >= 0  # May or may not trigger depending on exact values
@@ -49,19 +55,23 @@ class TestMeanReversionStrategy:
         """Close at upper BB + RSI > 70 → SELL reversal."""
         n = 80
         np.random.seed(42)
-        close = np.concatenate([
-            np.full(50, 100.0) + np.random.randn(50) * 2,
-            np.linspace(100, 120, 30),  # sharp rise
-        ])
+        close = np.concatenate(
+            [
+                np.full(50, 100.0) + np.random.randn(50) * 2,
+                np.linspace(100, 120, 30),  # sharp rise
+            ]
+        )
         high = close + 3
         low = close - 3
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close + np.random.randn(n),
-            "high": high,
-            "low": low,
-            "close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close + np.random.randn(n),
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+        )
         result = self.strategy.calculate(df)
         sell_signals = result[result["signal"] == -1]
         assert len(sell_signals) >= 0  # May or may not trigger
@@ -73,13 +83,15 @@ class TestMeanReversionStrategy:
         close = np.full(n, 100.0) + np.random.RandomState(42).randn(n) * 0.01
         high = close + 0.01
         low = close - 0.01
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close,
-            "high": high,
-            "low": low,
-            "close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close,
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+        )
         result = self.strategy.calculate(df)
         signals = result[result["signal"] != 0]
         assert len(signals) == 0, "Squeeze should suppress all mean reversion signals"
@@ -92,13 +104,15 @@ class TestMeanReversionStrategy:
         close = np.full(n, 100.0) + np.random.randn(n) * 1
         high = close + 2
         low = close - 2
-        df = pd.DataFrame({
-            "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
-            "open": close,
-            "high": high,
-            "low": low,
-            "close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2025-01-01", periods=n, freq="15min"),
+                "open": close,
+                "high": high,
+                "low": low,
+                "close": close,
+            }
+        )
         result = strategy.calculate(df)
         # High min_bandwidth should filter out most/all signals
         signals = result[result["signal"] != 0]

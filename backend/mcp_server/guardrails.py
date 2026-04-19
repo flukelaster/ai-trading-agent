@@ -7,16 +7,12 @@ validate_order() before execution.
 State is tracked in Redis with TTL-based keys for automatic expiry.
 """
 
-import json
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import redis.asyncio as redis_lib
-from loguru import logger
-
 
 # ─── Hard Limits (non-negotiable) ────────────────────────────────────────────
 
@@ -56,16 +52,17 @@ _KEY_PREFIX = "guardrails"
 
 
 def _daily_key(name: str) -> str:
-    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date = datetime.now(UTC).strftime("%Y-%m-%d")
     return f"{_KEY_PREFIX}:{name}:{date}"
 
 
 def _hourly_key(name: str) -> str:
-    hour = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+    hour = datetime.now(UTC).strftime("%Y-%m-%dT%H")
     return f"{_KEY_PREFIX}:{name}:{hour}"
 
 
 # ─── Validation Result ───────────────────────────────────────────────────────
+
 
 @dataclass
 class GuardrailResult:
@@ -74,6 +71,7 @@ class GuardrailResult:
 
 
 # ─── Guardrails Class ────────────────────────────────────────────────────────
+
 
 class TradingGuardrails:
     """Enforces hard trading limits at the MCP tool level."""
@@ -113,10 +111,10 @@ class TradingGuardrails:
         mode = self.get_rollout_mode()
 
         if mode == "shadow":
-            return GuardrailResult(False, f"SHADOW MODE: order logged but not executed")
+            return GuardrailResult(False, "SHADOW MODE: order logged but not executed")
 
         if mode == "paper":
-            return GuardrailResult(False, f"PAPER MODE: order simulated, not sent to broker")
+            return GuardrailResult(False, "PAPER MODE: order simulated, not sent to broker")
 
         if mode == "micro":
             if lot > MICRO_MAX_LOT:
@@ -292,7 +290,7 @@ class TradingGuardrails:
         val = await self.redis.get(key)
         return int(val) if val else 0
 
-    async def _get_last_trade_time(self) -> Optional[float]:
+    async def _get_last_trade_time(self) -> float | None:
         """Get timestamp of last trade."""
         val = await self.redis.get(f"{_KEY_PREFIX}:last_trade_time")
         return float(val) if val else None

@@ -6,9 +6,8 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Query
 
-from app.auth import require_auth
-
 from app.api.routes.bot import _get_engine, get_manager
+from app.auth import require_auth
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])
 

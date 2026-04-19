@@ -17,6 +17,7 @@ _test_vault = VaultService("test-vault-master-key-for-testing")
 
 def _make_test_app(db_session):
     from fastapi import FastAPI
+
     from app.api.routes import secrets
 
     app = FastAPI()
@@ -56,12 +57,15 @@ class TestSecretsCRUD:
 
     @pytest.mark.asyncio
     async def test_create_secret(self, client):
-        resp = await client.put("/api/secrets/TEST_KEY", json={
-            "value": "my-secret-value-12345",
-            "category": "auth",
-            "description": "Test API key",
-            "is_required": True,
-        })
+        resp = await client.put(
+            "/api/secrets/TEST_KEY",
+            json={
+                "value": "my-secret-value-12345",
+                "category": "auth",
+                "description": "Test API key",
+                "is_required": True,
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "secret_created"
@@ -82,10 +86,13 @@ class TestSecretsCRUD:
 
     @pytest.mark.asyncio
     async def test_get_secret_masked(self, client):
-        await client.put("/api/secrets/LONG_TOKEN", json={
-            "value": "sk-ant-oat01-abc123def456fa61",
-            "category": "auth",
-        })
+        await client.put(
+            "/api/secrets/LONG_TOKEN",
+            json={
+                "value": "sk-ant-oat01-abc123def456fa61",
+                "category": "auth",
+            },
+        )
         resp = await client.get("/api/secrets/LONG_TOKEN")
         assert resp.status_code == 200
         data = resp.json()

@@ -3,9 +3,13 @@ Risk Manager — lot sizing, SL/TP calculation, trade permission checks.
 """
 
 from dataclasses import dataclass
+from datetime import UTC
+
 from loguru import logger
 
 from app.constants import (
+    AI_MAX_THRESHOLD,
+    AI_WORST_HOUR_THRESHOLD_BOOST,
     DEFAULT_COMMISSION_PCT,
     DEFAULT_SLIPPAGE_PIPS,
     HIGH_VOL_LOT_FACTOR,
@@ -19,8 +23,6 @@ from app.constants import (
     REGIME_LOT_MULTIPLIERS,
     STREAK_2_FACTOR,
     STREAK_3_FACTOR,
-    AI_MAX_THRESHOLD,
-    AI_WORST_HOUR_THRESHOLD_BOOST,
 )
 
 
@@ -95,7 +97,10 @@ class RiskManager:
             logger.info(f"Regime changed: {old} → {regime} (lot mult: {self.regime_lot_multiplier})")
 
     def calculate_lot_size(
-        self, balance: float, sl_pips: float, pip_value: float | None = None,
+        self,
+        balance: float,
+        sl_pips: float,
+        pip_value: float | None = None,
         atr_pct: float | None = None,
         slippage_pips: float = DEFAULT_SLIPPAGE_PIPS,
         commission_pct: float = DEFAULT_COMMISSION_PCT,
@@ -125,8 +130,12 @@ class RiskManager:
         return max(lot, MIN_LOT)
 
     def calculate_kelly_size(
-        self, balance: float, sl_pips: float,
-        win_rate: float, avg_win: float, avg_loss: float,
+        self,
+        balance: float,
+        sl_pips: float,
+        win_rate: float,
+        avg_win: float,
+        avg_loss: float,
         pip_value: float | None = None,
     ) -> float:
         """Kelly Criterion position sizing (fractional Kelly = 0.25x for safety)."""
@@ -159,10 +168,15 @@ class RiskManager:
         return max(base_lot, MIN_LOT)
 
     def calculate_sl_tp(
-        self, entry_price: float, signal: int, atr: float,
-        sl_mult: float | None = None, tp_mult: float | None = None,
+        self,
+        entry_price: float,
+        signal: int,
+        atr: float,
+        sl_mult: float | None = None,
+        tp_mult: float | None = None,
     ) -> SLTPResult:
         from app.strategy.regime import REGIME_ADJUSTMENTS
+
         sl_m = sl_mult if sl_mult is not None else self.sl_atr_mult
         tp_m = tp_mult if tp_mult is not None else self.tp_atr_mult
         # Apply regime SL/TP adjustments
@@ -191,11 +205,12 @@ class RiskManager:
         from app.constants import (
             CONFIDENCE_DRAWDOWN_5_BOOST,
             CONFIDENCE_DRAWDOWN_10_BOOST,
-            CONFIDENCE_RANGING_BOOST,
-            CONFIDENCE_TRENDING_HV_DISCOUNT,
             CONFIDENCE_LOW_WINRATE_BOOST,
             CONFIDENCE_LOW_WINRATE_THRESHOLD,
+            CONFIDENCE_RANGING_BOOST,
+            CONFIDENCE_TRENDING_HV_DISCOUNT,
         )
+
         threshold = self.ai_confidence_threshold + session_boost
 
         # Drawdown-based tightening
@@ -241,8 +256,9 @@ class RiskManager:
         else:
             eff_threshold = self.ai_confidence_threshold
             if trade_patterns:
-                from datetime import datetime, timezone
-                current_hour = datetime.now(timezone.utc).hour
+                from datetime import datetime
+
+                current_hour = datetime.now(UTC).hour
                 worst_hours = trade_patterns.get("worst_hours", [])
                 if current_hour in worst_hours:
                     eff_threshold = min(eff_threshold + AI_WORST_HOUR_THRESHOLD_BOOST, AI_MAX_THRESHOLD)

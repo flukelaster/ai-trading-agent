@@ -20,15 +20,15 @@ from dataclasses import dataclass
 class TradeReasoning:
     """Structured pre-trade reasoning — AI must fill this before any trade."""
 
-    setup: str                       # market setup description
-    confirmations: list[str]         # list of confirming signals
-    confirmation_count: int          # X out of 5
-    risk_reward: str                 # SL/TP description + ratio
-    counter_evidence: str            # what could make this trade fail
-    what_would_invalidate: str       # specific condition that kills the thesis
-    confidence: float                # 0-1 overall confidence
-    position_size_reason: str        # why this lot size
-    decision: str                    # BUY, SELL, HOLD, UNCERTAIN
+    setup: str  # market setup description
+    confirmations: list[str]  # list of confirming signals
+    confirmation_count: int  # X out of 5
+    risk_reward: str  # SL/TP description + ratio
+    counter_evidence: str  # what could make this trade fail
+    what_would_invalidate: str  # specific condition that kills the thesis
+    confidence: float  # 0-1 overall confidence
+    position_size_reason: str  # why this lot size
+    decision: str  # BUY, SELL, HOLD, UNCERTAIN
 
     def to_dict(self) -> dict:
         return {
@@ -89,10 +89,10 @@ class PostTradeAccountability:
 
     trade_id: str
     pre_reasoning: TradeReasoning
-    actual_outcome: str              # what actually happened
-    pnl: float                       # actual P&L
-    reasoning_correct: bool          # was the thesis correct?
-    classification: str              # skilled_win, correct_process, lucky_win, real_mistake
+    actual_outcome: str  # what actually happened
+    pnl: float  # actual P&L
+    reasoning_correct: bool  # was the thesis correct?
+    classification: str  # skilled_win, correct_process, lucky_win, real_mistake
 
     def to_dict(self) -> dict:
         return {

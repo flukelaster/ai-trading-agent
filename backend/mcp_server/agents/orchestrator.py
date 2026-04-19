@@ -14,14 +14,13 @@ Model: Sonnet (best reasoning for synthesis and final decisions).
 import asyncio
 import json
 import time
-from typing import Any
 
 from loguru import logger
 
-from mcp_server.agents import technical_analyst, fundamental_analyst, risk_analyst, reflector
+from mcp_server.agents import fundamental_analyst, reflector, risk_analyst, technical_analyst
 from mcp_server.agents.base import (
-    run_agent_loop,
     MODEL_ORCHESTRATOR,
+    run_agent_loop,
 )
 
 SYSTEM_PROMPT = """You are the Orchestrator of a multi-agent trading system for {TRADABLE_SYMBOLS}.
@@ -160,6 +159,7 @@ async def run_multi_agent(
     )
 
     from mcp_server.agents.prompt_registry import get_active_prompt
+
     active_prompt = await get_active_prompt("orchestrator")
     orchestrator_result = await run_agent_loop(
         system_prompt=active_prompt,
@@ -258,4 +258,4 @@ Your specialist analysts have completed their assessments:
 
 Based on these three reports, make your trading decision for {symbol}.
 Remember: you MUST log your decision with `log_decision`, whether you trade or hold.
-Input context: {json.dumps(job_input, default=str) if job_input else '{}'}"""
+Input context: {json.dumps(job_input, default=str) if job_input else "{}"}"""

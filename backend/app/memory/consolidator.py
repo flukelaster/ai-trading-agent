@@ -8,7 +8,7 @@ No LLM calls — pure SQL operations.
 from datetime import datetime, timedelta
 
 from loguru import logger
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AgentMemory, MemoryTier
@@ -113,9 +113,7 @@ async def _enforce_limits(db: AsyncSession) -> int:
 
     for tier, limit in [(MemoryTier.MID, MAX_MID_TERM), (MemoryTier.LONG, MAX_LONG_TERM)]:
         result = await db.execute(
-            select(AgentMemory)
-            .where(AgentMemory.tier == tier)
-            .order_by(AgentMemory.confidence.desc())
+            select(AgentMemory).where(AgentMemory.tier == tier).order_by(AgentMemory.confidence.desc())
         )
         all_memories = result.scalars().all()
 

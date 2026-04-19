@@ -20,8 +20,8 @@ class Confirmation:
 
     name: str
     passed: bool
-    confidence: float    # 0-1
-    detail: str          # human-readable explanation
+    confidence: float  # 0-1
+    detail: str  # human-readable explanation
 
     def to_dict(self) -> dict:
         return {
@@ -40,7 +40,7 @@ class ConfirmationResult:
     passed_count: int
     required: int
     approved: bool
-    decision: str          # BUY, SELL, HOLD, UNCERTAIN
+    decision: str  # BUY, SELL, HOLD, UNCERTAIN
 
     def to_dict(self) -> dict:
         return {
@@ -92,12 +92,14 @@ class ConfirmationGate:
             else:
                 quant_agrees = False
 
-            confirmations.append(Confirmation(
-                name="quant_signal",
-                passed=quant_agrees,
-                confidence=min(abs(z) / 2, 1.0),
-                detail=f"z-score={z:.2f}, momentum={mom:.2f}",
-            ))
+            confirmations.append(
+                Confirmation(
+                    name="quant_signal",
+                    passed=quant_agrees,
+                    confidence=min(abs(z) / 2, 1.0),
+                    detail=f"z-score={z:.2f}, momentum={mom:.2f}",
+                )
+            )
         else:
             confirmations.append(Confirmation("quant_signal", False, 0, "no data"))
 
@@ -107,12 +109,14 @@ class ConfirmationGate:
             ml_conf = ml_prediction.get("confidence", 0)
             ml_agrees = ml_signal == signal and ml_conf > 0.6
 
-            confirmations.append(Confirmation(
-                name="ml_prediction",
-                passed=ml_agrees,
-                confidence=ml_conf,
-                detail=f"ML signal={ml_signal}, confidence={ml_conf:.0%}",
-            ))
+            confirmations.append(
+                Confirmation(
+                    name="ml_prediction",
+                    passed=ml_agrees,
+                    confidence=ml_conf,
+                    detail=f"ML signal={ml_signal}, confidence={ml_conf:.0%}",
+                )
+            )
         else:
             confirmations.append(Confirmation("ml_prediction", False, 0, "no model"))
 
@@ -123,12 +127,14 @@ class ConfirmationGate:
             # BUY/SELL in ranging → less confident (mean reversion preferred)
             regime_suitable = regime_label != "ranging" or abs(signal) == 0
 
-            confirmations.append(Confirmation(
-                name="regime_match",
-                passed=regime_suitable,
-                confidence=regime.get("probabilities", {}).get(regime_label, 0.5),
-                detail=f"regime={regime_label}",
-            ))
+            confirmations.append(
+                Confirmation(
+                    name="regime_match",
+                    passed=regime_suitable,
+                    confidence=regime.get("probabilities", {}).get(regime_label, 0.5),
+                    detail=f"regime={regime_label}",
+                )
+            )
         else:
             confirmations.append(Confirmation("regime_match", False, 0, "no data"))
 
@@ -137,12 +143,14 @@ class ConfirmationGate:
             ratio = risk_reward.get("ratio", 0)
             rr_good = ratio >= 1.5
 
-            confirmations.append(Confirmation(
-                name="risk_reward",
-                passed=rr_good,
-                confidence=min(ratio / 3.0, 1.0),
-                detail=f"R:R={ratio:.1f}",
-            ))
+            confirmations.append(
+                Confirmation(
+                    name="risk_reward",
+                    passed=rr_good,
+                    confidence=min(ratio / 3.0, 1.0),
+                    detail=f"R:R={ratio:.1f}",
+                )
+            )
         else:
             confirmations.append(Confirmation("risk_reward", False, 0, "no data"))
 
@@ -151,12 +159,14 @@ class ConfirmationGate:
             ai_agrees = ai_reasoning.get("agrees", False)
             ai_conf = ai_reasoning.get("confidence", 0)
 
-            confirmations.append(Confirmation(
-                name="ai_reasoning",
-                passed=ai_agrees,
-                confidence=ai_conf,
-                detail=ai_reasoning.get("reasoning", "")[:100],
-            ))
+            confirmations.append(
+                Confirmation(
+                    name="ai_reasoning",
+                    passed=ai_agrees,
+                    confidence=ai_conf,
+                    detail=ai_reasoning.get("reasoning", "")[:100],
+                )
+            )
         else:
             confirmations.append(Confirmation("ai_reasoning", False, 0, "no analysis"))
 

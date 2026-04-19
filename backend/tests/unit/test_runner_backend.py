@@ -2,14 +2,13 @@
 Unit tests for runner/backend.py — ProcessRunnerBackend.
 """
 
-import asyncio
 import json
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.runner.backend import LogEntry, ProcessInfo, ProcessRunnerBackend, ResourceMetrics
+from app.runner.backend import LogEntry, ProcessInfo, ProcessRunnerBackend
 
 
 class TestProcessRunnerBackendStart:
@@ -53,9 +52,7 @@ class TestProcessRunnerBackendStart:
         mock_process1.returncode = 0  # exited
         mock_process1.stdout = AsyncMock()
         mock_process1.stdout.readline = AsyncMock(return_value=b"")
-        backend._processes[1] = ProcessInfo(
-            process=mock_process1, pid=100, started_at=datetime.utcnow()
-        )
+        backend._processes[1] = ProcessInfo(process=mock_process1, pid=100, started_at=datetime.utcnow())
 
         mock_process2 = AsyncMock()
         mock_process2.pid = 200
@@ -139,9 +136,7 @@ class TestProcessRunnerBackendIsAlive:
         mock_process = AsyncMock()
         mock_process.returncode = None
         mock_process.pid = 10
-        backend._processes[1] = ProcessInfo(
-            process=mock_process, pid=10, started_at=datetime.utcnow()
-        )
+        backend._processes[1] = ProcessInfo(process=mock_process, pid=10, started_at=datetime.utcnow())
         assert await backend.is_alive(1) is True
 
     @pytest.mark.asyncio
@@ -150,9 +145,7 @@ class TestProcessRunnerBackendIsAlive:
         mock_process = AsyncMock()
         mock_process.returncode = 1
         mock_process.pid = 10
-        backend._processes[1] = ProcessInfo(
-            process=mock_process, pid=10, started_at=datetime.utcnow()
-        )
+        backend._processes[1] = ProcessInfo(process=mock_process, pid=10, started_at=datetime.utcnow())
         assert await backend.is_alive(1) is False
 
     @pytest.mark.asyncio
@@ -209,8 +202,7 @@ class TestProcessRunnerBackendGetLogs:
         info = ProcessInfo(process=mock_process, pid=1, started_at=datetime.utcnow())
         now = datetime.utcnow()
         info.log_buffer = [
-            LogEntry(timestamp=now - timedelta(seconds=i), level="info", message=f"log {i}")
-            for i in range(10)
+            LogEntry(timestamp=now - timedelta(seconds=i), level="info", message=f"log {i}") for i in range(10)
         ]
         backend._processes[1] = info
 
@@ -232,9 +224,7 @@ class TestProcessRunnerBackendGetMetrics:
         mock_process = AsyncMock()
         mock_process.pid = 10
         mock_process.returncode = None
-        backend._processes[1] = ProcessInfo(
-            process=mock_process, pid=10, started_at=datetime.utcnow()
-        )
+        backend._processes[1] = ProcessInfo(process=mock_process, pid=10, started_at=datetime.utcnow())
 
         mock_psutil_proc = MagicMock()
         mock_psutil_proc.cpu_percent.return_value = 25.5
@@ -254,9 +244,7 @@ class TestProcessRunnerBackendGetMetrics:
         mock_process = AsyncMock()
         mock_process.pid = 10
         mock_process.returncode = None
-        backend._processes[1] = ProcessInfo(
-            process=mock_process, pid=10, started_at=datetime.utcnow()
-        )
+        backend._processes[1] = ProcessInfo(process=mock_process, pid=10, started_at=datetime.utcnow())
 
         with patch("psutil.Process", side_effect=Exception("no such process")):
             metrics = await backend.get_metrics(1)

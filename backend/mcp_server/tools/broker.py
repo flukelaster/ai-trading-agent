@@ -6,6 +6,7 @@ before reaching the MT5 Bridge. The agent cannot bypass this.
 
 import redis.asyncio as redis_lib
 from loguru import logger
+
 from app.mt5.connector import MT5BridgeConnector
 from app.notifications.telegram import TelegramNotifier
 from app.risk.circuit_breaker import CircuitBreaker
@@ -62,10 +63,12 @@ async def place_order(
     # Use the live engine list — engines are keyed by actual broker symbols from SYMBOLS env var
     try:
         from app.api.routes.bot import get_manager
+
         mgr = get_manager()
         if symbol not in mgr.engines:
             # AI sent canonical name (GOLD), find matching broker name in engines
             from app.config import SYMBOL_ALIASES
+
             for broker_name, canonical in SYMBOL_ALIASES.items():
                 if canonical == symbol and broker_name in mgr.engines:
                     logger.info(f"Symbol resolved: {symbol} → {broker_name}")
@@ -78,6 +81,7 @@ async def place_order(
 
     # Get current state for guardrail checks (concurrent)
     import asyncio as _aio
+
     account_res, positions_res, tick_res = await _aio.gather(
         _connector.get_account(),
         _connector.get_positions(),
@@ -134,7 +138,7 @@ async def place_order(
     # ─── ROLLOUT MODE CHECK (Phase F) ────────────────────────────────────
     from mcp_server.guardrails import MICRO_MAX_LOT
 
-    rollout = _guardrails.check_rollout_mode(lot)
+    _guardrails.check_rollout_mode(lot)
     rollout_mode = _guardrails.get_rollout_mode()
 
     if rollout_mode == "shadow":
@@ -143,8 +147,11 @@ async def place_order(
             "executed": False,
             "mode": "shadow",
             "would_execute": {
-                "symbol": symbol, "order_type": order_type,
-                "lot": lot, "sl": sl, "tp": tp,
+                "symbol": symbol,
+                "order_type": order_type,
+                "lot": lot,
+                "sl": sl,
+                "tp": tp,
             },
             "message": "Shadow mode: order logged for review, not sent to broker",
         }
@@ -152,14 +159,18 @@ async def place_order(
     if rollout_mode == "paper":
         # Paper: simulate execution with fake ticket
         import random
+
         return {
             "executed": True,
             "mode": "paper",
             "order": {
                 "ticket": random.randint(900000, 999999),
-                "symbol": symbol, "type": order_type,
-                "lot": lot, "price": tick.get("ask" if order_type == "BUY" else "bid", 0),
-                "sl": sl, "tp": tp,
+                "symbol": symbol,
+                "type": order_type,
+                "lot": lot,
+                "price": tick.get("ask" if order_type == "BUY" else "bid", 0),
+                "sl": sl,
+                "tp": tp,
                 "simulated": True,
             },
             "message": "Paper mode: simulated execution (not real)",
@@ -188,8 +199,12 @@ async def place_order(
         if _notifier:
             try:
                 await _notifier.send_trade_alert(
-                    trade_type=order_type, symbol=symbol,
-                    price=data.get("price", 0), sl=sl, tp=tp, lot=lot,
+                    trade_type=order_type,
+                    symbol=symbol,
+                    price=data.get("price", 0),
+                    sl=sl,
+                    tp=tp,
+                    lot=lot,
                 )
             except Exception as e:
                 logger.error(f"Telegram notify failed: {e}")
@@ -197,6 +212,7 @@ async def place_order(
         try:
             from app.bot.manager import get_manager
             from app.db.models import BotEventType
+
             engine = get_manager().engines.get(symbol)
             if engine:
                 await engine._log_event(
@@ -292,7 +308,9 @@ async def close_position(ticket: int) -> dict:
                     trade_type=f"CLOSE_{pos_info.get('type', '')}",
                     symbol=pos_info.get("symbol", ""),
                     price=pos_info.get("price_current", 0),
-                    sl=0, tp=0, lot=pos_info.get("volume", 0),
+                    sl=0,
+                    tp=0,
+                    lot=pos_info.get("volume", 0),
                     extra=f"${pos_info.get('profit', 0):+.2f}",
                 )
             except Exception as e:
@@ -302,6 +320,7 @@ async def close_position(ticket: int) -> dict:
             try:
                 from app.bot.manager import get_manager
                 from app.db.models import BotEventType
+
                 sym = pos_info.get("symbol", "")
                 engine = get_manager().engines.get(sym)
                 if engine:

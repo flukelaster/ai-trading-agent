@@ -21,6 +21,7 @@ class MLPredictor:
             logger.warning(f"ML model not found at {path}")
             return
         import joblib
+
         data = joblib.load(path)
         self.model = data["model"]
         self.feature_columns = data.get("features", FEATURE_COLUMNS)

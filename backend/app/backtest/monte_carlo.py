@@ -2,7 +2,7 @@
 Monte Carlo Simulation — assess strategy robustness by randomizing trade sequences.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from loguru import logger

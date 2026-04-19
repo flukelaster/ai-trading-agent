@@ -51,14 +51,13 @@ class SymbolBase(BaseModel):
     @classmethod
     def _check_asset_class(cls, v: str) -> str:
         from app.market.sessions import supported_asset_classes
+
         if v.lower() not in supported_asset_classes():
-            raise ValueError(
-                f"asset_class must be one of {supported_asset_classes()}; got {v!r}"
-            )
+            raise ValueError(f"asset_class must be one of {supported_asset_classes()}; got {v!r}")
         return v.lower()
 
     @model_validator(mode="after")
-    def _check_lot_bounds(self) -> "SymbolBase":
+    def _check_lot_bounds(self) -> SymbolBase:
         if self.default_lot > self.max_lot:
             raise ValueError("default_lot must be <= max_lot")
         return self
@@ -133,7 +132,9 @@ async def _audit(
     detail: dict | None = None,
 ) -> None:
     await log_audit(
-        db, action, resource=f"symbol:{symbol}",
+        db,
+        action,
+        resource=f"symbol:{symbol}",
         detail=detail,
         ip=request.client.host if request.client else None,
         auto_commit=False,
@@ -158,6 +159,7 @@ async def _reload_engines_direct(request: Request) -> None:
         return
     try:
         from app.config import apply_db_symbol_profiles
+
         async with async_session() as _s:
             db_profiles = await svc.load_profiles_from_db(_s)
         apply_db_symbol_profiles(db_profiles)
@@ -232,9 +234,7 @@ async def broker_catalog(request: Request) -> dict:
                     "description": it.get("description") or "",
                     "asset_class": _infer_asset_class(it.get("path") or ""),
                     "price_decimals": int(it["digits"]),
-                    "pip_value": _pip_value_from_spec(
-                        int(it["digits"]), float(it["point"])
-                    ),
+                    "pip_value": _pip_value_from_spec(int(it["digits"]), float(it["point"])),
                     "contract_size": float(it["trade_contract_size"]),
                     "volume_min": float(it["volume_min"]),
                     "volume_max": float(it["volume_max"]),
@@ -249,6 +249,7 @@ async def broker_catalog(request: Request) -> dict:
     redis_client = getattr(request.app.state, "redis", None)
     if redis_client is not None:
         from app.cache import cached
+
         return await cached(redis_client, "xm:catalog:v1", 3600, _fetch)
     return await _fetch()
 

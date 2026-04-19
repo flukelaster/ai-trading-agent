@@ -1,10 +1,11 @@
 """MCP tools for decision journaling — audit trail for agent reasoning."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
-from mcp_server.tools import auth_headers, backend_url as _backend_url
+from mcp_server.tools import auth_headers
+from mcp_server.tools import backend_url as _backend_url
 
 
 async def log_decision(
@@ -39,7 +40,7 @@ async def log_decision(
             "reasoning": reasoning,
             "confidence": confidence,
             "indicators": indicators,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         },
     }
 
@@ -59,11 +60,18 @@ async def log_decision(
             if resp.status_code not in (200, 201):
                 # Fallback: print to stdout (captured by ProcessRunnerBackend)
                 import json
-                print(json.dumps({"level": "info", "message": f"[Journal] {decision}", "metadata": entry["detail"]}), flush=True)
+
+                print(
+                    json.dumps({"level": "info", "message": f"[Journal] {decision}", "metadata": entry["detail"]}),
+                    flush=True,
+                )
     except Exception:
         # If backend is unreachable, log to stdout
         import json
-        print(json.dumps({"level": "info", "message": f"[Journal] {decision}", "metadata": entry["detail"]}), flush=True)
+
+        print(
+            json.dumps({"level": "info", "message": f"[Journal] {decision}", "metadata": entry["detail"]}), flush=True
+        )
 
     return {"logged": True, "symbol": symbol, "decision": decision}
 
@@ -81,9 +89,15 @@ async def log_reasoning(thought_process: str) -> dict:
         Confirmation dict.
     """
     import json
-    print(json.dumps({
-        "level": "info",
-        "message": f"[Reasoning] {thought_process[:200]}",
-        "metadata": {"full_text": thought_process},
-    }), flush=True)
+
+    print(
+        json.dumps(
+            {
+                "level": "info",
+                "message": f"[Reasoning] {thought_process[:200]}",
+                "metadata": {"full_text": thought_process},
+            }
+        ),
+        flush=True,
+    )
     return {"logged": True, "length": len(thought_process)}

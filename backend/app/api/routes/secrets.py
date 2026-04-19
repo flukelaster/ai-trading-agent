@@ -3,7 +3,6 @@
 from datetime import datetime
 
 import httpx
-from app.auth import require_auth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 from pydantic import BaseModel
@@ -11,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import log_audit
+from app.auth import require_auth
 from app.db.models import AuditLog, Secret
 from app.db.session import get_db
 from app.vault import VaultUnavailableError, vault
@@ -58,11 +58,7 @@ async def get_vault_status():
 @router.get("", dependencies=[Depends(require_auth)])
 async def list_secrets(db: AsyncSession = Depends(get_db)):
     """List all non-deleted secrets (no decryption needed)."""
-    result = await db.execute(
-        select(Secret)
-        .where(Secret.is_deleted.is_(False))
-        .order_by(Secret.category, Secret.key)
-    )
+    result = await db.execute(select(Secret).where(Secret.is_deleted.is_(False)).order_by(Secret.category, Secret.key))
     secrets = result.scalars().all()
     return [
         SecretResponse(
@@ -100,7 +96,9 @@ async def get_secret(
         masked = "*** (decryption error)"
 
     await log_audit(
-        db, "secret_read", resource=f"secret:{key}",
+        db,
+        "secret_read",
+        resource=f"secret:{key}",
         ip=request.client.host if request.client else None,
     )
 
@@ -130,9 +128,7 @@ async def upsert_secret(
     """Create or update a secret (encrypt + audit log)."""
     ciphertext, nonce = vault.encrypt(req.value)
 
-    result = await db.execute(
-        select(Secret).where(Secret.key == key)
-    )
+    result = await db.execute(select(Secret).where(Secret.key == key))
     existing = result.scalar_one_or_none()
 
     if existing:
@@ -158,7 +154,9 @@ async def upsert_secret(
         action = "secret_created"
 
     await log_audit(
-        db, action, resource=f"secret:{key}",
+        db,
+        action,
+        resource=f"secret:{key}",
         detail={"category": req.category},
         ip=request.client.host if request.client else None,
         auto_commit=False,
@@ -184,7 +182,9 @@ async def delete_secret(
     secret.updated_at = datetime.utcnow()
 
     await log_audit(
-        db, "secret_deleted", resource=f"secret:{key}",
+        db,
+        "secret_deleted",
+        resource=f"secret:{key}",
         ip=request.client.host if request.client else None,
         auto_commit=False,
     )
@@ -218,7 +218,9 @@ async def test_secret(
         status = "ok" if result["ok"] else "error"
 
         await log_audit(
-            db, "secret_tested", resource=f"secret:{key}",
+            db,
+            "secret_tested",
+            resource=f"secret:{key}",
             detail={"status": status, "latency_ms": latency_ms},
             ip=request.client.host if request.client else None,
             success=result["ok"],
@@ -227,7 +229,9 @@ async def test_secret(
     except Exception as e:
         latency_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
         await log_audit(
-            db, "secret_tested", resource=f"secret:{key}",
+            db,
+            "secret_tested",
+            resource=f"secret:{key}",
             detail={"status": "error", "error": str(e)},
             ip=request.client.host if request.client else None,
             success=False,
@@ -245,10 +249,7 @@ async def get_secret_history(
 ):
     """Get audit log entries for a specific secret."""
     result = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.resource == f"secret:{key}")
-        .order_by(AuditLog.created_at.desc())
-        .limit(50)
+        select(AuditLog).where(AuditLog.resource == f"secret:{key}").order_by(AuditLog.created_at.desc()).limit(50)
     )
     entries = result.scalars().all()
     return [
@@ -269,9 +270,7 @@ async def get_secret_history(
 
 
 async def _get_secret_or_404(db: AsyncSession, key: str) -> Secret:
-    result = await db.execute(
-        select(Secret).where(Secret.key == key, Secret.is_deleted.is_(False))
-    )
+    result = await db.execute(select(Secret).where(Secret.key == key, Secret.is_deleted.is_(False)))
     secret = result.scalar_one_or_none()
     if not secret:
         raise HTTPException(status_code=404, detail=f"Secret '{key}' not found")
@@ -284,8 +283,9 @@ async def _get_secret_or_404(db: AsyncSession, key: str) -> Secret:
 async def _test_anthropic(token: str) -> dict:
     """Test Claude AI via Agent SDK (Max subscription)."""
     try:
-        from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage
+        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, query
         from claude_agent_sdk.types import TextBlock
+
         text = ""
         async for msg in query(
             prompt="Say OK",

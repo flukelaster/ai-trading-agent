@@ -100,8 +100,5 @@ class EnsembleStrategy(BaseStrategy):
 
     def get_params(self) -> dict:
         return {
-            "strategies": [
-                {"name": s.name, "weight": w, "params": s.get_params()}
-                for s, w in self._strategies
-            ],
+            "strategies": [{"name": s.name, "weight": w, "params": s.get_params()} for s, w in self._strategies],
         }

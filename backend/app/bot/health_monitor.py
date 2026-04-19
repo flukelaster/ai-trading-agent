@@ -27,7 +27,9 @@ class HealthMonitor:
             if result.get("status") == "ok" or result.get("success"):
                 return await self._on_success()
             else:
-                return await self._on_failure(f"Bridge returned error: {result.get('error', result.get('status', 'unknown'))}")
+                return await self._on_failure(
+                    f"Bridge returned error: {result.get('error', result.get('status', 'unknown'))}"
+                )
         except Exception as e:
             return await self._on_failure(str(e))
 
@@ -41,14 +43,16 @@ class HealthMonitor:
             logger.info("MT5 Bridge connectivity restored — resuming trading")
 
             # Resume all paused engines
-            for symbol, engine in self._manager.engines.items():
+            for _symbol, engine in self._manager.engines.items():
                 if engine.state == BotState.PAUSED:
                     engine.state = BotState.RUNNING
                     await engine._log_event(BotEventType.STARTED, "Auto-resumed: MT5 Bridge connectivity restored")
 
             if self._notifier:
                 try:
-                    await self._notifier.send_health_alert("recovered", "MT5 Bridge connectivity restored — trading resumed")
+                    await self._notifier.send_health_alert(
+                        "recovered", "MT5 Bridge connectivity restored — trading resumed"
+                    )
                 except Exception:
                     pass
 
@@ -64,7 +68,7 @@ class HealthMonitor:
             logger.error(f"MT5 Bridge unreachable for {self._consecutive_failures} checks — pausing all trading")
 
             # Pause all running engines
-            for symbol, engine in self._manager.engines.items():
+            for _symbol, engine in self._manager.engines.items():
                 if engine.state == BotState.RUNNING:
                     engine.state = BotState.PAUSED
                     await engine._log_event(

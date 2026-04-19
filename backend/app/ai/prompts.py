@@ -38,6 +38,7 @@ IMPORTANT context weighting rules:
 - When macro data conflicts with news sentiment, weigh macro data more heavily
 - High ATR / volatility periods → reduce confidence unless signal is very clear"""
 
+
 def get_sentiment_prompt(symbol: str = "GOLD") -> str:
     return f"""You are a financial market analyst. Analyze news headlines for the instrument **{symbol}** and return ONLY a JSON object.
 No explanation, no markdown, just raw JSON.
@@ -71,7 +72,9 @@ Cross-asset weighting:
 
 def get_enhanced_sentiment_prompt(symbol: str = "GOLD") -> str:
     base = get_sentiment_prompt(symbol)
-    return base + """
+    return (
+        base
+        + """
 
 IMPORTANT context weighting rules:
 - If price action shows strong trend + news aligns → increase confidence
@@ -80,6 +83,7 @@ IMPORTANT context weighting rules:
 - When macro data conflicts with news sentiment, weigh macro data more heavily
 - High ATR / volatility periods → reduce confidence unless signal is very clear
 - **Trump/trade policy**: Tariff announcements, trade war escalation, sanctions = HIGH IMPACT. Weight these heavily — they can override technical signals. Tariff escalation = risk-off (gold up, equities down, yen up). De-escalation = risk-on."""
+    )
 
 
 OPTIMIZATION_SYSTEM_PROMPT = """You are a quantitative trading analyst specializing in gold (XAUUSD) algorithmic strategies.

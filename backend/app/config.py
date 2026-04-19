@@ -12,7 +12,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "sl_atr_mult": 1.5,
         "tp_atr_mult": 2.0,
         "contract_size": 100,
-        "ml_tp_pips": 10.0,       # ~$10 move on XAUUSD ~$3,000
+        "ml_tp_pips": 10.0,  # ~$10 move on XAUUSD ~$3,000
         "ml_sl_pips": 10.0,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
@@ -28,7 +28,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "sl_atr_mult": 1.5,
         "tp_atr_mult": 2.0,
         "contract_size": 100,
-        "ml_tp_pips": 0.5,        # ~$0.50 move on WTI ~$70
+        "ml_tp_pips": 0.5,  # ~$0.50 move on WTI ~$70
         "ml_sl_pips": 0.5,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
@@ -44,10 +44,10 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "sl_atr_mult": 2.0,
         "tp_atr_mult": 3.0,
         "contract_size": 1,
-        "ml_tp_pips": 500.0,      # ~$500 move on BTC ~$100,000
+        "ml_tp_pips": 500.0,  # ~$500 move on BTC ~$100,000
         "ml_sl_pips": 500.0,
-        "ml_forward_bars": 5,     # BTC moves fast — shorter horizon
-        "ml_timeframe": "H1",     # H1 better for BTC volatility
+        "ml_forward_bars": 5,  # BTC moves fast — shorter horizon
+        "ml_timeframe": "H1",  # H1 better for BTC volatility
         "asset_class": "crypto",
     },
     "USDJPY": {
@@ -60,7 +60,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "sl_atr_mult": 1.5,
         "tp_atr_mult": 2.0,
         "contract_size": 100000,
-        "ml_tp_pips": 0.3,        # ~30 pips on USDJPY ~145
+        "ml_tp_pips": 0.3,  # ~30 pips on USDJPY ~145
         "ml_sl_pips": 0.3,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
@@ -103,6 +103,7 @@ def resolve_broker_symbol(symbol: str) -> str:
     """
     try:
         from app.api.routes.bot import _get_engine
+
         return _get_engine(symbol).symbol
     except Exception:
         return symbol
@@ -116,6 +117,7 @@ def get_active_symbols() -> list[str]:
     """
     try:
         from app.api.routes.bot import get_manager
+
         return list(get_manager().engines.keys())
     except Exception:
         return [sym for sym, p in SYMBOL_PROFILES.items() if "canonical" not in p]
@@ -146,11 +148,11 @@ def apply_db_symbol_profiles(db_profiles: dict[str, dict]) -> None:
 
 # Session profiles — SL/TP multiplier overrides by trading session
 SESSION_PROFILES = {
-    "asian":   {"hours": (0, 8),   "sl_atr_mult": 1.2, "tp_atr_mult": 1.5, "confidence_boost": 0.05},
-    "london":  {"hours": (8, 13),  "sl_atr_mult": 1.5, "tp_atr_mult": 2.0, "confidence_boost": 0.0},
+    "asian": {"hours": (0, 8), "sl_atr_mult": 1.2, "tp_atr_mult": 1.5, "confidence_boost": 0.05},
+    "london": {"hours": (8, 13), "sl_atr_mult": 1.5, "tp_atr_mult": 2.0, "confidence_boost": 0.0},
     "overlap": {"hours": (13, 16), "sl_atr_mult": 1.8, "tp_atr_mult": 2.5, "confidence_boost": -0.05},
-    "ny":      {"hours": (16, 21), "sl_atr_mult": 1.5, "tp_atr_mult": 2.0, "confidence_boost": 0.0},
-    "off":     {"hours": (21, 24), "sl_atr_mult": 1.0, "tp_atr_mult": 1.2, "confidence_boost": 0.10},
+    "ny": {"hours": (16, 21), "sl_atr_mult": 1.5, "tp_atr_mult": 2.0, "confidence_boost": 0.0},
+    "off": {"hours": (21, 24), "sl_atr_mult": 1.0, "tp_atr_mult": 1.2, "confidence_boost": 0.10},
 }
 
 
@@ -206,10 +208,10 @@ class Settings(BaseSettings):
     # Position management
     max_position_duration_hours: float = 0  # 0=disabled, e.g. 8.0 = auto-close after 8h
     partial_tp_atr_mult: float = 1.0  # partial TP trigger at ATR * this multiplier
-    breakeven_atr_mult: float = 0.5   # move SL to breakeven after profit > this * ATR
-    enable_scale_in: bool = False     # enable momentum add-on positions
-    max_scale_in_count: int = 1       # max add-on entries per position
-    enable_partial_tp: bool = False   # enable close-and-reopen partial TP
+    breakeven_atr_mult: float = 0.5  # move SL to breakeven after profit > this * ATR
+    enable_scale_in: bool = False  # enable momentum add-on positions
+    max_scale_in_count: int = 1  # max add-on entries per position
+    enable_partial_tp: bool = False  # enable close-and-reopen partial TP
     enable_auto_strategy_switch: bool = False  # AI agent can switch strategies based on regime
 
     # Portfolio risk
@@ -228,18 +230,18 @@ class Settings(BaseSettings):
     # ML Model
     ml_model_path: str = "models/xauusd_signal.pkl"
     ml_confidence_threshold: float = 0.5
-    ml_confidence_dynamic: bool = True   # Phase E: ATR-based dynamic threshold
-    ml_adx_regime_filter: bool = True    # Phase D: suppress trades in low-ADX market
-    use_mtf_filter: bool = True          # Phase G: multi-timeframe trend confirmation
-    mtf_timeframes: str = "H4,D1"       # timeframes for MTF consensus (comma-separated)
+    ml_confidence_dynamic: bool = True  # Phase E: ATR-based dynamic threshold
+    ml_adx_regime_filter: bool = True  # Phase D: suppress trades in low-ADX market
+    use_mtf_filter: bool = True  # Phase G: multi-timeframe trend confirmation
+    mtf_timeframes: str = "H4,D1"  # timeframes for MTF consensus (comma-separated)
 
     # Strategy ensemble
-    ensemble_strategies: str = ""        # e.g. "ema_crossover:0.3,breakout:0.3,mean_reversion:0.2,rsi_filter:0.2"
+    ensemble_strategies: str = ""  # e.g. "ema_crossover:0.3,breakout:0.3,mean_reversion:0.2,rsi_filter:0.2"
 
     # ML auto-rollback
     ml_auto_rollback: bool = True
     ml_rollback_accuracy_floor: float = 0.30  # rollback if accuracy drops below this
-    ml_rollback_min_predictions: int = 50     # minimum predictions before rollback check
+    ml_rollback_min_predictions: int = 50  # minimum predictions before rollback check
 
     # Runner
     runner_backend: str = "process"  # "process" or "docker"
@@ -264,11 +266,11 @@ class Settings(BaseSettings):
     # Authentication — both fields required to enable password auth; default
     # empty so the app fails closed when the operator hasn't configured them.
     auth_username: str = ""
-    auth_password_hash: str = ""          # bcrypt hash; empty = auth disabled
+    auth_password_hash: str = ""  # bcrypt hash; empty = auth disabled
     jwt_expire_hours: int = 24
 
     # WebAuthn (Passkey) — new auth system
-    webauthn_rp_id: str = "localhost"     # e.g. "gold-trader-01.up.railway.app" for prod
+    webauthn_rp_id: str = "localhost"  # e.g. "gold-trader-01.up.railway.app" for prod
     webauthn_origin: str = "http://localhost:3000"  # frontend origin for WebAuthn verification
 
     # Secrets Vault

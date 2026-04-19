@@ -47,7 +47,15 @@ class TelegramNotifier:
         return profile.get("display_name") or symbol
 
     async def send_trade_alert(
-        self, trade_type: str, symbol: str, price: float, sl: float, tp: float, lot: float, sentiment_label: str = "", extra: str = ""
+        self,
+        trade_type: str,
+        symbol: str,
+        price: float,
+        sl: float,
+        tp: float,
+        lot: float,
+        sentiment_label: str = "",
+        extra: str = "",
     ):
         is_close = "CLOSE" in trade_type.upper()
         if is_close:
@@ -134,7 +142,9 @@ class TelegramNotifier:
         sym_name = f" {self._sym(symbol)}" if symbol else ""
         await self._send(f"⏹ <b>หยุดเทรด{sym_name}</b>")
 
-    async def send_daily_summary(self, symbol_stats: list[dict], total_pnl: float, total_trades: int, total_win_rate: float):
+    async def send_daily_summary(
+        self, symbol_stats: list[dict], total_pnl: float, total_trades: int, total_win_rate: float
+    ):
         icon = "📈" if total_pnl >= 0 else "📉"
         lines = [
             f"{icon} <b>สรุปประจำวัน</b>",
@@ -142,9 +152,13 @@ class TelegramNotifier:
             "",
         ]
         for s in symbol_stats:
-            regime_icon = {"trending_high_vol": "🔥", "trending_low_vol": "📊", "ranging": "↔️", "normal": "⚖️"}.get(s.get("regime", ""), "⚖️")
+            regime_icon = {"trending_high_vol": "🔥", "trending_low_vol": "📊", "ranging": "↔️", "normal": "⚖️"}.get(
+                s.get("regime", ""), "⚖️"
+            )
             pnl_str = f"${s['pnl']:+.2f}" if s.get("pnl") is not None else "—"
-            lines.append(f"{regime_icon} {self._sym(s['symbol'])}: {pnl_str} ({s.get('trades', 0)} trades, regime: {s.get('regime', 'unknown')})")
+            lines.append(
+                f"{regime_icon} {self._sym(s['symbol'])}: {pnl_str} ({s.get('trades', 0)} trades, regime: {s.get('regime', 'unknown')})"
+            )
         await self._send("\n".join(lines))
 
     async def send_losing_streak_alert(self, symbol: str, count: int, lot_factor: float):
@@ -156,7 +170,9 @@ class TelegramNotifier:
         ]
         await self._send("\n".join(lines))
 
-    async def send_trade_close_with_analysis(self, symbol: str, close_price: float, lot: float, profit: float, analysis: dict):
+    async def send_trade_close_with_analysis(
+        self, symbol: str, close_price: float, lot: float, profit: float, analysis: dict
+    ):
         icon = "📈" if profit >= 0 else "📉"
         outcome = "กำไร" if profit >= 0 else "ขาดทุน"
         summary = analysis.get("summary_th", "")
@@ -174,7 +190,12 @@ class TelegramNotifier:
 
     async def send_regime_change(self, symbol: str, old_regime: str, new_regime: str):
         sym_name = self._sym(symbol)
-        regime_th = {"trending_high_vol": "เทรนด์+ผันผวนสูง 🔥", "trending_low_vol": "เทรนด์+ผันผวนต่ำ", "ranging": "ไซด์เวย์ ↔️", "normal": "ปกติ ⚖️"}
+        regime_th = {
+            "trending_high_vol": "เทรนด์+ผันผวนสูง 🔥",
+            "trending_low_vol": "เทรนด์+ผันผวนต่ำ",
+            "ranging": "ไซด์เวย์ ↔️",
+            "normal": "ปกติ ⚖️",
+        }
         lines = [
             "🔄 <b>Regime เปลี่ยน</b>",
             f"📊 {sym_name}: {regime_th.get(old_regime, old_regime)} → {regime_th.get(new_regime, new_regime)}",

@@ -3,7 +3,8 @@ Redis Response Cache — lightweight caching for API responses.
 """
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import redis.asyncio as redis_lib
 from loguru import logger

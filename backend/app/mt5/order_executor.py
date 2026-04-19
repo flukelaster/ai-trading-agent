@@ -19,8 +19,15 @@ class OrderExecutor:
         self.connector = connector
 
     async def place_order(
-        self, symbol: str, order_type: str, lot: float, sl: float, tp: float,
-        comment: str = "", magic: int = MT5_MAGIC_NUMBER, max_retries: int = 3,
+        self,
+        symbol: str,
+        order_type: str,
+        lot: float,
+        sl: float,
+        tp: float,
+        comment: str = "",
+        magic: int = MT5_MAGIC_NUMBER,
+        max_retries: int = 3,
     ) -> dict:
         symbol = to_broker_alias(symbol)
         logger.info(f"Placing order: {order_type} {lot} {symbol} SL={sl} TP={tp}")
@@ -43,8 +50,10 @@ class OrderExecutor:
 
             # Retry transient errors with exponential backoff
             if attempt < max_retries - 1:
-                wait = 2 ** attempt  # 1s, 2s, 4s
-                logger.warning(f"Order failed (attempt {attempt + 1}/{max_retries}): {result.get('error')} — retrying in {wait}s")
+                wait = 2**attempt  # 1s, 2s, 4s
+                logger.warning(
+                    f"Order failed (attempt {attempt + 1}/{max_retries}): {result.get('error')} — retrying in {wait}s"
+                )
                 await asyncio.sleep(wait)
             else:
                 logger.error(f"Order failed after {max_retries} attempts: {result.get('error')}")

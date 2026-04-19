@@ -2,7 +2,8 @@
 
 import httpx
 
-from mcp_server.tools import auth_headers, backend_url as _backend_url
+from mcp_server.tools import auth_headers
+from mcp_server.tools import backend_url as _backend_url
 
 
 async def get_trade_history(days: int = 7, symbol: str | None = None, limit: int = 50) -> dict:

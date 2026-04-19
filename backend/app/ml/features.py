@@ -5,45 +5,76 @@ ML Feature Engineering — builds features and labels from OHLCV data for model 
 import numpy as np
 import pandas as pd
 
-from app.strategy.indicators import ema, rsi, atr
-
+from app.strategy.indicators import atr, ema, rsi
 
 # All feature column names — must match between training and inference
 FEATURE_COLUMNS = [
     # EMAs
-    "ema_9", "ema_21", "ema_50", "ema_200",
-    "price_vs_ema9", "price_vs_ema21", "price_vs_ema50", "price_vs_ema200",
+    "ema_9",
+    "ema_21",
+    "ema_50",
+    "ema_200",
+    "price_vs_ema9",
+    "price_vs_ema21",
+    "price_vs_ema50",
+    "price_vs_ema200",
     # RSI
     "rsi_14",
     # ATR & volatility
-    "atr_14", "atr_pct", "atr_percentile",
-    "rolling_std_10", "rolling_std_20",
+    "atr_14",
+    "atr_pct",
+    "atr_percentile",
+    "rolling_std_10",
+    "rolling_std_20",
     # Bollinger Bands
-    "bb_upper", "bb_lower", "bb_width", "bb_position",
+    "bb_upper",
+    "bb_lower",
+    "bb_width",
+    "bb_position",
     # MACD
-    "macd", "macd_signal", "macd_histogram",
+    "macd",
+    "macd_signal",
+    "macd_histogram",
     # Stochastic
-    "stoch_k", "stoch_d",
+    "stoch_k",
+    "stoch_d",
     # Price action
-    "candle_body_ratio", "upper_shadow_ratio", "lower_shadow_ratio",
+    "candle_body_ratio",
+    "upper_shadow_ratio",
+    "lower_shadow_ratio",
     "gap_pct",
     # Momentum
-    "roc_5", "roc_10", "roc_20",
+    "roc_5",
+    "roc_10",
+    "roc_20",
     # Time features (cyclical encoding)
-    "hour_sin", "hour_cos", "dow_sin", "dow_cos",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
     # Session flags
-    "is_london", "is_ny", "is_overlap",
+    "is_london",
+    "is_ny",
+    "is_overlap",
     # Volume
     "volume_sma_ratio",
     # ADX regime
-    "adx_14", "adx_di_plus", "adx_di_minus",
+    "adx_14",
+    "adx_di_plus",
+    "adx_di_minus",
     # Sentiment (populated if sentiment_df provided)
-    "sent_score_mean", "sent_confidence_mean", "sent_bullish_ratio",
-    "sent_bearish_ratio", "sent_count", "sent_momentum_3d",
+    "sent_score_mean",
+    "sent_confidence_mean",
+    "sent_bullish_ratio",
+    "sent_bearish_ratio",
+    "sent_count",
+    "sent_momentum_3d",
 ]
 
 
-def build_features(df: pd.DataFrame, macro_df: pd.DataFrame | None = None, sentiment_df: pd.DataFrame | None = None) -> pd.DataFrame:
+def build_features(
+    df: pd.DataFrame, macro_df: pd.DataFrame | None = None, sentiment_df: pd.DataFrame | None = None
+) -> pd.DataFrame:
     """
     Build ML features from OHLCV DataFrame.
     Input df must have columns: open, high, low, close and optionally tick_volume.
@@ -52,7 +83,7 @@ def build_features(df: pd.DataFrame, macro_df: pd.DataFrame | None = None, senti
     out = df.copy()
     c = out["close"]
     h = out["high"]
-    l = out["low"]
+    low_s = out["low"]
     o = out["open"]
     v = out.get("tick_volume", pd.Series(0, index=out.index))
 
@@ -70,7 +101,7 @@ def build_features(df: pd.DataFrame, macro_df: pd.DataFrame | None = None, senti
     out["rsi_14"] = rsi(c, 14)
 
     # ATR & volatility
-    out["atr_14"] = atr(h, l, c, 14)
+    out["atr_14"] = atr(h, low_s, c, 14)
     out["atr_pct"] = out["atr_14"] / c * 100
     out["atr_percentile"] = out["atr_14"].rolling(100).rank(pct=True)
     out["rolling_std_10"] = c.pct_change().rolling(10).std()
@@ -92,17 +123,17 @@ def build_features(df: pd.DataFrame, macro_df: pd.DataFrame | None = None, senti
     out["macd_histogram"] = out["macd"] - out["macd_signal"]
 
     # Stochastic %K/%D (14 period)
-    low_14 = l.rolling(14).min()
+    low_14 = low_s.rolling(14).min()
     high_14 = h.rolling(14).max()
     out["stoch_k"] = (c - low_14) / (high_14 - low_14) * 100
     out["stoch_d"] = out["stoch_k"].rolling(3).mean()
 
     # Price action
     body = (c - o).abs()
-    full_range = h - l
+    full_range = h - low_s
     out["candle_body_ratio"] = body / full_range.replace(0, np.nan)
     out["upper_shadow_ratio"] = (h - pd.concat([c, o], axis=1).max(axis=1)) / full_range.replace(0, np.nan)
-    out["lower_shadow_ratio"] = (pd.concat([c, o], axis=1).min(axis=1) - l) / full_range.replace(0, np.nan)
+    out["lower_shadow_ratio"] = (pd.concat([c, o], axis=1).min(axis=1) - low_s) / full_range.replace(0, np.nan)
     out["gap_pct"] = (o - c.shift(1)) / c.shift(1) * 100
 
     # Momentum (Rate of Change)
@@ -134,7 +165,8 @@ def build_features(df: pd.DataFrame, macro_df: pd.DataFrame | None = None, senti
 
     # ADX (Average Directional Index) — regime detection
     from app.strategy.indicators import adx as _adx
-    adx_result = _adx(h, l, c, 14)
+
+    adx_result = _adx(h, low_s, c, 14)
     out["adx_14"] = adx_result["adx"]
     out["adx_di_plus"] = adx_result["di_plus"]
     out["adx_di_minus"] = adx_result["di_minus"]
@@ -174,10 +206,10 @@ def build_labels(
 
     for i in range(n - forward_bars):
         entry = closes[i]
-        tp_long = entry + tp_pips   # long TP
-        sl_long = entry - sl_pips   # long SL (= short TP)
+        tp_long = entry + tp_pips  # long TP
+        entry - sl_pips  # long SL (= short TP)
         tp_short = entry - tp_pips  # short TP
-        sl_short = entry + sl_pips  # short SL (= long SL for short)
+        entry + sl_pips  # short SL (= long SL for short)
 
         long_hit = None
         short_hit = None
@@ -193,9 +225,9 @@ def build_labels(
                 break
 
         if long_hit is None and short_hit is None:
-            labels.iloc[i] = 0   # timeout — no conviction
+            labels.iloc[i] = 0  # timeout — no conviction
         elif long_hit is not None and short_hit is None:
-            labels.iloc[i] = 1   # BUY
+            labels.iloc[i] = 1  # BUY
         elif short_hit is not None and long_hit is None:
             labels.iloc[i] = -1  # SELL
         else:

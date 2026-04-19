@@ -193,6 +193,7 @@ class TestRetrain:
     @pytest.mark.asyncio
     async def test_retrain_queues_task_and_sets_training(self, db_session, redis_client):
         from unittest.mock import AsyncMock, MagicMock
+
         connector = AsyncMock()
 
         retrain_started = False
@@ -226,6 +227,7 @@ class TestRetrain:
 
         # Give the background task a moment to run
         import asyncio
+
         await asyncio.sleep(0.05)
         assert retrain_started is True
 

@@ -5,12 +5,7 @@ Unit tests for Risk Manager — lot sizing, SL/TP, trade permission.
 import pytest
 
 from app.constants import (
-    HIGH_VOL_LOT_FACTOR,
     HIGH_VOL_THRESHOLD,
-    KELLY_FRACTION,
-    KELLY_MAX_RISK_MULT,
-    KELLY_MIN_RISK,
-    LOW_VOL_LOT_FACTOR,
     LOW_VOL_THRESHOLD,
     MIN_LOT,
     STREAK_2_FACTOR,
@@ -76,16 +71,22 @@ class TestCalculateKellySize:
 
     def test_kelly_basic(self):
         lot = self.rm.calculate_kelly_size(
-            balance=10000, sl_pips=20,
-            win_rate=0.6, avg_win=100, avg_loss=50,
+            balance=10000,
+            sl_pips=20,
+            win_rate=0.6,
+            avg_win=100,
+            avg_loss=50,
         )
         assert lot > 0
         assert lot <= self.rm.max_lot
 
     def test_kelly_zero_loss_falls_back(self):
         lot = self.rm.calculate_kelly_size(
-            balance=10000, sl_pips=20,
-            win_rate=0.6, avg_win=100, avg_loss=0,
+            balance=10000,
+            sl_pips=20,
+            win_rate=0.6,
+            avg_win=100,
+            avg_loss=0,
         )
         # Falls back to calculate_lot_size
         expected = self.rm.calculate_lot_size(balance=10000, sl_pips=20)
@@ -93,8 +94,11 @@ class TestCalculateKellySize:
 
     def test_kelly_zero_win_rate_falls_back(self):
         lot = self.rm.calculate_kelly_size(
-            balance=10000, sl_pips=20,
-            win_rate=0, avg_win=100, avg_loss=50,
+            balance=10000,
+            sl_pips=20,
+            win_rate=0,
+            avg_win=100,
+            avg_loss=50,
         )
         expected = self.rm.calculate_lot_size(balance=10000, sl_pips=20)
         assert lot == expected
@@ -102,24 +106,33 @@ class TestCalculateKellySize:
     def test_kelly_negative_kelly_uses_min(self):
         # Bad strategy: low win rate
         lot = self.rm.calculate_kelly_size(
-            balance=10000, sl_pips=20,
-            win_rate=0.2, avg_win=10, avg_loss=100,
+            balance=10000,
+            sl_pips=20,
+            win_rate=0.2,
+            avg_win=10,
+            avg_loss=100,
         )
         # Should still return a valid lot
         assert lot >= MIN_LOT
 
     def test_kelly_capped_at_max_risk(self):
         lot = self.rm.calculate_kelly_size(
-            balance=10000, sl_pips=20,
-            win_rate=0.9, avg_win=500, avg_loss=10,
+            balance=10000,
+            sl_pips=20,
+            win_rate=0.9,
+            avg_win=500,
+            avg_loss=10,
         )
         # Should not exceed max_lot
         assert lot <= self.rm.max_lot
 
     def test_kelly_zero_sl(self):
         lot = self.rm.calculate_kelly_size(
-            balance=10000, sl_pips=0,
-            win_rate=0.6, avg_win=100, avg_loss=50,
+            balance=10000,
+            sl_pips=0,
+            win_rate=0.6,
+            avg_win=100,
+            avg_loss=50,
         )
         assert lot == MIN_LOT
 
@@ -190,14 +203,18 @@ class TestCanOpenTrade:
 
     def test_allowed_when_ok(self):
         allowed, reason = self.rm.can_open_trade(
-            current_positions=0, daily_pnl=0, balance=10000,
+            current_positions=0,
+            daily_pnl=0,
+            balance=10000,
         )
         assert allowed is True
         assert reason == "OK"
 
     def test_max_positions_reached(self):
         allowed, reason = self.rm.can_open_trade(
-            current_positions=3, daily_pnl=0, balance=10000,
+            current_positions=3,
+            daily_pnl=0,
+            balance=10000,
         )
         assert allowed is False
         assert "Max concurrent trades" in reason
@@ -205,38 +222,52 @@ class TestCanOpenTrade:
     def test_daily_loss_limit(self):
         # Daily loss = -300 >= -(10000 * 0.03) = -300
         allowed, reason = self.rm.can_open_trade(
-            current_positions=0, daily_pnl=-300, balance=10000,
+            current_positions=0,
+            daily_pnl=-300,
+            balance=10000,
         )
         assert allowed is False
         assert "Daily loss limit" in reason
 
     def test_ai_filter_blocks_buy_on_bearish(self):
         allowed, reason = self.rm.can_open_trade(
-            current_positions=0, daily_pnl=0, balance=10000,
-            signal=1, ai_sentiment={"label": "bearish", "confidence": 0.8},
+            current_positions=0,
+            daily_pnl=0,
+            balance=10000,
+            signal=1,
+            ai_sentiment={"label": "bearish", "confidence": 0.8},
         )
         assert allowed is False
         assert "bearish" in reason
 
     def test_ai_filter_blocks_sell_on_bullish(self):
         allowed, reason = self.rm.can_open_trade(
-            current_positions=0, daily_pnl=0, balance=10000,
-            signal=-1, ai_sentiment={"label": "bullish", "confidence": 0.8},
+            current_positions=0,
+            daily_pnl=0,
+            balance=10000,
+            signal=-1,
+            ai_sentiment={"label": "bullish", "confidence": 0.8},
         )
         assert allowed is False
         assert "bullish" in reason
 
     def test_ai_filter_allows_buy_on_bullish(self):
         allowed, reason = self.rm.can_open_trade(
-            current_positions=0, daily_pnl=0, balance=10000,
-            signal=1, ai_sentiment={"label": "bullish", "confidence": 0.8},
+            current_positions=0,
+            daily_pnl=0,
+            balance=10000,
+            signal=1,
+            ai_sentiment={"label": "bullish", "confidence": 0.8},
         )
         assert allowed is True
 
     def test_ai_filter_low_confidence_allows(self):
         allowed, reason = self.rm.can_open_trade(
-            current_positions=0, daily_pnl=0, balance=10000,
-            signal=1, ai_sentiment={"label": "bearish", "confidence": 0.5},
+            current_positions=0,
+            daily_pnl=0,
+            balance=10000,
+            signal=1,
+            ai_sentiment={"label": "bearish", "confidence": 0.5},
         )
         # Confidence 0.5 < threshold 0.7 → should allow
         assert allowed is True
@@ -244,14 +275,20 @@ class TestCanOpenTrade:
     def test_ai_filter_disabled(self):
         rm = RiskManager(use_ai_filter=False)
         allowed, reason = rm.can_open_trade(
-            current_positions=0, daily_pnl=0, balance=10000,
-            signal=1, ai_sentiment={"label": "bearish", "confidence": 0.9},
+            current_positions=0,
+            daily_pnl=0,
+            balance=10000,
+            signal=1,
+            ai_sentiment={"label": "bearish", "confidence": 0.9},
         )
         assert allowed is True
 
     def test_no_signal_bypasses_ai(self):
         allowed, reason = self.rm.can_open_trade(
-            current_positions=0, daily_pnl=0, balance=10000,
-            signal=0, ai_sentiment={"label": "bearish", "confidence": 0.9},
+            current_positions=0,
+            daily_pnl=0,
+            balance=10000,
+            signal=0,
+            ai_sentiment={"label": "bearish", "confidence": 0.9},
         )
         assert allowed is True

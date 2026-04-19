@@ -42,7 +42,11 @@ class Metrics:
         try:
             # Scan for timing keys
             async for key in self.redis.scan_iter(f"{self._prefix}timing:*"):
-                name = key.decode().replace(f"{self._prefix}timing:", "") if isinstance(key, bytes) else key.replace(f"{self._prefix}timing:", "")
+                name = (
+                    key.decode().replace(f"{self._prefix}timing:", "")
+                    if isinstance(key, bytes)
+                    else key.replace(f"{self._prefix}timing:", "")
+                )
                 values = await self.redis.lrange(key, 0, -1)
                 if values:
                     floats = sorted([float(v) for v in values])
@@ -57,7 +61,11 @@ class Metrics:
 
             # Scan for counter keys
             async for key in self.redis.scan_iter(f"{self._prefix}counter:*"):
-                name = key.decode().replace(f"{self._prefix}counter:", "") if isinstance(key, bytes) else key.replace(f"{self._prefix}counter:", "")
+                name = (
+                    key.decode().replace(f"{self._prefix}counter:", "")
+                    if isinstance(key, bytes)
+                    else key.replace(f"{self._prefix}counter:", "")
+                )
                 val = await self.redis.get(key)
                 summary["counters"][name] = int(val) if val else 0
         except Exception as e:

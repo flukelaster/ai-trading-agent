@@ -6,8 +6,6 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-
-from app.cache import cached
 from loguru import logger
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
@@ -15,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import log_audit
 from app.auth import require_auth
+from app.cache import cached
 from app.config import settings
 from app.db.models import BotEvent
 from app.db.session import get_db
@@ -51,6 +50,7 @@ def _get_engine(symbol: str | None = None):
         if not engine:
             # Try reverse alias: frontend sends "GOLD" but engine is "GOLDmicro"
             from app.config import SYMBOL_ALIASES
+
             for alias, canonical in SYMBOL_ALIASES.items():
                 if canonical == symbol and alias in mgr.engines:
                     return mgr.engines[alias]
@@ -150,11 +150,7 @@ async def get_account():
     first_engine = next(iter(mgr.engines.values()))
 
     if first_engine.paper_trade:
-        unrealized = sum(
-            p.get("profit", 0)
-            for engine in mgr.engines.values()
-            for p in engine._paper_positions
-        )
+        unrealized = sum(p.get("profit", 0) for engine in mgr.engines.values() for p in engine._paper_positions)
         balance = first_engine._paper_balance
         return {
             "balance": balance,
@@ -169,7 +165,7 @@ async def get_account():
     seen_connectors: set[int] = set()
     accounts: list[dict] = []
 
-    for symbol, engine in mgr.engines.items():
+    for _symbol, engine in mgr.engines.items():
         conn_id = id(engine.connector)
         if conn_id in seen_connectors:
             continue
@@ -179,16 +175,18 @@ async def get_account():
         if result.get("success"):
             data = result["data"]
             # Detect connector type
-            is_binance = hasattr(engine.connector, '_sign')  # BinanceConnector has _sign method
-            accounts.append({
-                "connector": "binance" if is_binance else "mt5",
-                "balance": data.get("balance", 0),
-                "equity": data.get("equity", 0),
-                "margin": data.get("margin", 0),
-                "free_margin": data.get("free_margin", 0),
-                "profit": data.get("profit", 0),
-                "currency": data.get("currency", "USD"),
-            })
+            is_binance = hasattr(engine.connector, "_sign")  # BinanceConnector has _sign method
+            accounts.append(
+                {
+                    "connector": "binance" if is_binance else "mt5",
+                    "balance": data.get("balance", 0),
+                    "equity": data.get("equity", 0),
+                    "margin": data.get("margin", 0),
+                    "free_margin": data.get("free_margin", 0),
+                    "profit": data.get("profit", 0),
+                    "currency": data.get("currency", "USD"),
+                }
+            )
 
     # Primary balance = first account (MT5) for backward compat
     primary = accounts[0] if accounts else {"balance": 0, "equity": 0, "margin": 0, "free_margin": 0, "profit": 0}
@@ -198,6 +196,7 @@ async def get_account():
     drawdown_pct = 0.0
     try:
         from app.risk.circuit_breaker import CircuitBreaker
+
         balance = primary.get("balance", 0)
         peak_balance = await CircuitBreaker.update_peak_balance(first_engine.redis, balance)
         if peak_balance > 0:
@@ -224,8 +223,9 @@ async def update_strategy(data: StrategyUpdate, request: Request, db: AsyncSessi
             logger.debug(f"Redis trading_mode write failed: {e}")
         settings.trading_mode = "ai_autonomous"
         engine.strategy = None
-        await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
-                        detail={"strategy": "ai_autonomous"}, ip=ip)
+        await log_audit(
+            db, "bot_strategy_change", resource=f"symbol:{engine.symbol}", detail={"strategy": "ai_autonomous"}, ip=ip
+        )
         return {"status": "updated", "strategy": "ai_autonomous", "symbol": engine.symbol}
     try:
         await engine.redis.set("trading_mode", "strategy")
@@ -235,11 +235,22 @@ async def update_strategy(data: StrategyUpdate, request: Request, db: AsyncSessi
     try:
         await engine.update_strategy(data.name, data.params)
     except ValueError as e:
-        await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
-                        detail={"strategy": data.name, "error": str(e)}, ip=ip, success=False)
-        raise HTTPException(status_code=400, detail=str(e))
-    await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
-                    detail={"strategy": data.name, "params": data.params}, ip=ip)
+        await log_audit(
+            db,
+            "bot_strategy_change",
+            resource=f"symbol:{engine.symbol}",
+            detail={"strategy": data.name, "error": str(e)},
+            ip=ip,
+            success=False,
+        )
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    await log_audit(
+        db,
+        "bot_strategy_change",
+        resource=f"symbol:{engine.symbol}",
+        detail={"strategy": data.name, "params": data.params},
+        ip=ip,
+    )
     return {"status": "updated", "strategy": data.name, "symbol": engine.symbol}
 
 
@@ -253,7 +264,7 @@ async def apply_strategy_in_ai_mode(data: StrategyApply):
     try:
         await engine.update_strategy(data.name, data.params)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     from app.db.models import BotEventType
 
@@ -271,6 +282,7 @@ async def apply_strategy_in_ai_mode(data: StrategyApply):
 @router.put("/settings")
 async def update_settings(data: SettingsUpdate, request: Request, db: AsyncSession = Depends(get_db)):
     from app.bot.engine import _UNSET
+
     resolved_fixed_lot = _UNSET
     if data.lot_mode == "auto":
         resolved_fixed_lot = None
@@ -318,7 +330,9 @@ async def update_settings(data: SettingsUpdate, request: Request, db: AsyncSessi
             logger.debug(f"Redis enable_auto_strategy_switch write failed: {e}")
 
     await log_audit(
-        db, "bot_settings_change", resource=f"symbol:{data.symbol or 'all'}",
+        db,
+        "bot_settings_change",
+        resource=f"symbol:{data.symbol or 'all'}",
         detail=data.model_dump(exclude_none=True),
         ip=request.client.host if request.client else None,
     )
@@ -395,6 +409,7 @@ async def post_event(
 ):
     """Record a bot event (used by MCP agent tools to journal decisions)."""
     from app.db.models import BotEventType
+
     try:
         etype = BotEventType(req.event_type)
     except ValueError:

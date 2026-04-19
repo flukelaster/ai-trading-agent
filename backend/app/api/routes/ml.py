@@ -2,20 +2,25 @@
 ML Model API routes — training, prediction, and status (per-symbol).
 """
 
+from __future__ import annotations
+
 import asyncio
 import io
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import joblib
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
-
-from app.auth import require_auth
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
+from app.auth import require_auth
 from app.config import resolve_broker_symbol, settings
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 router = APIRouter(
     prefix="/api/ml",
@@ -27,12 +32,13 @@ _collector = None
 _db_session = None
 
 
-async def _load_macro_from_db(db_session) -> "pd.DataFrame | None":
+async def _load_macro_from_db(db_session) -> pd.DataFrame | None:
     """Load latest macro data from DB and return as wide DataFrame indexed by date."""
     try:
         import pandas as pd
-        from app.db.models import MacroData
         from sqlalchemy import select
+
+        from app.db.models import MacroData
 
         result = await db_session.execute(select(MacroData).order_by(MacroData.date))
         rows = result.scalars().all()
@@ -80,12 +86,15 @@ async def train_model(req: TrainRequest):
         # Load data from DB
         df = await _collector.load_from_db(symbol, req.timeframe, req.from_date, req.to_date)
         if df.empty or len(df) < 500:
-            return {"error": f"Insufficient data for {symbol}: {len(df) if not df.empty else 0} bars (need 500+). Collect data first."}
+            return {
+                "error": f"Insufficient data for {symbol}: {len(df) if not df.empty else 0} bars (need 500+). Collect data first."
+            }
 
         # Load macro data from DB
         macro_df = await _load_macro_from_db(_db_session)
 
         from app.ml.trainer import ModelTrainer
+
         trainer = ModelTrainer()
 
         # Prepare dataset (with macro features if available)
@@ -110,11 +119,13 @@ async def train_model(req: TrainRequest):
 
         # Save to DB — deactivate old model for this symbol only
         try:
-            from app.db.models import MLModelLog
             from sqlalchemy import update
+
+            from app.db.models import MLModelLog
+
             await _db_session.execute(
                 update(MLModelLog)
-                .where(MLModelLog.is_active == True, MLModelLog.model_name == model_name)
+                .where(MLModelLog.is_active, MLModelLog.model_name == model_name)
                 .values(is_active=False)
             )
 
@@ -142,6 +153,7 @@ async def train_model(req: TrainRequest):
 
     except Exception as e:
         from loguru import logger
+
         logger.error(f"Train model error [{symbol}]: {e}")
         return {"error": f"Training failed: {e}"}
 
@@ -158,21 +170,21 @@ async def model_status(symbol: str = Query("GOLD")):
 
     # Try symbol-specific model first
     result = await _db_session.execute(
-        select(MLModelLog)
-        .where(MLModelLog.is_active == True, MLModelLog.model_name.like(f"{model_prefix}%"))
-        .limit(1)
+        select(MLModelLog).where(MLModelLog.is_active, MLModelLog.model_name.like(f"{model_prefix}%")).limit(1)
     )
     log = result.scalar_one_or_none()
 
     # Fallback to any active model
     if not log:
-        result = await _db_session.execute(
-            select(MLModelLog).where(MLModelLog.is_active == True).limit(1)
-        )
+        result = await _db_session.execute(select(MLModelLog).where(MLModelLog.is_active).limit(1))
         log = result.scalar_one_or_none()
 
     if not log:
-        return {"status": "no_model", "symbol": symbol, "message": f"No trained model found for {symbol}. Use POST /api/ml/train first."}
+        return {
+            "status": "no_model",
+            "symbol": symbol,
+            "message": f"No trained model found for {symbol}. Use POST /api/ml/train first.",
+        }
 
     return {
         "status": "ready",
@@ -182,7 +194,9 @@ async def model_status(symbol: str = Query("GOLD")):
         "train_period": f"{log.train_start.isoformat()} to {log.train_end.isoformat()}",
         "test_period": f"{log.test_start.isoformat()} to {log.test_end.isoformat()}",
         "metrics": json.loads(log.metrics) if log.metrics else {},
-        "feature_importance_top10": dict(list(json.loads(log.feature_importance).items())[:10]) if log.feature_importance else {},
+        "feature_importance_top10": dict(list(json.loads(log.feature_importance).items())[:10])
+        if log.feature_importance
+        else {},
         "model_path": log.model_path,
         "created_at": log.created_at.isoformat(),
     }
@@ -199,6 +213,7 @@ async def predict_now(symbol: str = Query("GOLD")):
 
     # Try loading symbol-specific model from file first
     from pathlib import Path
+
     model_data = None
     symbol_path = f"models/{symbol.lower()}_signal.pkl"
 
@@ -209,21 +224,26 @@ async def predict_now(symbol: str = Query("GOLD")):
     else:
         # Load from DB
         from app.db.models import MLModelLog
+
         result = await _db_session.execute(
-            select(MLModelLog).where(
-                MLModelLog.is_active == True,
+            select(MLModelLog)
+            .where(
+                MLModelLog.is_active,
                 MLModelLog.model_binary.isnot(None),
                 MLModelLog.model_name.like(f"{model_prefix}%"),
-            ).limit(1)
+            )
+            .limit(1)
         )
         log = result.scalar_one_or_none()
         # Fallback to any active model
         if not log:
             result = await _db_session.execute(
-                select(MLModelLog).where(
-                    MLModelLog.is_active == True,
+                select(MLModelLog)
+                .where(
+                    MLModelLog.is_active,
                     MLModelLog.model_binary.isnot(None),
-                ).limit(1)
+                )
+                .limit(1)
             )
             log = result.scalar_one_or_none()
         if log and log.model_binary:
@@ -234,12 +254,14 @@ async def predict_now(symbol: str = Query("GOLD")):
         return {"error": f"No trained model found for {symbol}. Train one first."}
 
     from app.ml.predictor import MLPredictor
+
     predictor = MLPredictor.__new__(MLPredictor)
     predictor.model = model_data["model"]
     predictor.feature_columns = model_data.get("features", [])
 
     # Get recent OHLCV from DB — try symbol's preferred timeframe, then fallback to others
     from app.config import SYMBOL_PROFILES
+
     preferred_tf = SYMBOL_PROFILES.get(symbol, {}).get("ml_timeframe", settings.timeframe)
     df = await _collector.load_from_db(symbol, preferred_tf)
     predict_tf = preferred_tf
@@ -255,7 +277,9 @@ async def predict_now(symbol: str = Query("GOLD")):
                 break
 
     if df.empty or len(df) < 200:
-        return {"error": f"Insufficient market data for {symbol}. Collected {len(df) if not df.empty else 0} bars, need 200+. Collect data first."}
+        return {
+            "error": f"Insufficient market data for {symbol}. Collected {len(df) if not df.empty else 0} bars, need 200+. Collect data first."
+        }
 
     # Use last 300 bars for feature computation
     df_recent = df.tail(300)
@@ -265,12 +289,15 @@ async def predict_now(symbol: str = Query("GOLD")):
 
     # Log prediction to DB for calibration analysis
     try:
-        from app.db.models import MLPredictionLog, MLModelLog
+        from app.db.models import MLModelLog, MLPredictionLog
+
         model_result = await _db_session.execute(
-            select(MLModelLog).where(
-                MLModelLog.is_active == True,
+            select(MLModelLog)
+            .where(
+                MLModelLog.is_active,
                 MLModelLog.model_name.like(f"{model_prefix}%"),
-            ).limit(1)
+            )
+            .limit(1)
         )
         model_log = model_result.scalar_one_or_none()
         pred_log = MLPredictionLog(
@@ -288,7 +315,7 @@ async def predict_now(symbol: str = Query("GOLD")):
         "signal": signal_label,
         "signal_value": signal,
         "confidence": round(confidence, 4),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "symbol": symbol,
         "timeframe": predict_tf,
     }
@@ -307,7 +334,7 @@ async def get_drift_report(symbol: str = Query("GOLD")):
     # Get active model stats
     result = await _db_session.execute(
         select(MLModelLog)
-        .where(MLModelLog.is_active == True, MLModelLog.model_name.like(f"lightgbm_{symbol.lower()}%"))
+        .where(MLModelLog.is_active, MLModelLog.model_name.like(f"lightgbm_{symbol.lower()}%"))
         .limit(1)
     )
     model_log = result.scalar_one_or_none()
@@ -332,8 +359,10 @@ async def get_drift_report(symbol: str = Query("GOLD")):
     live_features = None
     if training_stats and _collector is not None:
         try:
+            from app.config import SYMBOL_PROFILES
+            from app.config import settings as app_settings
             from app.ml.features import build_features
-            from app.config import SYMBOL_PROFILES, settings as app_settings
+
             tf = SYMBOL_PROFILES.get(symbol, {}).get("ml_timeframe", app_settings.timeframe)
             df = await _collector.load_from_db(symbol, tf)
             if not df.empty and len(df) >= 200:

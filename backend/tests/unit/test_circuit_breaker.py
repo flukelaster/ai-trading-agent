@@ -2,7 +2,7 @@
 Unit tests for Circuit Breaker — daily PnL tracking, trigger, cooldown, reset.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -55,7 +55,7 @@ class TestCircuitBreaker:
         # Set trigger time to now
         await redis_client.set(
             cb.triggered_key,
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
             ex=86400,
         )
         result = await cb.can_resume()
@@ -63,7 +63,7 @@ class TestCircuitBreaker:
 
     async def test_can_resume_after_cooldown(self, cb, redis_client):
         # Set trigger time to 2 hours ago (cooldown is 60 min)
-        past = datetime.now(timezone.utc) - timedelta(hours=2)
+        past = datetime.now(UTC) - timedelta(hours=2)
         await redis_client.set(
             cb.triggered_key,
             past.isoformat(),
@@ -102,7 +102,10 @@ class TestCircuitBreakerGlobal:
         cb = CircuitBreaker(redis_client, "GOLD")
         await cb.record_trade_result(-1100.0)
         triggered = await CircuitBreaker.is_global_triggered(
-            redis_client, ["GOLD"], balance=10000, max_portfolio_loss=0.10,
+            redis_client,
+            ["GOLD"],
+            balance=10000,
+            max_portfolio_loss=0.10,
         )
         assert triggered is True
 
@@ -110,7 +113,10 @@ class TestCircuitBreakerGlobal:
         cb = CircuitBreaker(redis_client, "GOLD")
         await cb.record_trade_result(-50.0)
         triggered = await CircuitBreaker.is_global_triggered(
-            redis_client, ["GOLD"], balance=10000, max_portfolio_loss=0.10,
+            redis_client,
+            ["GOLD"],
+            balance=10000,
+            max_portfolio_loss=0.10,
         )
         assert triggered is False
 

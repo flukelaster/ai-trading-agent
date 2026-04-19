@@ -100,9 +100,7 @@ class ParameterGate:
                 # Clamp to max change
                 direction = 1 if suggested_value > current_value else -1
                 suggested_value = current_value * (1 + direction * self.max_change_pct)
-                logger.info(
-                    f"Parameter {parameter} clamped: change {change_pct:.1%} > {self.max_change_pct:.0%} max"
-                )
+                logger.info(f"Parameter {parameter} clamped: change {change_pct:.1%} > {self.max_change_pct:.0%} max")
 
         # Gate 4: Statistical significance (permutation test)
         p_value = None

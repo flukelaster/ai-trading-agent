@@ -4,6 +4,7 @@ Trades reversals when price reaches band extremes with RSI confirmation.
 """
 
 import pandas as pd
+
 from app.strategy.base import BaseStrategy
 from app.strategy.indicators import atr, bollinger_bands, rsi
 

@@ -2,7 +2,6 @@
 Shared test fixtures for ai-trading-agent backend.
 """
 
-import asyncio
 import os
 from unittest.mock import AsyncMock
 
@@ -13,13 +12,13 @@ import numpy as np
 import pandas as pd
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger, Integer, event
+from sqlalchemy import BigInteger, Integer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.models import Base
 
-
 # ─── Database ──────────────────────────────────────────────────────────────────
+
 
 def _remap_bigint_for_sqlite(metadata):
     """Replace BigInteger with Integer for SQLite compatibility."""
@@ -50,6 +49,7 @@ async def db_session(db_engine):
 
 # ─── Redis ─────────────────────────────────────────────────────────────────────
 
+
 @pytest_asyncio.fixture
 async def redis_client():
     """Provide a fake Redis client for testing."""
@@ -61,6 +61,7 @@ async def redis_client():
 
 
 # ─── Mock MT5 Connector ───────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_connector():
@@ -94,6 +95,7 @@ def mock_connector():
 
 # ─── Mock AI Client ───────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_ai_client():
     """Mock AIClient for testing without API calls."""
@@ -106,6 +108,7 @@ def mock_ai_client():
 
 
 # ─── OHLCV DataFrame Factory ──────────────────────────────────────────────────
+
 
 @pytest.fixture
 def make_ohlcv_df():
@@ -166,16 +169,20 @@ def make_crossover_df():
 
         if crossover_type == "bullish":
             # Start below (downtrend), then switch to uptrend
-            prices = np.concatenate([
-                np.linspace(base_price, base_price - 50, rows // 2),
-                np.linspace(base_price - 50, base_price + 20, rows - rows // 2),
-            ])
+            prices = np.concatenate(
+                [
+                    np.linspace(base_price, base_price - 50, rows // 2),
+                    np.linspace(base_price - 50, base_price + 20, rows - rows // 2),
+                ]
+            )
         else:
             # Start above (uptrend), then switch to downtrend
-            prices = np.concatenate([
-                np.linspace(base_price, base_price + 50, rows // 2),
-                np.linspace(base_price + 50, base_price - 20, rows - rows // 2),
-            ])
+            prices = np.concatenate(
+                [
+                    np.linspace(base_price, base_price + 50, rows // 2),
+                    np.linspace(base_price + 50, base_price - 20, rows - rows // 2),
+                ]
+            )
 
         noise = np.random.RandomState(42).randn(rows) * 2
         close = prices + noise
@@ -183,13 +190,15 @@ def make_crossover_df():
         low = close - 3
         open_ = close + np.random.RandomState(42).randn(rows) * 1
 
-        return pd.DataFrame({
-            "time": dates,
-            "open": open_,
-            "high": high,
-            "low": low,
-            "close": close,
-            "tick_volume": np.random.RandomState(42).randint(100, 1000, rows).astype(float),
-        })
+        return pd.DataFrame(
+            {
+                "time": dates,
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "tick_volume": np.random.RandomState(42).randint(100, 1000, rows).astype(float),
+            }
+        )
 
     return _factory

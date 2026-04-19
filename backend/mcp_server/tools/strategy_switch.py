@@ -5,7 +5,8 @@ import redis.asyncio as redis_lib
 from loguru import logger
 
 from mcp_server.strategy_switch_guard import StrategySwitchGuard
-from mcp_server.tools import auth_headers, backend_url as _backend_url
+from mcp_server.tools import auth_headers
+from mcp_server.tools import backend_url as _backend_url
 
 _guard: StrategySwitchGuard | None = None
 
@@ -47,6 +48,7 @@ async def apply_strategy(
 
     # Rollout mode guard: shadow/paper = log only, no real switch
     from app.config import settings as _settings
+
     if _settings.rollout_mode in ("shadow", "paper"):
         logger.info(
             f"[{_settings.rollout_mode}] Strategy switch logged only: {symbol} → {strategy_name} | {reasoning[:100]}"

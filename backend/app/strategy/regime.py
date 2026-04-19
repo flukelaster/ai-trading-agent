@@ -113,8 +113,8 @@ class MultiTFRegime:
     m15_regime: str
     h1_regime: str
     h4_regime: str
-    composite: str          # dominant regime across timeframes
-    suggested_style: str    # "scalp" | "intraday" | "swing"
+    composite: str  # dominant regime across timeframes
+    suggested_style: str  # "scalp" | "intraday" | "swing"
     agreement_score: float  # 0.0-1.0 how aligned the TFs are
 
     def to_dict(self) -> dict:
@@ -155,6 +155,7 @@ def _regime_from_df(df) -> str:
         return "normal"
     from app.strategy.indicators import adx as calc_adx
     from app.strategy.indicators import atr as calc_atr
+
     atr_val = calc_atr(df["high"], df["low"], df["close"]).iloc[-1]
     adx_result = calc_adx(df["high"], df["low"], df["close"])
     adx_val = adx_result["adx"].iloc[-1] if "adx" in adx_result else 20
@@ -191,6 +192,7 @@ async def detect_multi_tf_regime(market_data, symbol: str) -> MultiTFRegime:
 
 # ─── HMM Regime Detection ────────────────────────────────────────────────
 
+
 class HMMRegimeDetector:
     """Hidden Markov Model for regime detection.
 
@@ -204,7 +206,7 @@ class HMMRegimeDetector:
         self.model = None
         self._fitted = False
         self._state_labels = {
-            0: "ranging",            # low vol state
+            0: "ranging",  # low vol state
             1: "trending_high_vol",  # high vol state
         }
 
@@ -231,10 +233,7 @@ class HMMRegimeDetector:
 
             # Rolling std
             window = 5
-            rolling_std = np.array([
-                returns[max(0, i - window): i + 1].std()
-                for i in range(len(returns))
-            ])
+            rolling_std = np.array([returns[max(0, i - window) : i + 1].std() for i in range(len(returns))])
 
             features = np.column_stack([abs_returns, rolling_std])
 
@@ -278,10 +277,7 @@ class HMMRegimeDetector:
 
             abs_returns = np.abs(returns)
             window = 5
-            rolling_std = np.array([
-                returns[max(0, i - window): i + 1].std()
-                for i in range(len(returns))
-            ])
+            rolling_std = np.array([returns[max(0, i - window) : i + 1].std() for i in range(len(returns))])
             features = np.column_stack([abs_returns, rolling_std])
 
             # Get state probabilities for last observation

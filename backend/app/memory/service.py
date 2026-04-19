@@ -5,8 +5,7 @@ Memory Service — CRUD operations for the layered agent memory system.
 import hashlib
 from datetime import datetime, timedelta
 
-from loguru import logger
-from sqlalchemy import desc, func, select, update
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AgentMemory, MemoryCategory, MemoryTier
@@ -40,9 +39,7 @@ async def save_memory(
     content_hash = _content_hash(summary, symbol)
 
     # Check for existing
-    result = await db.execute(
-        select(AgentMemory).where(AgentMemory.content_hash == content_hash)
-    )
+    result = await db.execute(select(AgentMemory).where(AgentMemory.content_hash == content_hash))
     existing = result.scalar_one_or_none()
 
     if existing:
@@ -101,18 +98,14 @@ async def query_memories(
 
     if symbol:
         # Include both symbol-specific and global memories
-        query = query.where(
-            (AgentMemory.symbol == symbol) | (AgentMemory.symbol.is_(None))
-        )
+        query = query.where((AgentMemory.symbol == symbol) | (AgentMemory.symbol.is_(None)))
     if category:
         query = query.where(AgentMemory.category == category)
     if tier:
         query = query.where(AgentMemory.tier == tier)
 
     # Exclude expired mid-term
-    query = query.where(
-        (AgentMemory.expires_at.is_(None)) | (AgentMemory.expires_at > datetime.utcnow())
-    )
+    query = query.where((AgentMemory.expires_at.is_(None)) | (AgentMemory.expires_at > datetime.utcnow()))
 
     query = query.order_by(desc(AgentMemory.confidence), desc(AgentMemory.last_validated_at)).limit(limit)
 
@@ -142,9 +135,7 @@ async def validate_memory(
     hit: bool,
 ) -> dict:
     """Validate a memory — increment hit or miss count, recompute confidence."""
-    result = await db.execute(
-        select(AgentMemory).where(AgentMemory.id == memory_id)
-    )
+    result = await db.execute(select(AgentMemory).where(AgentMemory.id == memory_id))
     memory = result.scalar_one_or_none()
     if not memory:
         return {"error": "Memory not found", "id": memory_id}

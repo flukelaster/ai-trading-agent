@@ -2,12 +2,12 @@
 
 import os
 
-from app.auth import require_auth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import log_audit
+from app.auth import require_auth
 from app.config import settings
 from app.db.session import get_db
 
@@ -57,9 +57,7 @@ async def get_rollout_mode(request: Request):
     return {
         "mode": mode,
         "description": MODE_DESCRIPTIONS.get(mode, "Unknown mode"),
-        "available_modes": [
-            {"mode": m, "description": d} for m, d in MODE_DESCRIPTIONS.items()
-        ],
+        "available_modes": [{"mode": m, "description": d} for m, d in MODE_DESCRIPTIONS.items()],
     }
 
 
@@ -102,7 +100,8 @@ async def set_rollout_mode(
             pass
 
     await log_audit(
-        db, "rollout_mode_changed",
+        db,
+        "rollout_mode_changed",
         resource="rollout",
         detail={"old_mode": old_mode, "new_mode": req.mode},
         ip=request.client.host if request.client else None,
@@ -124,11 +123,13 @@ async def check_readiness(request: Request):
     checks: list[dict] = []
 
     # 1. Database tables
-    checks.append({
-        "name": "database",
-        "status": "ok",
-        "detail": "Connected (if this endpoint responds, DB is up)",
-    })
+    checks.append(
+        {
+            "name": "database",
+            "status": "ok",
+            "detail": "Connected (if this endpoint responds, DB is up)",
+        }
+    )
 
     # 2. Redis
     manager = getattr(request.app.state, "runner_manager", None)
@@ -143,44 +144,56 @@ async def check_readiness(request: Request):
 
     # 3. Vault master key
     vault_key = os.environ.get("VAULT_MASTER_KEY", "")
-    checks.append({
-        "name": "vault_master_key",
-        "status": "ok" if vault_key else "error",
-        "detail": "Set" if vault_key else "VAULT_MASTER_KEY not set",
-    })
+    checks.append(
+        {
+            "name": "vault_master_key",
+            "status": "ok" if vault_key else "error",
+            "detail": "Set" if vault_key else "VAULT_MASTER_KEY not set",
+        }
+    )
 
     # 4. WebAuthn config
     rp_id = os.environ.get("WEBAUTHN_RP_ID", "")
     webauthn_origin = os.environ.get("WEBAUTHN_ORIGIN", "")
-    checks.append({
-        "name": "webauthn_config",
-        "status": "ok" if (rp_id and webauthn_origin) else "warn",
-        "detail": f"RP_ID={'set' if rp_id else 'unset'}, ORIGIN={'set' if webauthn_origin else 'unset'}",
-    })
+    checks.append(
+        {
+            "name": "webauthn_config",
+            "status": "ok" if (rp_id and webauthn_origin) else "warn",
+            "detail": f"RP_ID={'set' if rp_id else 'unset'}, ORIGIN={'set' if webauthn_origin else 'unset'}",
+        }
+    )
 
     # 5. Secret key
     secret_key = os.environ.get("SECRET_KEY", settings.secret_key)
-    checks.append({
-        "name": "secret_key",
-        "status": "ok" if secret_key and secret_key != "change-me-in-production" else "error",
-        "detail": "Set" if secret_key and secret_key != "change-me-in-production" else "Using default — CHANGE THIS",
-    })
+    checks.append(
+        {
+            "name": "secret_key",
+            "status": "ok" if secret_key and secret_key != "change-me-in-production" else "error",
+            "detail": "Set"
+            if secret_key and secret_key != "change-me-in-production"
+            else "Using default — CHANGE THIS",
+        }
+    )
 
     # 6. OAuth token (for agent)
     oauth = os.environ.get("CLAUDE_OAUTH_TOKEN", "")
-    checks.append({
-        "name": "claude_oauth_token",
-        "status": "ok" if oauth else "warn",
-        "detail": "Set (in Vault or env)" if oauth else "Not set — agent will use stub executor",
-    })
+    checks.append(
+        {
+            "name": "claude_oauth_token",
+            "status": "ok" if oauth else "warn",
+            "detail": "Set (in Vault or env)" if oauth else "Not set — agent will use stub executor",
+        }
+    )
 
     # 7. Rollout mode
     mode = await _resolve_mode(request)
-    checks.append({
-        "name": "rollout_mode",
-        "status": "ok",
-        "detail": f"Current: {mode} — {MODE_DESCRIPTIONS.get(mode, '')}",
-    })
+    checks.append(
+        {
+            "name": "rollout_mode",
+            "status": "ok",
+            "detail": f"Current: {mode} — {MODE_DESCRIPTIONS.get(mode, '')}",
+        }
+    )
 
     # Summary
     errors = [c for c in checks if c["status"] == "error"]

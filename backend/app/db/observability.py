@@ -15,7 +15,7 @@ from __future__ import annotations
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Deque
+from typing import Any
 
 from loguru import logger
 from sqlalchemy import event
@@ -25,8 +25,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-
 # ---------- Pool stats ----------
+
 
 def get_pool_stats(async_engine: AsyncEngine) -> dict[str, Any]:
     """Snapshot current pool state. Safe to call frequently (no I/O)."""
@@ -49,6 +49,7 @@ def get_pool_stats(async_engine: AsyncEngine) -> dict[str, Any]:
 
 # ---------- Slow query log ----------
 
+
 @dataclass
 class SlowQueryRecord:
     sql: str
@@ -61,17 +62,14 @@ class SlowQueryTracker:
 
     def __init__(self, capacity: int = 100):
         self.capacity = capacity
-        self._buf: Deque[SlowQueryRecord] = deque(maxlen=capacity)
+        self._buf: deque[SlowQueryRecord] = deque(maxlen=capacity)
 
     def record(self, sql: str, duration_ms: float) -> None:
         self._buf.append(SlowQueryRecord(sql=sql, duration_ms=duration_ms, timestamp=time.time()))
 
     def top(self, n: int = 10) -> list[dict[str, Any]]:
         ranked = sorted(self._buf, key=lambda r: r.duration_ms, reverse=True)[:n]
-        return [
-            {"sql": r.sql[:300], "duration_ms": round(r.duration_ms, 1), "timestamp": r.timestamp}
-            for r in ranked
-        ]
+        return [{"sql": r.sql[:300], "duration_ms": round(r.duration_ms, 1), "timestamp": r.timestamp} for r in ranked]
 
 
 slow_query_tracker = SlowQueryTracker()
@@ -102,6 +100,7 @@ def install_slow_query_logger(async_engine: AsyncEngine, threshold_ms: float = 5
 
 # ---------- Session-lifetime middleware ----------
 
+
 @dataclass
 class LongHoldRecord:
     path: str
@@ -113,7 +112,7 @@ class LongHoldRecord:
 
 class LongHoldTracker:
     def __init__(self, capacity: int = 100):
-        self._buf: Deque[LongHoldRecord] = deque(maxlen=capacity)
+        self._buf: deque[LongHoldRecord] = deque(maxlen=capacity)
 
     def record(self, rec: LongHoldRecord) -> None:
         self._buf.append(rec)
@@ -180,11 +179,12 @@ class SessionLifetimeMiddleware(BaseHTTPMiddleware):
 
 # ---------- Pool pressure monitor ----------
 
+
 @dataclass
 class PressureState:
     high_since: float | None = None
     alerted: bool = False
-    recent_samples: Deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=360))
+    recent_samples: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=360))
 
 
 class PoolPressureMonitor:
@@ -215,10 +215,7 @@ class PoolPressureMonitor:
         if stats["utilization"] >= self.high_threshold:
             if self.state.high_since is None:
                 self.state.high_since = time.time()
-            elif (
-                not self.state.alerted
-                and time.time() - self.state.high_since >= self.sustained_seconds
-            ):
+            elif not self.state.alerted and time.time() - self.state.high_since >= self.sustained_seconds:
                 await self._alert(stats)
                 self.state.alerted = True
         else:

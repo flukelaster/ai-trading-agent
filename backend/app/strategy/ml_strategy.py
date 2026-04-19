@@ -11,19 +11,19 @@ import joblib
 import pandas as pd
 from loguru import logger
 
-from app.ml.features import FEATURE_COLUMNS, build_features
-from app.strategy.base import BaseStrategy
-from app.strategy.indicators import atr
 from app.config import settings
 from app.constants import (
     ADX_RANGING_THRESHOLD,
     ATR_PERCENTILE_LOW,
+    HIGH_VOL_THRESHOLD,
+    LOW_VOL_THRESHOLD,
     ML_HIGH_VOL_THRESHOLD_BOOST,
     ML_LOW_VOL_THRESHOLD_BOOST,
     RANGING_CONFIDENCE_FACTOR,
-    HIGH_VOL_THRESHOLD,
-    LOW_VOL_THRESHOLD,
 )
+from app.ml.features import FEATURE_COLUMNS, build_features
+from app.strategy.base import BaseStrategy
+from app.strategy.indicators import atr
 
 
 class MLStrategy(BaseStrategy):
@@ -54,30 +54,35 @@ class MLStrategy(BaseStrategy):
             return
 
         try:
-            from app.db.session import async_session
-            from app.db.models import MLModelLog
             from sqlalchemy import select
+
+            from app.db.models import MLModelLog
+            from app.db.session import async_session
 
             model_prefix = f"lightgbm_{self._symbol.lower()}"
 
             async with async_session() as session:
                 # Try symbol-specific model first
                 result = await session.execute(
-                    select(MLModelLog).where(
-                        MLModelLog.is_active == True,
+                    select(MLModelLog)
+                    .where(
+                        MLModelLog.is_active,
                         MLModelLog.model_binary.isnot(None),
                         MLModelLog.model_name.like(f"{model_prefix}%"),
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
                 log = result.scalar_one_or_none()
 
                 # Fallback to any active model if no symbol-specific one
                 if not log:
                     result = await session.execute(
-                        select(MLModelLog).where(
-                            MLModelLog.is_active == True,
+                        select(MLModelLog)
+                        .where(
+                            MLModelLog.is_active,
                             MLModelLog.model_binary.isnot(None),
-                        ).limit(1)
+                        )
+                        .limit(1)
                     )
                     log = result.scalar_one_or_none()
 
@@ -127,7 +132,7 @@ class MLStrategy(BaseStrategy):
         proba = self._model.predict(X_valid)
 
         signal_map = {0: -1, 1: 0, 2: 1}
-        for row_idx, prob in zip(X_valid.index, proba):
+        for row_idx, prob in zip(X_valid.index, proba, strict=False):
             predicted_class = prob.argmax()
             confidence = float(prob[predicted_class])
             signal = signal_map[predicted_class]

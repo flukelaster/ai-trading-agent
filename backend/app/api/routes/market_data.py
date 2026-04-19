@@ -32,13 +32,15 @@ async def get_ohlcv(
 
     candles = []
     for ts, row in df.iterrows():
-        candles.append({
-            "time": int(ts.timestamp()),
-            "open": round(row["open"], decimals),
-            "high": round(row["high"], decimals),
-            "low": round(row["low"], decimals),
-            "close": round(row["close"], decimals),
-        })
+        candles.append(
+            {
+                "time": int(ts.timestamp()),
+                "open": round(row["open"], decimals),
+                "high": round(row["high"], decimals),
+                "low": round(row["low"], decimals),
+                "close": round(row["close"], decimals),
+            }
+        )
     return {"candles": candles}
 
 
@@ -50,17 +52,19 @@ async def get_symbols():
     for sym in mgr.get_symbols():
         profile = SYMBOL_PROFILES.get(sym, {})
         engine = mgr.get_engine(sym)
-        symbols.append({
-            "symbol": sym,
-            "display_name": profile.get("display_name", sym),
-            "timeframe": engine.timeframe if engine else profile.get("default_timeframe", "M15"),
-            "state": engine.state.value if engine else "STOPPED",
-            "price_decimals": profile.get("price_decimals", 2),
-            "max_lot": profile.get("max_lot", 1.0),
-            "default_lot": profile.get("default_lot", 0.1),
-            "ml_tp_pips": profile.get("ml_tp_pips", 5.0),
-            "ml_sl_pips": profile.get("ml_sl_pips", 5.0),
-            "ml_forward_bars": profile.get("ml_forward_bars", 10),
-            "ml_timeframe": profile.get("ml_timeframe", profile.get("default_timeframe", "M15")),
-        })
+        symbols.append(
+            {
+                "symbol": sym,
+                "display_name": profile.get("display_name", sym),
+                "timeframe": engine.timeframe if engine else profile.get("default_timeframe", "M15"),
+                "state": engine.state.value if engine else "STOPPED",
+                "price_decimals": profile.get("price_decimals", 2),
+                "max_lot": profile.get("max_lot", 1.0),
+                "default_lot": profile.get("default_lot", 0.1),
+                "ml_tp_pips": profile.get("ml_tp_pips", 5.0),
+                "ml_sl_pips": profile.get("ml_sl_pips", 5.0),
+                "ml_forward_bars": profile.get("ml_forward_bars", 10),
+                "ml_timeframe": profile.get("ml_timeframe", profile.get("default_timeframe", "M15")),
+            }
+        )
     return {"symbols": symbols}

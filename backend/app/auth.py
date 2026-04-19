@@ -3,7 +3,7 @@ JWT Authentication — single-user auth for protecting the dashboard.
 When auth_password_hash is empty, auth is disabled (backward compat).
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -24,12 +24,13 @@ def _get_jwt():
     if _jwt_module is None:
         try:
             from jose import jwt
+
             _jwt_module = jwt
-        except ImportError:
+        except ImportError as e:
             raise HTTPException(
                 status_code=500,
                 detail="python-jose not installed. Run: pip install python-jose[cryptography]",
-            )
+            ) from e
     return _jwt_module
 
 
@@ -38,12 +39,13 @@ def _get_pwd_context():
     if _pwd_context is None:
         try:
             from passlib.context import CryptContext
+
             _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        except ImportError:
+        except ImportError as e:
             raise HTTPException(
                 status_code=500,
                 detail="passlib not installed. Run: pip install passlib[bcrypt]",
-            )
+            ) from e
     return _pwd_context
 
 
@@ -62,18 +64,15 @@ def _assert_auth_consistent() -> None:
     # an empty HMAC key. Refuse to start when any JWT-issuing path is live.
     if _auth_enabled() and not settings.secret_key:
         raise RuntimeError(
-            "SECRET_KEY is empty while auth is enabled — refusing to start. "
-            "Set SECRET_KEY to a long random value."
+            "SECRET_KEY is empty while auth is enabled — refusing to start. Set SECRET_KEY to a long random value."
         )
     _PLACEHOLDERS = {"change-me-in-production", "changeme", "secret", "please-change"}
     if settings.secret_key.strip().lower() in _PLACEHOLDERS:
-        raise RuntimeError(
-            "SECRET_KEY is set to a placeholder value — refusing to start. "
-            "Generate a real secret."
-        )
+        raise RuntimeError("SECRET_KEY is set to a placeholder value — refusing to start. Generate a real secret.")
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -87,10 +86,11 @@ class TokenResponse(BaseModel):
 
 # ─── Token Management ─────────────────────────────────────────────────────────
 
+
 def create_access_token(username: str, expire_hours: int | None = None) -> str:
     jwt = _get_jwt()
     hours = expire_hours if expire_hours is not None else settings.jwt_expire_hours
-    expire = datetime.now(timezone.utc) + timedelta(hours=hours)
+    expire = datetime.now(UTC) + timedelta(hours=hours)
     payload = {"sub": username, "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
@@ -147,6 +147,7 @@ async def require_auth(credentials: HTTPAuthorizationCredentials | None = Depend
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
+
 @router.post("/login", response_model=TokenResponse)
 async def login(req: LoginRequest, request: Request):
     if not _auth_enabled():
@@ -193,7 +194,7 @@ async def get_ws_token(request: Request):
         raise HTTPException(status_code=401, detail="Invalid session")
 
     # Short-lived token (30 seconds) for WS handshake only
-    expire = datetime.now(timezone.utc) + timedelta(seconds=30)
+    expire = datetime.now(UTC) + timedelta(seconds=30)
     ws_token = jwt_mod.encode(
         {"sub": username, "exp": expire, "purpose": "ws"},
         settings.secret_key,

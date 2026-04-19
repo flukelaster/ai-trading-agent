@@ -1,9 +1,37 @@
+# Pre-commit hooks — run lint/format/type checks before every commit.
+#
+# Setup (one-time):
+#   pip install pre-commit
+#   pre-commit install
+#
+# Manual run across all files:
+#   pre-commit run --all-files
+#
+# Emergency bypass:
+#   git commit --no-verify
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.0
     hooks:
       - id: ruff
         args: [--fix]
-        files: ^backend/
+        files: ^backend/.*\.py$
       - id: ruff-format
-        files: ^backend/
+        files: ^backend/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && npx eslint --fix'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+      - id: tsc
+        name: tsc --noEmit (frontend)
+        entry: bash -c 'cd frontend && npx tsc --noEmit'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false

@@ -65,6 +65,7 @@ class StrategyOptimizer:
         # Use a short-lived isolated session so the shared db_session is not held
         # across the Claude API call that follows in optimize().
         from app.db.session import async_session
+
         cutoff = datetime.utcnow() - timedelta(days=days)
         async with async_session() as db:
             result = await db.execute(
@@ -100,13 +101,13 @@ Total profit: {total_profit:.2f}
 Profit factor: {pf:.2f}"""
         return summary
 
-    async def optimize(
-        self, current_params: dict, strategy_name: str = "ema_crossover"
-    ) -> OptimizationResult | None:
+    async def optimize(self, current_params: dict, strategy_name: str = "ema_crossover") -> OptimizationResult | None:
         summary = await self.build_performance_summary()
         user_prompt = f"Current performance:\n{summary}\n\nCurrent params: {json.dumps(current_params)}"
 
-        result = await self.ai.complete_json_async(OPTIMIZATION_SYSTEM_PROMPT, user_prompt, max_tokens=512, agent_id="optimization")
+        result = await self.ai.complete_json_async(
+            OPTIMIZATION_SYSTEM_PROMPT, user_prompt, max_tokens=512, agent_id="optimization"
+        )
         if result is None:
             logger.warning("AI optimization failed")
             return None
@@ -123,9 +124,7 @@ Profit factor: {pf:.2f}"""
         backtest_validation = None
         should_apply = False
         if self._collector:
-            backtest_validation = await self._backtest_compare(
-                strategy_name, current_params, suggested
-            )
+            backtest_validation = await self._backtest_compare(strategy_name, current_params, suggested)
             if backtest_validation:
                 should_apply = backtest_validation.get("suggested_better", False)
                 logger.info(
@@ -139,6 +138,7 @@ Profit factor: {pf:.2f}"""
 
         # Save to DB — isolated short session, not the shared self.db
         from app.db.session import async_session
+
         log_id = None
         try:
             async with async_session() as db:
@@ -169,16 +169,16 @@ Profit factor: {pf:.2f}"""
             log_id=log_id,
         )
 
-    async def _backtest_compare(
-        self, strategy_name: str, current_params: dict, suggested_params: dict
-    ) -> dict | None:
+    async def _backtest_compare(self, strategy_name: str, current_params: dict, suggested_params: dict) -> dict | None:
         """Backtest current vs suggested params on recent historical data."""
         try:
             from app.config import settings
+
             # Load last 90 days of data from DB
             to_date = datetime.now(UTC).strftime("%Y-%m-%d")
             from_date = (datetime.now(UTC) - timedelta(days=90)).strftime("%Y-%m-%d")
             from app.config import resolve_broker_symbol
+
             df = await self._collector.load_from_db(
                 resolve_broker_symbol(settings.symbol), settings.timeframe, from_date, to_date
             )

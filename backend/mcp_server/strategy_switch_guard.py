@@ -116,10 +116,7 @@ class StrategySwitchGuard:
         pipe.expire(count_key, 86400)  # TTL 24h
         await pipe.execute()
 
-        logger.info(
-            f"Strategy switch recorded [{symbol}]: → {strategy_name} "
-            f"| reason: {reasoning[:100]}"
-        )
+        logger.info(f"Strategy switch recorded [{symbol}]: → {strategy_name} | reason: {reasoning[:100]}")
 
     async def get_status(self, symbol: str) -> dict:
         """Get current switch guard status for a symbol."""

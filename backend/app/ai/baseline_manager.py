@@ -17,10 +17,10 @@ from loguru import logger
 class BaselineSnapshot:
     """Snapshot of baseline parameters."""
 
-    params: dict                # strategy parameters
-    sharpe_ratio: float         # Sharpe at time of baseline
-    created_at: str             # ISO timestamp
-    source: str                 # "walk_forward", "manual", "initial"
+    params: dict  # strategy parameters
+    sharpe_ratio: float  # Sharpe at time of baseline
+    created_at: str  # ISO timestamp
+    source: str  # "walk_forward", "manual", "initial"
 
     def to_dict(self) -> dict:
         return {
@@ -122,7 +122,7 @@ class BaselineManager:
             event = ResetEvent(
                 timestamp=datetime.utcnow().isoformat(),
                 reason=f"Rolling Sharpe {rolling_sharpe:.4f} < threshold {threshold:.4f} "
-                       f"(baseline {self._baseline.sharpe_ratio:.4f} × {self.reset_threshold})",
+                f"(baseline {self._baseline.sharpe_ratio:.4f} × {self.reset_threshold})",
                 baseline_sharpe=self._baseline.sharpe_ratio,
                 rolling_sharpe=rolling_sharpe,
                 params_before=deepcopy(self._current_params),

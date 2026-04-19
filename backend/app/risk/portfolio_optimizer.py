@@ -18,12 +18,12 @@ from loguru import logger
 class PortfolioAllocation:
     """Result of portfolio optimization."""
 
-    weights: dict[str, float]         # optimal weight per symbol
-    expected_return: float            # annualized expected return
-    expected_vol: float               # annualized volatility
-    sharpe_ratio: float               # expected Sharpe
-    method: str                       # "markowitz", "min_variance", "max_sharpe", "cvar", "risk_parity"
-    rebalance_needed: bool = False    # True if current weights diverge > threshold
+    weights: dict[str, float]  # optimal weight per symbol
+    expected_return: float  # annualized expected return
+    expected_vol: float  # annualized volatility
+    sharpe_ratio: float  # expected Sharpe
+    method: str  # "markowitz", "min_variance", "max_sharpe", "cvar", "risk_parity"
+    rebalance_needed: bool = False  # True if current weights diverge > threshold
 
     def to_dict(self) -> dict:
         return {
@@ -49,7 +49,7 @@ def _build_inputs(
         if len(p) < window + 1:
             returns_list.append(np.zeros(window))
         else:
-            r = np.diff(np.log(p[-(window + 1):]))
+            r = np.diff(np.log(p[-(window + 1) :]))
             returns_list.append(r[:window])
 
     returns_matrix = np.array(returns_list)
@@ -215,7 +215,7 @@ def cvar_optimization(
         if len(p) < window + 1:
             returns_list.append(np.zeros(window))
         else:
-            returns_list.append(np.diff(np.log(p[-(window + 1):])))
+            returns_list.append(np.diff(np.log(p[-(window + 1) :])))
 
     returns_matrix = np.array(returns_list)  # (n, T)
 

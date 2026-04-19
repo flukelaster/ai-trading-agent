@@ -2,7 +2,7 @@
 Agent Prompts API — view and customize system prompts for AI trading agents.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.auth import require_auth
@@ -18,6 +18,7 @@ class UpdatePromptRequest(BaseModel):
 async def list_agent_prompts():
     """List all agents with their active and default prompts."""
     from mcp_server.agents.prompt_registry import get_all_prompts
+
     return {"agents": await get_all_prompts()}
 
 
@@ -25,6 +26,7 @@ async def list_agent_prompts():
 async def update_agent_prompt(agent_id: str, req: UpdatePromptRequest):
     """Set a custom prompt for an agent (overrides hardcoded default)."""
     from mcp_server.agents.prompt_registry import AGENT_META, set_custom_prompt
+
     if agent_id not in AGENT_META:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
     await set_custom_prompt(agent_id, req.prompt)
@@ -35,7 +37,13 @@ async def update_agent_prompt(agent_id: str, req: UpdatePromptRequest):
 async def reset_agent_prompt(agent_id: str):
     """Reset an agent's prompt to hardcoded default."""
     from mcp_server.agents.prompt_registry import AGENT_META, delete_custom_prompt, get_default_prompt
+
     if agent_id not in AGENT_META:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
     await delete_custom_prompt(agent_id)
-    return {"success": True, "agent_id": agent_id, "is_customized": False, "active_prompt": get_default_prompt(agent_id)}
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "is_customized": False,
+        "active_prompt": get_default_prompt(agent_id),
+    }

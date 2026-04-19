@@ -4,7 +4,7 @@ Single-owner model: only 1 user, multiple passkeys (devices).
 """
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from loguru import logger
@@ -53,6 +53,7 @@ async def _pop_challenge(request: Request | None, key: str) -> bytes | None:
             logger.warning(f"WebAuthn Redis read failed, using memory: {e}")
     return _local_challenges.pop(key, None)
 
+
 RP_ID = settings.webauthn_rp_id if hasattr(settings, "webauthn_rp_id") else "localhost"
 RP_NAME = "AI Trading Agent"
 ORIGIN = settings.webauthn_origin if hasattr(settings, "webauthn_origin") else "http://localhost:3000"
@@ -60,10 +61,12 @@ ORIGIN = settings.webauthn_origin if hasattr(settings, "webauthn_origin") else "
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _create_jwt(owner_id: int, jti: str) -> str:
     """Create a JWT token for session."""
     from jose import jwt
-    expire = datetime.now(timezone.utc) + timedelta(hours=settings.jwt_expire_hours)
+
+    expire = datetime.now(UTC) + timedelta(hours=settings.jwt_expire_hours)
     payload = {"sub": str(owner_id), "jti": jti, "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
@@ -71,14 +74,15 @@ def _create_jwt(owner_id: int, jti: str) -> str:
 def _verify_jwt(token: str) -> dict | None:
     """Verify JWT and return payload."""
     from jose import jwt
+
     try:
         return jwt.decode(token, settings.secret_key, algorithms=["HS256"])
     except Exception:
         return None
 
 
-
 # ─── Setup Check ──────────────────────────────────────────────────────────────
+
 
 class SetupStatus(BaseModel):
     is_setup_complete: bool
@@ -96,6 +100,7 @@ async def get_setup_status(db: AsyncSession = Depends(get_db)):
 
 
 # ─── Registration (first-time setup) ─────────────────────────────────────────
+
 
 class RegisterOptionsRequest(BaseModel):
     display_name: str = "Admin"
@@ -120,9 +125,7 @@ async def register_options(req: RegisterOptionsRequest, request: Request, db: As
         await db.refresh(owner)
 
     # Get existing credentials to exclude
-    creds_result = await db.execute(
-        select(WebAuthnCredential).where(WebAuthnCredential.owner_id == owner.id)
-    )
+    creds_result = await db.execute(select(WebAuthnCredential).where(WebAuthnCredential.owner_id == owner.id))
     existing_creds = creds_result.scalars().all()
 
     from webauthn.helpers.structs import PublicKeyCredentialDescriptor
@@ -136,15 +139,13 @@ async def register_options(req: RegisterOptionsRequest, request: Request, db: As
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.PREFERRED,
         ),
-        exclude_credentials=[
-            PublicKeyCredentialDescriptor(id=c.credential_id)
-            for c in existing_creds
-        ],
+        exclude_credentials=[PublicKeyCredentialDescriptor(id=c.credential_id) for c in existing_creds],
     )
 
     await _store_challenge(request, str(owner.id), options.challenge)
 
     from webauthn.helpers import options_to_json
+
     return {"options": options_to_json(options), "owner_id": owner.id}
 
 
@@ -157,9 +158,10 @@ class RegisterVerifyRequest(BaseModel):
 @router.post("/register/verify")
 async def register_verify(req: RegisterVerifyRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Verify registration response and store credential."""
+    import json
+
     from webauthn import verify_registration_response
     from webauthn.helpers import parse_registration_credential_json
-    import json
 
     challenge = await _pop_challenge(request, str(req.owner_id))
     if not challenge:
@@ -174,7 +176,7 @@ async def register_verify(req: RegisterVerifyRequest, request: Request, db: Asyn
             expected_origin=ORIGIN,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Registration failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Registration failed: {e}") from e
 
     # Store credential
     new_cred = WebAuthnCredential(
@@ -187,13 +189,12 @@ async def register_verify(req: RegisterVerifyRequest, request: Request, db: Asyn
     db.add(new_cred)
 
     # Mark setup as complete
-    await db.execute(
-        update(Owner).where(Owner.id == req.owner_id).values(is_setup_complete=True)
-    )
+    await db.execute(update(Owner).where(Owner.id == req.owner_id).values(is_setup_complete=True))
     await db.commit()
 
     # Reset middleware cache so it starts enforcing auth
     from app.middleware.auth import AuthMiddleware
+
     AuthMiddleware.reset_cache()
 
     await _log_audit(db, "passkey_registered", resource=f"device:{req.device_name}")
@@ -203,6 +204,7 @@ async def register_verify(req: RegisterVerifyRequest, request: Request, db: Asyn
 
 
 # ─── Login ────────────────────────────────────────────────────────────────────
+
 
 @router.post("/login/options")
 async def login_options(request: Request, db: AsyncSession = Depends(get_db)):
@@ -214,24 +216,20 @@ async def login_options(request: Request, db: AsyncSession = Depends(get_db)):
     if not owner or not owner.is_setup_complete:
         raise HTTPException(status_code=400, detail="Setup not complete. Register a passkey first.")
 
-    creds_result = await db.execute(
-        select(WebAuthnCredential).where(WebAuthnCredential.owner_id == owner.id)
-    )
+    creds_result = await db.execute(select(WebAuthnCredential).where(WebAuthnCredential.owner_id == owner.id))
     creds = creds_result.scalars().all()
 
     from webauthn.helpers.structs import PublicKeyCredentialDescriptor
 
     options = generate_authentication_options(
         rp_id=RP_ID,
-        allow_credentials=[
-            PublicKeyCredentialDescriptor(id=c.credential_id)
-            for c in creds
-        ],
+        allow_credentials=[PublicKeyCredentialDescriptor(id=c.credential_id) for c in creds],
     )
 
     await _store_challenge(request, "login", options.challenge)
 
     from webauthn.helpers import options_to_json
+
     return {"options": options_to_json(options)}
 
 
@@ -240,12 +238,14 @@ class LoginVerifyRequest(BaseModel):
 
 
 @router.post("/login/verify")
-async def login_verify(req: LoginVerifyRequest, request: Request, response: Response,
-                       db: AsyncSession = Depends(get_db)):
+async def login_verify(
+    req: LoginVerifyRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)
+):
     """Verify login assertion and issue JWT cookie."""
+    import json
+
     from webauthn import verify_authentication_response
     from webauthn.helpers import parse_authentication_credential_json
-    import json
 
     challenge = await _pop_challenge(request, "login")
     if not challenge:
@@ -254,11 +254,7 @@ async def login_verify(req: LoginVerifyRequest, request: Request, response: Resp
     credential = parse_authentication_credential_json(json.dumps(req.credential))
 
     # Find the credential in DB
-    result = await db.execute(
-        select(WebAuthnCredential).where(
-            WebAuthnCredential.credential_id == credential.raw_id
-        )
-    )
+    result = await db.execute(select(WebAuthnCredential).where(WebAuthnCredential.credential_id == credential.raw_id))
     stored_cred = result.scalar_one_or_none()
     if not stored_cred:
         raise HTTPException(status_code=401, detail="Unknown credential")
@@ -274,7 +270,7 @@ async def login_verify(req: LoginVerifyRequest, request: Request, response: Resp
         )
     except Exception as e:
         await _log_audit(db, "login_failed", ip=request.client.host if request.client else None, success=False)
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {e}")
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {e}") from e
 
     # Update sign count
     stored_cred.sign_count = verification.new_sign_count
@@ -312,17 +308,15 @@ async def login_verify(req: LoginVerifyRequest, request: Request, response: Resp
 
 # ─── Session Management ───────────────────────────────────────────────────────
 
+
 @router.post("/logout")
-async def logout(response: Response, session: str | None = Cookie(None),
-                 db: AsyncSession = Depends(get_db)):
+async def logout(response: Response, session: str | None = Cookie(None), db: AsyncSession = Depends(get_db)):
     """Revoke current session and clear cookie."""
     if session:
         payload = _verify_jwt(session)
         if payload and payload.get("jti"):
             await db.execute(
-                update(AuthSession)
-                .where(AuthSession.jwt_jti == payload["jti"])
-                .values(revoked_at=datetime.utcnow())
+                update(AuthSession).where(AuthSession.jwt_jti == payload["jti"]).values(revoked_at=datetime.utcnow())
             )
             await db.commit()
 

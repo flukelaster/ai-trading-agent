@@ -2,20 +2,18 @@
 Integration tests for Job Management API routes.
 """
 
-from unittest.mock import AsyncMock
-
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app.db.models import RunnerStatus, JobStatus, Runner
+from app.db.models import Runner, RunnerStatus
 from app.db.session import get_db
-from app.runner.backend import RunnerBackend, ResourceMetrics
 from app.runner.job_queue import JobQueue
 
 
 def _make_test_app(db_session, job_queue):
     from fastapi import FastAPI
+
     from app.api.routes import jobs
 
     app = FastAPI()
@@ -30,9 +28,7 @@ def _make_test_app(db_session, job_queue):
 
 
 async def _create_runner(db_session, name="test-runner", status=RunnerStatus.ONLINE):
-    runner = Runner(
-        name=name, image="agent:latest", status=status, max_concurrent_jobs=3
-    )
+    runner = Runner(name=name, image="agent:latest", status=status, max_concurrent_jobs=3)
     db_session.add(runner)
     await db_session.commit()
     await db_session.refresh(runner)
@@ -52,10 +48,13 @@ class TestCreateJob:
     @pytest.mark.asyncio
     async def test_create_job(self, setup):
         client, queue, _ = setup
-        resp = await client.post("/api/jobs", json={
-            "job_type": "candle_analysis",
-            "input": {"symbol": "GOLD", "timeframe": "M15"},
-        })
+        resp = await client.post(
+            "/api/jobs",
+            json={
+                "job_type": "candle_analysis",
+                "input": {"symbol": "GOLD", "timeframe": "M15"},
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["job_type"] == "candle_analysis"
@@ -66,10 +65,13 @@ class TestCreateJob:
     async def test_create_job_with_runner_id(self, setup):
         client, queue, db = setup
         runner = await _create_runner(db)
-        resp = await client.post("/api/jobs", json={
-            "job_type": "manual_trade",
-            "runner_id": runner.id,
-        })
+        resp = await client.post(
+            "/api/jobs",
+            json={
+                "job_type": "manual_trade",
+                "runner_id": runner.id,
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["runner_id"] == runner.id
 
@@ -95,7 +97,7 @@ class TestListJobs:
     @pytest.mark.asyncio
     async def test_list_filter_by_status(self, setup):
         client, queue, db = setup
-        runner = await _create_runner(db)
+        await _create_runner(db)
         await queue.enqueue("task1")
         await queue.enqueue("task2")
         await queue.dispatch()  # task1 or task2 -> RUNNING
@@ -153,7 +155,7 @@ class TestCancelJob:
     @pytest.mark.asyncio
     async def test_cancel_completed_fails(self, setup):
         client, queue, db = setup
-        runner = await _create_runner(db)
+        await _create_runner(db)
         await queue.enqueue("task")
         job = await queue.dispatch()
         await queue.complete(job.id)
@@ -172,7 +174,7 @@ class TestRetryJob:
     @pytest.mark.asyncio
     async def test_retry_failed(self, setup):
         client, queue, db = setup
-        runner = await _create_runner(db)
+        await _create_runner(db)
         await queue.enqueue("candle_analysis", input_data={"symbol": "GOLD"})
         job = await queue.dispatch()
         await queue.fail(job.id, "token error")
@@ -197,6 +199,7 @@ class TestQueueNotInitialized:
     @pytest.mark.asyncio
     async def test_503_when_no_queue(self, db_session):
         from fastapi import FastAPI
+
         from app.api.routes import jobs
 
         app = FastAPI()

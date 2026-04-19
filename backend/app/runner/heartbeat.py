@@ -58,9 +58,7 @@ class RunnerHeartbeatMonitor:
 
             if misses >= self.max_misses:
                 # Too many misses — try auto-restart
-                logger.warning(
-                    f"Runner {runner.name}: {misses} consecutive heartbeat misses, attempting restart"
-                )
+                logger.warning(f"Runner {runner.name}: {misses} consecutive heartbeat misses, attempting restart")
                 await self.manager._log(
                     runner.id,
                     "error",
@@ -75,9 +73,7 @@ class RunnerHeartbeatMonitor:
 
             elif misses == 1 and runner.status == RunnerStatus.ONLINE:
                 # First miss — mark degraded
-                await self.manager.mark_degraded(
-                    runner.id, f"Heartbeat miss ({misses}/{self.max_misses})"
-                )
+                await self.manager.mark_degraded(runner.id, f"Heartbeat miss ({misses}/{self.max_misses})")
 
     def reset(self, runner_id: int) -> None:
         """Reset miss count for a runner (e.g., after manual restart)."""

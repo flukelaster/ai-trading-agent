@@ -7,7 +7,7 @@ SELL: EMA cross down AND RSI > oversold
 import pandas as pd
 
 from app.strategy.base import BaseStrategy
-from app.strategy.indicators import ema, rsi, atr
+from app.strategy.indicators import atr, ema, rsi
 
 
 class RSIFilterStrategy(BaseStrategy):

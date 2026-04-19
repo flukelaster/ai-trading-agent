@@ -36,34 +36,36 @@ def _load_defaults() -> None:
         return
 
     # Multi-agent prompts
-    from mcp_server.agents.orchestrator import SYSTEM_PROMPT as ORCH
-    from mcp_server.agents.technical_analyst import SYSTEM_PROMPT as TECH
-    from mcp_server.agents.fundamental_analyst import SYSTEM_PROMPT as FUND
-    from mcp_server.agents.risk_analyst import SYSTEM_PROMPT as RISK
-    from mcp_server.agents.reflector import SYSTEM_PROMPT as REFL
-
     # Single agent (file-based)
     from pathlib import Path
+
+    from mcp_server.agents.fundamental_analyst import SYSTEM_PROMPT as FUND
+    from mcp_server.agents.orchestrator import SYSTEM_PROMPT as ORCH
+    from mcp_server.agents.reflector import SYSTEM_PROMPT as REFL
+    from mcp_server.agents.risk_analyst import SYSTEM_PROMPT as RISK
+    from mcp_server.agents.technical_analyst import SYSTEM_PROMPT as TECH
+
     prompt_path = Path(__file__).parent.parent / "system_prompt.md"
     single = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
 
     # Utility prompts
-    from app.ai.prompts import OPTIMIZATION_SYSTEM_PROMPT
-    from app.ai.prompts import get_sentiment_prompt
+    from app.ai.prompts import OPTIMIZATION_SYSTEM_PROMPT, get_sentiment_prompt
 
     # Sentiment default uses a `{symbol}` placeholder so the /agent-prompts UI
     # displays the generic template instead of a gold-specific variant.
     # Runtime sentiment calls in app/ai/news_sentiment.py pass the real symbol.
-    _DEFAULTS.update({
-        "orchestrator": ORCH,
-        "technical_analyst": TECH,
-        "fundamental_analyst": FUND,
-        "risk_analyst": RISK,
-        "reflector": REFL,
-        "single_agent": single,
-        "sentiment": get_sentiment_prompt("{symbol}"),
-        "optimization": OPTIMIZATION_SYSTEM_PROMPT,
-    })
+    _DEFAULTS.update(
+        {
+            "orchestrator": ORCH,
+            "technical_analyst": TECH,
+            "fundamental_analyst": FUND,
+            "risk_analyst": RISK,
+            "reflector": REFL,
+            "single_agent": single,
+            "sentiment": get_sentiment_prompt("{symbol}"),
+            "optimization": OPTIMIZATION_SYSTEM_PROMPT,
+        }
+    )
     _defaults_loaded = True
 
 
@@ -126,6 +128,7 @@ def _tradable_symbols_str() -> str:
     """
     try:
         from app.config import SYMBOL_PROFILES, settings
+
         names = [s for s, p in SYMBOL_PROFILES.items() if "canonical" not in p]
         if not names:
             names = list(settings.symbol_list)
@@ -190,14 +193,16 @@ async def get_all_prompts() -> list[dict]:
             except Exception:
                 pass
 
-        result.append({
-            "id": agent_id,
-            "name": meta["name"],
-            "model": meta["model"],
-            "description": meta["description"],
-            "default_prompt": default,
-            "active_prompt": active,
-            "is_customized": is_customized,
-        })
+        result.append(
+            {
+                "id": agent_id,
+                "name": meta["name"],
+                "model": meta["model"],
+                "description": meta["description"],
+                "default_prompt": default,
+                "active_prompt": active,
+                "is_customized": is_customized,
+            }
+        )
 
     return result

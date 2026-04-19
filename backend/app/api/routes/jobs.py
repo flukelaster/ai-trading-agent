@@ -1,11 +1,11 @@
 """Job Management API — create, list, cancel, retry jobs."""
 
-from app.auth import require_auth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import log_audit
+from app.auth import require_auth
 from app.db.models import JobStatus
 from app.db.session import get_db
 
@@ -75,7 +75,9 @@ async def create_job(
         runner_id=req.runner_id,
     )
     await log_audit(
-        db, "job_created", resource=f"job:{job.id}",
+        db,
+        "job_created",
+        resource=f"job:{job.id}",
         detail={"job_type": req.job_type, "runner_id": req.runner_id},
         ip=request.client.host if request.client else None,
     )
@@ -127,11 +129,16 @@ async def get_job(job_id: int, request: Request):
     if job.status in (JobStatus.PENDING, JobStatus.RUNNING):
         try:
             import json as _json
+
             manager = getattr(request.app.state, "runner_manager", None)
             if manager:
                 result = await manager.redis.hgetall(f"job:{job_id}:result")
                 if result:
-                    status_val = result.get(b"status", result.get("status", b"")).decode() if isinstance(result.get(b"status", result.get("status", b"")), bytes) else result.get("status", "")
+                    status_val = (
+                        result.get(b"status", result.get("status", b"")).decode()
+                        if isinstance(result.get(b"status", result.get("status", b"")), bytes)
+                        else result.get("status", "")
+                    )
                     if status_val == "completed":
                         output_raw = result.get(b"output", result.get("output", b"{}"))
                         if isinstance(output_raw, bytes):
@@ -168,7 +175,9 @@ async def cancel_job(
         raise HTTPException(status_code=400, detail=str(e)) from None
 
     await log_audit(
-        db, "job_cancelled", resource=f"job:{job_id}",
+        db,
+        "job_cancelled",
+        resource=f"job:{job_id}",
         ip=request.client.host if request.client else None,
     )
     return _job_to_response(job)
@@ -188,7 +197,9 @@ async def retry_job(
         raise HTTPException(status_code=400, detail=str(e)) from None
 
     await log_audit(
-        db, "job_retried", resource=f"job:{job_id}",
+        db,
+        "job_retried",
+        resource=f"job:{job_id}",
         detail={"new_job_id": new_job.id},
         ip=request.client.host if request.client else None,
     )

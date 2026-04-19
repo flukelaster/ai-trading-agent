@@ -9,9 +9,9 @@ from datetime import datetime
 import pandas as pd
 from loguru import logger
 
-from app.strategy.base import BaseStrategy
-from app.risk.manager import RiskManager
 from app.constants import DEFAULT_COMMISSION_PCT, DEFAULT_SLIPPAGE_PIPS
+from app.risk.manager import RiskManager
+from app.strategy.base import BaseStrategy
 
 
 @dataclass
@@ -229,9 +229,10 @@ class BacktestEngine:
             returns.append(r)
         if returns:
             import statistics
+
             mean_r = statistics.mean(returns)
             std_r = statistics.stdev(returns) if len(returns) > 1 else 1
-            sharpe = (mean_r / std_r * (252 ** 0.5)) if std_r > 0 else 0
+            sharpe = (mean_r / std_r * (252**0.5)) if std_r > 0 else 0
         else:
             sharpe = 0
 

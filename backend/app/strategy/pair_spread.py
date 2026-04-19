@@ -9,8 +9,8 @@ Falls back to single-symbol Bollinger z-score when pair data unavailable.
 Worst case: correlation breakdown — pair decouples permanently.
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from app.strategy.base import BaseStrategy
 from app.strategy.indicators import atr
