@@ -100,7 +100,9 @@ async def run_multi_agent(
         Combined result with all agent reports and final decision.
     """
     start_time = time.time()
-    symbol = (job_input or {}).get("symbol", "GOLD")
+    symbol = (job_input or {}).get("symbol")
+    if not symbol:
+        raise ValueError("multi-agent run requires 'symbol' in job_input")
     timeframe = (job_input or {}).get("timeframe", "M15")
 
     logger.info(f"[Orchestrator] Starting multi-agent analysis: {symbol} {timeframe}")

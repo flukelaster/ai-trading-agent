@@ -19,9 +19,6 @@ STATIC_CORRELATIONS = {
 # Backward compat alias
 CORRELATIONS = STATIC_CORRELATIONS
 
-# All symbol pairs to track
-ALL_SYMBOLS = ["GOLD", "OILCash", "BTCUSD", "USDJPY"]
-
 
 @dataclass
 class CorrelationMatrix:

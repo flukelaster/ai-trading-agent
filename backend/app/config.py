@@ -104,6 +104,19 @@ def resolve_broker_symbol(symbol: str) -> str:
         return symbol
 
 
+def get_active_symbols() -> list[str]:
+    """Return all active engine symbols, falling back to SYMBOL_PROFILES canonicals.
+
+    Prefers the live BotManager (reflects runtime add/remove via Symbols UI). Falls
+    back to non-alias profiles when the manager is unavailable (tests, startup).
+    """
+    try:
+        from app.api.routes.bot import get_manager
+        return list(get_manager().engines.keys())
+    except Exception:
+        return [sym for sym, p in SYMBOL_PROFILES.items() if "canonical" not in p]
+
+
 # Auto-register aliased profiles so SYMBOL_PROFILES["GOLDmicro"] works directly
 for _alias, _canonical in SYMBOL_ALIASES.items():
     if _canonical in SYMBOL_PROFILES and _alias not in SYMBOL_PROFILES:
