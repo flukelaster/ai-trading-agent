@@ -13,6 +13,20 @@ from app.mt5.connector import MT5BridgeConnector
 _NO_RETRY_ERRORS = {"margin", "insufficient", "invalid volume", "market closed", "symbol not found"}
 
 
+def _resolve_broker(symbol: str) -> str:
+    """Resolve canonical symbol → broker alias (e.g., GOLD → GOLDm#)."""
+    try:
+        from app.config import SYMBOL_PROFILES
+        profile = SYMBOL_PROFILES.get(symbol)
+        if profile:
+            alias = profile.get("broker_alias")
+            if alias:
+                return alias
+    except Exception:
+        pass
+    return symbol
+
+
 class OrderExecutor:
     def __init__(self, connector: MT5BridgeConnector):
         self.connector = connector
@@ -21,6 +35,7 @@ class OrderExecutor:
         self, symbol: str, order_type: str, lot: float, sl: float, tp: float,
         comment: str = "", magic: int = MT5_MAGIC_NUMBER, max_retries: int = 3,
     ) -> dict:
+        symbol = _resolve_broker(symbol)
         logger.info(f"Placing order: {order_type} {lot} {symbol} SL={sl} TP={tp}")
 
         for attempt in range(max_retries):
@@ -60,6 +75,8 @@ class OrderExecutor:
         return result
 
     async def close_all_positions(self, symbol: str | None = None) -> dict:
+        if symbol:
+            symbol = _resolve_broker(symbol)
         logger.warning(f"Closing ALL positions (symbol={symbol})")
         result = await self.connector.close_all_positions(symbol=symbol)
         return result
@@ -70,7 +87,8 @@ class OrderExecutor:
             return []
         positions = result.get("data", [])
         if symbol:
-            positions = [p for p in positions if p.get("symbol") == symbol]
+            broker = _resolve_broker(symbol)
+            positions = [p for p in positions if p.get("symbol") in (symbol, broker)]
         return positions
 
     async def modify_position(self, ticket: int, sl: float | None = None, tp: float | None = None) -> dict:
