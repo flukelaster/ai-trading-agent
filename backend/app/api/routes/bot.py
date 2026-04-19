@@ -88,37 +88,45 @@ class SettingsUpdate(BaseModel):
     enable_auto_strategy_switch: bool | None = None
 
 
-@router.post("/start", dependencies=[Depends(require_auth)])
+@router.post("/start")
 async def start_bot(request: Request, symbol: str | None = Query(None), db: AsyncSession = Depends(get_db)):
     mgr = get_manager()
-    await mgr.start(symbol)
-    await log_audit(
-        db, "bot_start", resource=f"symbol:{symbol or 'all'}",
-        ip=request.client.host if request.client else None,
-    )
+    ip = request.client.host if request.client else None
+    resource = f"symbol:{symbol or 'all'}"
+    try:
+        await mgr.start(symbol)
+    except Exception as e:
+        await log_audit(db, "bot_start", resource=resource, detail={"error": str(e)}, ip=ip, success=False)
+        raise
+    await log_audit(db, "bot_start", resource=resource, ip=ip)
     return {"status": "started", "symbol": symbol or "all"}
 
 
-@router.post("/stop", dependencies=[Depends(require_auth)])
+@router.post("/stop")
 async def stop_bot(request: Request, symbol: str | None = Query(None), db: AsyncSession = Depends(get_db)):
     mgr = get_manager()
-    await mgr.stop(symbol)
-    await log_audit(
-        db, "bot_stop", resource=f"symbol:{symbol or 'all'}",
-        ip=request.client.host if request.client else None,
-    )
+    ip = request.client.host if request.client else None
+    resource = f"symbol:{symbol or 'all'}"
+    try:
+        await mgr.stop(symbol)
+    except Exception as e:
+        await log_audit(db, "bot_stop", resource=resource, detail={"error": str(e)}, ip=ip, success=False)
+        raise
+    await log_audit(db, "bot_stop", resource=resource, ip=ip)
     return {"status": "stopped", "symbol": symbol or "all"}
 
 
-@router.post("/emergency-stop", dependencies=[Depends(require_auth)])
+@router.post("/emergency-stop")
 async def emergency_stop(request: Request, symbol: str | None = Query(None), db: AsyncSession = Depends(get_db)):
     mgr = get_manager()
-    result = await mgr.emergency_stop(symbol)
-    await log_audit(
-        db, "bot_emergency_stop", resource=f"symbol:{symbol or 'all'}",
-        detail={"result": result},
-        ip=request.client.host if request.client else None,
-    )
+    ip = request.client.host if request.client else None
+    resource = f"symbol:{symbol or 'all'}"
+    try:
+        result = await mgr.emergency_stop(symbol)
+    except Exception as e:
+        await log_audit(db, "bot_emergency_stop", resource=resource, detail={"error": str(e)}, ip=ip, success=False)
+        raise
+    await log_audit(db, "bot_emergency_stop", resource=resource, detail={"result": result}, ip=ip)
     return {"status": "emergency_stopped", "result": result}
 
 
@@ -205,7 +213,7 @@ async def get_account():
     }
 
 
-@router.put("/strategy", dependencies=[Depends(require_auth)])
+@router.put("/strategy")
 async def update_strategy(data: StrategyUpdate, request: Request, db: AsyncSession = Depends(get_db)):
     engine = _get_engine(data.symbol)
     ip = request.client.host if request.client else None
@@ -226,14 +234,16 @@ async def update_strategy(data: StrategyUpdate, request: Request, db: AsyncSessi
     settings.trading_mode = "strategy"
     try:
         await engine.update_strategy(data.name, data.params)
-        await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
-                        detail={"strategy": data.name, "params": data.params}, ip=ip)
-        return {"status": "updated", "strategy": data.name, "symbol": engine.symbol}
     except ValueError as e:
+        await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
+                        detail={"strategy": data.name, "error": str(e)}, ip=ip, success=False)
         raise HTTPException(status_code=400, detail=str(e))
+    await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
+                    detail={"strategy": data.name, "params": data.params}, ip=ip)
+    return {"status": "updated", "strategy": data.name, "symbol": engine.symbol}
 
 
-@router.put("/strategy-apply", dependencies=[Depends(require_auth)])
+@router.put("/strategy-apply")
 async def apply_strategy_in_ai_mode(data: StrategyApply):
     """Apply a strategy to the engine without changing trading mode.
 
