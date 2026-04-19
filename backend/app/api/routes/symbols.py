@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import log_audit
 from app.auth import require_auth
 from app.db.models import SymbolConfig
-from app.db.session import get_db
+from app.db.session import async_session, get_db
 from app.services import symbol_config_service as svc
 
 router = APIRouter(prefix="/api/symbols", tags=["symbols"])
@@ -144,6 +144,26 @@ async def _publish(request: Request, symbol: str, action: str) -> None:
     redis_client = getattr(request.app.state, "redis", None)
     if redis_client:
         await svc.publish_reload(redis_client, symbol, action)
+
+
+async def _reload_engines_direct(request: Request) -> None:
+    """Trigger BotManager.reload_engines directly.
+
+    Safety net for when the Redis pubsub subscriber is not running or the
+    message is missed (e.g. subscriber reconnecting). Swallows exceptions so
+    API request does not fail if reload has a problem — pubsub will retry.
+    """
+    manager = getattr(request.app.state, "manager", None)
+    if manager is None:
+        return
+    try:
+        from app.config import apply_db_symbol_profiles
+        async with async_session() as _s:
+            db_profiles = await svc.load_profiles_from_db(_s)
+        apply_db_symbol_profiles(db_profiles)
+        await manager.reload_engines()
+    except Exception as e:
+        logger.warning(f"Direct engine reload failed (pubsub will retry): {e}")
 
 
 _PATH_TO_CLASS: tuple[tuple[str, str], ...] = (
@@ -277,6 +297,7 @@ async def create_symbol(
     await db.commit()
     await db.refresh(cfg)
     await _publish(request, req.symbol, "created")
+    await _reload_engines_direct(request)
 
     logger.info(f"Symbol {action}: {req.symbol}")
     return SymbolResponse.model_validate(cfg)
@@ -299,6 +320,7 @@ async def update_symbol(
     await db.commit()
     await db.refresh(cfg)
     await _publish(request, symbol, "updated")
+    await _reload_engines_direct(request)
 
     return SymbolResponse.model_validate(cfg)
 
@@ -318,6 +340,7 @@ async def delete_symbol(
     await _audit(db, request, "symbol_deleted", symbol)
     await db.commit()
     await _publish(request, symbol, "deleted")
+    await _reload_engines_direct(request)
 
     return {"status": "deleted", "symbol": symbol}
 
@@ -338,6 +361,7 @@ async def toggle_symbol(
     await db.commit()
     await db.refresh(cfg)
     await _publish(request, symbol, "toggled")
+    await _reload_engines_direct(request)
 
     logger.info(f"Symbol {symbol} -> enabled={cfg.is_enabled}")
     return SymbolResponse.model_validate(cfg)
