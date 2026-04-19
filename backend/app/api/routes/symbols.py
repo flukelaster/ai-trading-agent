@@ -62,6 +62,50 @@ class SymbolBase(BaseModel):
             raise ValueError("default_lot must be <= max_lot")
         return self
 
+    @model_validator(mode="after")
+    def _check_pip_value_sane(self) -> SymbolBase:
+        """Reject pip_value that cannot co-exist with price_decimals.
+
+        ML labeling treats `entry ± (tp_pips × pip_value)` as the TP/SL barrier;
+        if pip_value is wildly out of scale (e.g. 10.0 on an instrument priced
+        in cents) every candle gets labelled HOLD and training fails with
+        "missing classes ['SELL','BUY']". Clamp to the plausible range derived
+        from price_decimals.
+        """
+        # Permitted band: [10^-price_decimals, 10^-(price_decimals-2)]
+        # Gives a 3-order-of-magnitude window around the conventional pip.
+        max_pip = 10 ** (-(self.price_decimals - 2)) if self.price_decimals >= 2 else 100.0
+        min_pip = 10 ** (-self.price_decimals) if self.price_decimals > 0 else 0.01
+        if not (min_pip <= self.pip_value <= max_pip):
+            suggested = 10 ** (-(self.price_decimals - 1)) if self.price_decimals >= 1 else 1.0
+            raise ValueError(
+                f"pip_value={self.pip_value} is out of range for price_decimals={self.price_decimals}. "
+                f"Expected [{min_pip}, {max_pip}]. Suggested: {suggested}."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_ml_barrier_sane(self) -> SymbolBase:
+        """Warn when ml_tp_pips × pip_value would exceed a 50% price move.
+
+        Triple-barrier labeling needs BUY and SELL labels to appear in the
+        training set. If the barrier is larger than half the typical price,
+        the labeler will only ever produce HOLD.
+        """
+        tp_frac = self.ml_tp_pips * self.pip_value
+        sl_frac = self.ml_sl_pips * self.pip_value
+        # Rough heuristic: if barrier > 50 price units, it's almost certainly
+        # wrong for anything that isn't a stock index. Keep the check cheap
+        # and deterministic (no DB lookup) — actual price check happens at
+        # train time via the trainer's minimum-samples guard.
+        if tp_frac > 50 or sl_frac > 50:
+            raise ValueError(
+                f"ml_tp_pips × pip_value = {tp_frac} and ml_sl_pips × pip_value = {sl_frac}. "
+                f"Barriers above 50 price units almost always produce HOLD-only labels. "
+                f"Lower ml_tp_pips / ml_sl_pips or correct pip_value."
+            )
+        return self
+
 
 class SymbolCreateRequest(SymbolBase):
     symbol: str = Field(min_length=2, max_length=32)
