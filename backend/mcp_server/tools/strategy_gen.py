@@ -67,7 +67,7 @@ def get_strategy_profiles() -> dict:
     }
 
 
-def recommend_strategy(regime: str, symbol: str = "GOLD") -> dict:
+def recommend_strategy(regime: str, symbol: str) -> dict:
     """Recommend the best strategy for the current market regime.
 
     Args:

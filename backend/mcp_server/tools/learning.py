@@ -104,7 +104,7 @@ async def get_optimization_history(limit: int = 5) -> dict:
         return {"error": f"Failed to fetch optimization history: {e}"}
 
 
-async def detect_regime(symbol: str = "GOLD", timeframe: str = "M15") -> dict:
+async def detect_regime(symbol: str, timeframe: str = "M15") -> dict:
     """Detect the current market regime (trending/ranging/volatile).
 
     Uses ATR and ADX from the full analysis to classify the regime.

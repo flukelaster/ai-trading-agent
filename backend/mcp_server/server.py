@@ -199,7 +199,7 @@ def create_server() -> FastMCP:
         return await learning.analyze_recent_trades(days, symbol)
 
     @mcp.tool()
-    async def detect_regime(symbol: str = "GOLD", timeframe: str = "M15") -> dict:
+    async def detect_regime(symbol: str, timeframe: str = "M15") -> dict:
         """Detect current market regime (trending/ranging/volatile/transitional)."""
         return await learning.detect_regime(symbol, timeframe)
 
@@ -238,7 +238,7 @@ def create_server() -> FastMCP:
         return strategy_gen.get_strategy_profiles()
 
     @mcp.tool()
-    async def recommend_strategy(regime: str, symbol: str = "GOLD") -> dict:
+    async def recommend_strategy(regime: str, symbol: str) -> dict:
         """Recommend the best strategy for the current market regime."""
         return strategy_gen.recommend_strategy(regime, symbol)
 
@@ -276,7 +276,7 @@ def create_server() -> FastMCP:
     @mcp.tool()
     async def compute_overfitting_score(
         strategy: str,
-        symbol: str = "GOLD",
+        symbol: str,
         timeframe: str = "M15",
         source: str = "db",
         count: int = 5000,
@@ -299,7 +299,7 @@ def create_server() -> FastMCP:
         return await strategy_switch.apply_strategy(symbol, strategy_name, params, reasoning)
 
     @mcp.tool()
-    async def get_switch_status(symbol: str = "GOLD") -> dict:
+    async def get_switch_status(symbol: str) -> dict:
         """Get auto-strategy-switch status: enabled, current strategy, cooldown, daily count."""
         return await strategy_switch.get_switch_status(symbol)
 
