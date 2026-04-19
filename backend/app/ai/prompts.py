@@ -39,14 +39,7 @@ IMPORTANT context weighting rules:
 - High ATR / volatility periods → reduce confidence unless signal is very clear"""
 
 def get_sentiment_prompt(symbol: str = "GOLD") -> str:
-    SYMBOL_FOCUS = {
-        "GOLD": "Focus on: Fed policy, USD strength, inflation data, geopolitical risk, ETF flows, **Trump trade policy/tariffs**.\nGold is inverse to USD. High inflation = bullish gold. Rate hikes = bearish gold.\nTrump tariffs → trade war fears → safe-haven demand → bullish gold.\nTrump de-escalation/deals → risk-on → bearish gold.",
-        "OILCash": "Focus on: OPEC decisions, supply disruptions, inventory data, geopolitical tensions, global demand, **Trump sanctions/tariffs**.\nOil is sensitive to supply shocks and economic growth outlook.\nTrump sanctions on Iran/Venezuela → supply disruption → bullish oil.\nTrump tariffs → global recession fears → bearish oil demand.",
-        "BTCUSD": "Focus on: SEC regulation, institutional adoption, ETF flows, macro liquidity, exchange news, **Trump crypto policy**.\nBitcoin is sensitive to regulatory news and risk-on/risk-off sentiment.\nTrump pro-crypto rhetoric → bullish BTC. Trade war uncertainty → mixed (safe-haven vs risk-off).",
-        "USDJPY": "Focus on: BOJ policy, Fed policy, yield differentials, risk sentiment, intervention risk, **Trump trade war with Japan/China**.\nUSDJPY rises with US yields and risk-on sentiment.\nTrump tariffs → risk-off → yen strengthens (USDJPY falls).\nTrump deals/de-escalation → risk-on → USDJPY rises.",
-    }
-    focus = SYMBOL_FOCUS.get(symbol, SYMBOL_FOCUS["GOLD"])
-    return f"""You are a financial market analyst specializing in {symbol}. Analyze news headlines and return ONLY a JSON object.
+    return f"""You are a financial market analyst. Analyze news headlines for the instrument **{symbol}** and return ONLY a JSON object.
 No explanation, no markdown, just raw JSON.
 
 Response format:
@@ -59,7 +52,21 @@ Response format:
 
 IMPORTANT: key_factors MUST be in English. Summarize each factor concisely. Do NOT use emoji, icons, or unicode symbols.
 
-{focus}"""
+Analysis framework — infer the asset class from the symbol ({symbol}) and apply the relevant lens:
+- **Forex (EURUSD, USDJPY, GBPUSD, AUDUSD, etc.)**: central bank policy divergence, rate differentials, CPI / jobs surprises, growth divergence, political risk. Base currency up = bullish pair; quote currency up = bearish pair.
+- **Precious metals (XAU/GOLD, XAG/SILVER)**: Fed policy, real yields, USD strength (inverse), inflation, geopolitical/safe-haven demand, ETF flows.
+- **Energy (OIL/WTI/BRENT, NATGAS)**: OPEC+ output, inventory data, supply disruption / sanctions, global demand outlook, recession risk.
+- **Equity indices (US100/NAS, SPX500, US30, DAX)**: Fed policy, Treasury yields, earnings season, sector-specific (e.g. big-tech for Nasdaq), VIX / risk sentiment, regulatory risk.
+- **Crypto (BTC, ETH, etc.)**: regulation (SEC/MiCA), ETF flows, macro liquidity, institutional adoption, exchange incidents, halving / on-chain events.
+- **Single stocks (AAPL, TSLA, etc.)**: earnings, guidance, product launches, sector rotation, analyst actions, insider flow.
+- **Unknown / hybrid**: fall back to general macro (Fed/USD/risk-on-off) and flag low confidence.
+
+Cross-asset weighting:
+- Weight recency: last 24h > last week
+- Tariff / trade-war / sanctions headlines = high impact. Risk-off move = safe-haven up (gold, JPY, CHF, USD sometimes), risk assets down (equities, growth FX, crypto sometimes).
+- Conflicting signals → neutral, confidence < 0.5
+- Repetitive / opinion-only headlines → lower confidence
+- Macro data (CPI, NFP, FOMC, ECB) overrides generic news."""
 
 
 def get_enhanced_sentiment_prompt(symbol: str = "GOLD") -> str:
