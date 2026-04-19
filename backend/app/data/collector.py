@@ -100,7 +100,11 @@ class HistoricalDataCollector:
     async def load_from_db(
         self, symbol: str, timeframe: str, from_date: str | None = None, to_date: str | None = None
     ) -> pd.DataFrame:
-        """Load historical OHLCV from DB as a DataFrame matching MarketDataService format."""
+        """Load historical OHLCV from DB as a DataFrame matching MarketDataService format.
+
+        Uses an isolated session so a poisoned `self.db` transaction from a
+        concurrent caller cannot leak into this read.
+        """
         query = select(OHLCVData).where(
             OHLCVData.symbol == symbol,
             OHLCVData.timeframe == timeframe,
@@ -111,8 +115,9 @@ class HistoricalDataCollector:
             query = query.where(OHLCVData.time <= datetime.fromisoformat(to_date))
         query = query.order_by(OHLCVData.time)
 
-        result = await self.db.execute(query)
-        rows = result.scalars().all()
+        async with async_session() as session:
+            result = await session.execute(query)
+            rows = result.scalars().all()
 
         if not rows:
             return pd.DataFrame()
@@ -134,12 +139,12 @@ class HistoricalDataCollector:
         return df
 
     async def get_data_status(self, symbol: str | None = None) -> list[dict]:
-        """Return data coverage info per symbol/timeframe."""
-        try:
-            await self.db.rollback()
-        except Exception:
-            pass
+        """Return data coverage info per symbol/timeframe.
 
+        Isolated session avoids `InterfaceError: cannot use
+        Connection.transaction() in a manually started transaction` when a
+        concurrent caller leaves `self.db` mid-transaction.
+        """
         if symbol:
             query = text("""
                 SELECT symbol, timeframe,
@@ -151,7 +156,7 @@ class HistoricalDataCollector:
                 GROUP BY symbol, timeframe
                 ORDER BY symbol, timeframe
             """)
-            result = await self.db.execute(query, {"symbol": symbol})
+            params = {"symbol": symbol}
         else:
             query = text("""
                 SELECT symbol, timeframe,
@@ -162,8 +167,11 @@ class HistoricalDataCollector:
                 GROUP BY symbol, timeframe
                 ORDER BY symbol, timeframe
             """)
-            result = await self.db.execute(query)
-        rows = result.fetchall()
+            params = {}
+
+        async with async_session() as session:
+            result = await session.execute(query, params)
+            rows = result.fetchall()
         return [
             {
                 "symbol": r[0],
