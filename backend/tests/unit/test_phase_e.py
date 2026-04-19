@@ -44,21 +44,21 @@ class TestGetStrategyProfiles:
 
 class TestRecommendStrategy:
     def test_trending_recommends_ema(self):
-        result = recommend_strategy("trending")
+        result = recommend_strategy("trending", "GOLD")
         rec_name = result["recommended"]["name"]
         assert rec_name in ("ema_crossover", "breakout")
 
     def test_ranging_recommends_mean_reversion(self):
-        result = recommend_strategy("ranging")
+        result = recommend_strategy("ranging", "GOLD")
         rec_name = result["recommended"]["name"]
         assert rec_name in ("mean_reversion", "rsi_filter")
 
     def test_unknown_regime_returns_ensemble(self):
-        result = recommend_strategy("unknown_regime")
+        result = recommend_strategy("unknown_regime", "GOLD")
         assert result["recommended"]["name"] == "ensemble"
 
     def test_includes_alternatives(self):
-        result = recommend_strategy("trending")
+        result = recommend_strategy("trending", "GOLD")
         assert "alternatives" in result
         assert "other_strategies" in result
 
