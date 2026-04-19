@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import log_audit
@@ -247,14 +248,37 @@ async def create_symbol(
     if await svc.get_config(db, req.symbol):
         raise HTTPException(status_code=409, detail=f"Symbol '{req.symbol}' already exists")
 
-    cfg = SymbolConfig(**req.model_dump(), is_enabled=False, ml_status="pending")
-    db.add(cfg)
-    await _audit(db, request, "symbol_created", req.symbol, {"broker_alias": req.broker_alias})
+    # Check for soft-deleted row with same symbol — revive it instead of INSERT
+    # (DB has a unique constraint on `symbol`, so a raw INSERT would fail with
+    # IntegrityError when a previously-deleted row is still present).
+    existing_deleted = await db.execute(
+        select(SymbolConfig).where(
+            SymbolConfig.symbol == req.symbol,
+            SymbolConfig.is_deleted.is_(True),
+        )
+    )
+    cfg = existing_deleted.scalar_one_or_none()
+    action = "symbol_created"
+    if cfg is not None:
+        for field, value in req.model_dump().items():
+            setattr(cfg, field, value)
+        cfg.is_deleted = False
+        cfg.is_enabled = False
+        cfg.ml_status = "pending"
+        cfg.ml_last_trained_at = None
+        cfg.updated_at = datetime.utcnow()
+        cfg.updated_by = "owner"
+        action = "symbol_revived"
+    else:
+        cfg = SymbolConfig(**req.model_dump(), is_enabled=False, ml_status="pending")
+        db.add(cfg)
+
+    await _audit(db, request, action, req.symbol, {"broker_alias": req.broker_alias})
     await db.commit()
     await db.refresh(cfg)
     await _publish(request, req.symbol, "created")
 
-    logger.info(f"Symbol created: {req.symbol}")
+    logger.info(f"Symbol {action}: {req.symbol}")
     return SymbolResponse.model_validate(cfg)
 
 

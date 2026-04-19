@@ -125,6 +125,28 @@ class TestCRUD:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_recreate_after_delete_revives_row(self, client):
+        # create → delete → create again with different values should succeed
+        # (DB has unique constraint on `symbol`, so raw INSERT would fail)
+        await client.post("/api/symbols", json=_sample_create())
+        await client.delete("/api/symbols/EURUSD")
+
+        revived = _sample_create()
+        revived["display_name"] = "Revived EUR"
+        revived["max_lot"] = 7.5
+        resp = await client.post("/api/symbols", json=revived)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["symbol"] == "EURUSD"
+        assert body["display_name"] == "Revived EUR"
+        assert body["max_lot"] == 7.5
+        assert body["ml_status"] == "pending"
+
+        # visible again in list
+        resp = await client.get("/api/symbols")
+        assert any(c["symbol"] == "EURUSD" for c in resp.json())
+
+    @pytest.mark.asyncio
     async def test_get_not_found(self, client):
         resp = await client.get("/api/symbols/UNKNOWN")
         assert resp.status_code == 404
