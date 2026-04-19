@@ -171,7 +171,10 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.binance_symbols.split(",") if s.strip()]
 
     # Bot Config
-    symbol: str = "GOLD"  # kept for backward compat
+    # NOTE: `symbol` is a legacy single-symbol default only used by a few AI
+    # helpers and tests. Runtime trading uses DB-managed symbol configs via
+    # BotManager.engines (`symbol_list` / SYMBOL_PROFILES). Do not assume GOLD.
+    symbol: str = "GOLD"
     symbols: str = "GOLD"  # comma-separated list, e.g. "GOLD,OILCash,BTCUSD,USDJPY"
     timeframe: str = "M15"
     max_risk_per_trade: float = 0.01

@@ -5,14 +5,20 @@ Telegram Notifier — ส่งแจ้งเตือนการเทรด,
 import httpx
 from loguru import logger
 
-from app.config import settings
+from app.config import SYMBOL_PROFILES, settings
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 SENTIMENT_TH = {"bullish": "ขาขึ้น", "bearish": "ขาลง", "neutral": "ทรงตัว"}
+
+# Optional Thai overrides for well-known canonicals. Any symbol not listed
+# falls back to the display_name from its SYMBOL_PROFILES entry, then the
+# raw symbol — so user-added instruments never show as `None`.
 SYMBOL_TH = {
-    "GOLD": "ทองคำ", "OILCash": "น้ำมัน WTI",
-    "BTCUSD": "Bitcoin", "USDJPY": "USD/JPY",
+    "GOLD": "ทองคำ",
+    "OILCash": "น้ำมัน WTI",
+    "BTCUSD": "Bitcoin",
+    "USDJPY": "USD/JPY",
 }
 
 
@@ -35,7 +41,10 @@ class TelegramNotifier:
             logger.error(f"Telegram send failed: {e}")
 
     def _sym(self, symbol: str) -> str:
-        return SYMBOL_TH.get(symbol, symbol)
+        if symbol in SYMBOL_TH:
+            return SYMBOL_TH[symbol]
+        profile = SYMBOL_PROFILES.get(symbol) or {}
+        return profile.get("display_name") or symbol
 
     async def send_trade_alert(
         self, trade_type: str, symbol: str, price: float, sl: float, tp: float, lot: float, sentiment_label: str = "", extra: str = ""

@@ -27,17 +27,17 @@ from app.constants import (
 
 
 class MLStrategy(BaseStrategy):
-    def __init__(self, model_path: str = "models/xauusd_signal.pkl", confidence_threshold: float = 0.5, symbol: str = "GOLD"):
-        self._model_path = model_path
+    def __init__(self, model_path: str | None = None, confidence_threshold: float = 0.5, symbol: str = "GOLD"):
+        # Default model path is symbol-derived — no XAUUSD-specific fallback.
+        self._model_path = model_path or f"models/{symbol.lower()}_signal.pkl"
         self._confidence_threshold = confidence_threshold
         self._symbol = symbol
         self._model = None
         self._feature_columns = FEATURE_COLUMNS
         self._model_loaded = False
 
-        # Try loading from symbol-specific file first, then fallback
-        symbol_path = f"models/{symbol.lower()}_signal.pkl"
-        load_path = symbol_path if Path(symbol_path).exists() else self._model_path
+        # Prefer explicit model_path when provided; otherwise use symbol-derived path.
+        load_path = self._model_path
         if Path(load_path).exists():
             try:
                 data = joblib.load(load_path)
