@@ -32,6 +32,7 @@ class BotManager:
         self.engines: dict[str, BotEngine] = {}
         self._positions_cache: dict[str, list[dict]] = {}
         self._positions_cache_time: float = 0
+        self._positions_lock = asyncio.Lock()
         self._reload_task: asyncio.Task | None = None
         self._sentiment_analyzer = None
         self._notifier = None
@@ -119,21 +120,25 @@ class BotManager:
         }
 
     async def get_active_positions(self) -> dict[str, list[dict]]:
-        """Get open positions grouped by symbol (cached 30s)."""
+        """Get open positions grouped by symbol (cached 30s). Lock guards concurrent misses."""
         now = time.time()
         if now - self._positions_cache_time < 30 and self._positions_cache:
             return self._positions_cache
-        result = {}
-        for symbol, engine in self.engines.items():
-            try:
-                positions = await engine.executor.get_open_positions(symbol)
-                if positions:
-                    result[symbol] = positions
-            except Exception:
-                pass
-        self._positions_cache = result
-        self._positions_cache_time = now
-        return result
+        async with self._positions_lock:
+            now = time.time()
+            if now - self._positions_cache_time < 30 and self._positions_cache:
+                return self._positions_cache
+            result: dict[str, list[dict]] = {}
+            for symbol, engine in self.engines.items():
+                try:
+                    positions = await engine.executor.get_open_positions(symbol)
+                    if positions:
+                        result[symbol] = positions
+                except Exception:
+                    pass
+            self._positions_cache = result
+            self._positions_cache_time = now
+            return result
 
     async def get_portfolio_exposure(self, balance: float) -> dict:
         """Calculate total notional exposure across all symbols."""

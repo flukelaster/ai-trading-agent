@@ -13,8 +13,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (isLocal) {
+    // Dev-only auth bypass: must opt in via NEXT_PUBLIC_DEV_NOAUTH=1 on a local host.
+    const isLocal =
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    const bypassEnabled = process.env.NEXT_PUBLIC_DEV_NOAUTH === "1";
+    if (isLocal && bypassEnabled) {
       localStorage.setItem("token", "__noauth__");
       router.replace("/dashboard");
     }

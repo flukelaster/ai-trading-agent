@@ -76,6 +76,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Exempt paths: WebSocket upgrades, /health*, /api/metrics, static assets.
     """
 
+    # Auth endpoints get a tighter bucket to blunt brute-force / credential stuffing.
+    AUTH_PATHS: tuple[str, ...] = (
+        "/api/auth/login",
+        "/api/auth/login/options",
+        "/api/auth/login/verify",
+        "/api/auth/register/options",
+        "/api/auth/register/verify",
+    )
+    AUTH_PER_MINUTE = 5
+    AUTH_BURST = 10
+
     def __init__(
         self,
         app,
@@ -87,6 +98,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.refill_rate = sustained_per_minute / 60.0  # tokens per second
         self.capacity = burst_capacity if burst_capacity is not None else sustained_per_minute * 2
         self.exempt_prefixes = exempt_prefixes
+        self.auth_refill = self.AUTH_PER_MINUTE / 60.0
+        self.auth_capacity = self.AUTH_BURST
 
     def _client_ip(self, request: Request) -> str:
         # Railway/Vercel put real IP in X-Forwarded-For
@@ -105,6 +118,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         ip = self._client_ip(request)
+        is_auth_path = path in self.AUTH_PATHS
+        capacity = self.auth_capacity if is_auth_path else self.capacity
+        refill = self.auth_refill if is_auth_path else self.refill_rate
         key = f"rl:{ip}:{path}"
         now = time.time()
 
@@ -113,8 +129,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 _TOKEN_BUCKET_LUA,
                 1,
                 key,
-                self.capacity,
-                self.refill_rate,
+                capacity,
+                refill,
                 now,
                 1,
             )
@@ -133,12 +149,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 content={"error": "rate_limited", "retry_after": retry_after},
                 headers={
                     "Retry-After": str(retry_after),
-                    "X-RateLimit-Limit": str(self.capacity),
+                    "X-RateLimit-Limit": str(capacity),
                     "X-RateLimit-Remaining": "0",
                 },
             )
 
         response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(self.capacity)
+        response.headers["X-RateLimit-Limit"] = str(capacity)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         return response

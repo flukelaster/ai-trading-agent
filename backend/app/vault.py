@@ -24,10 +24,13 @@ class VaultUnavailableError(HTTPException):
 class VaultService:
     """AES-256-GCM encryption service with HKDF key derivation."""
 
-    _SALT = b"gold-trading-bot-vault-v1"
+    # Default salt preserves backward compatibility with existing encrypted rows.
+    # Set VAULT_SALT env var to a deployment-unique value for new deployments.
+    _DEFAULT_SALT = b"gold-trading-bot-vault-v1"
     _INFO = b"secrets-encryption"
 
     def __init__(self, master_key: str | None):
+        self._salt = os.getenv("VAULT_SALT", "").encode() or self._DEFAULT_SALT
         self._derived_key: bytes | None = None
         if master_key:
             self._derived_key = self._derive_key(master_key)
@@ -37,7 +40,7 @@ class VaultService:
         return HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=self._SALT,
+            salt=self._salt,
             info=self._INFO,
         ).derive(master_key.encode())
 
