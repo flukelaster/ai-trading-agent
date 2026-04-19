@@ -795,13 +795,14 @@ class BotScheduler:
             forward_bars = profile.get("ml_forward_bars", 10)
             tp_delta = tp_pips * pip_value
             sl_delta = sl_pips * pip_value
+            # sentiment_df not yet consumed by ModelTrainer.prepare_dataset — reserved for future feature.
+            _ = sentiment_df
             X, y = trainer.prepare_dataset(
                 df,
                 forward_bars=forward_bars,
                 tp_pips=tp_delta,
                 sl_pips=sl_delta,
                 macro_df=macro_df,
-                sentiment_df=sentiment_df,
             )
             if len(X) < 200:
                 logger.warning(f"ML retrain [{symbol}] skipped: insufficient labeled samples ({len(X)})")
