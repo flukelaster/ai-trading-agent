@@ -170,7 +170,7 @@ export default function QuantPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <CorrelationHeatmap matrix={correlation} />
+            <CorrelationHeatmap matrix={correlation} symbols={symbols.map(s => s.symbol)} />
           </CardContent>
         </Card>
 

@@ -379,3 +379,40 @@ async def get_events(
         10,
         _fetch,
     )
+
+
+class EventCreateRequest(BaseModel):
+    event_type: str = "AI_ANALYSIS"
+    symbol: str | None = None
+    message: str | None = None
+    detail: dict | None = None
+
+
+@router.post("/events")
+async def post_event(
+    req: EventCreateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Record a bot event (used by MCP agent tools to journal decisions)."""
+    from app.db.models import BotEventType
+    try:
+        etype = BotEventType(req.event_type)
+    except ValueError:
+        etype = BotEventType.AI_ANALYSIS
+
+    parts = []
+    if req.symbol:
+        parts.append(f"[{req.symbol}]")
+    if req.message:
+        parts.append(req.message)
+    elif req.detail:
+        decision = req.detail.get("decision") if isinstance(req.detail, dict) else None
+        if decision:
+            parts.append(str(decision)[:500])
+    message = " ".join(parts) or "agent_event"
+
+    event = BotEvent(event_type=etype, message=message[:1000])
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    return {"id": event.id, "type": event.event_type.value, "created_at": event.created_at.isoformat()}

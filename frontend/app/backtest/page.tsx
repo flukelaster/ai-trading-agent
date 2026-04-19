@@ -246,8 +246,9 @@ export default function BacktestPage() {
     setCointRunning(true);
     setCointResult(null);
     try {
-      const pairMap: Record<string, string> = { GOLD: "USDJPY", USDJPY: "GOLD" };
-      const symbolB = pairMap[symbol] || "USDJPY";
+      const pairMap: Record<string, string> = { GOLD: "USDJPY", USDJPY: "GOLD", XAUUSD: "USDJPY" };
+      const fallback = availableSymbols.find(s => s.symbol !== symbol)?.symbol;
+      const symbolB = pairMap[symbol] || fallback || symbol;
       const res = await runCointegration({ symbol_a: symbol, symbol_b: symbolB, timeframe, source });
       setCointResult(res.data);
       showSuccess("Cointegration test completed");

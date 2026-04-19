@@ -18,7 +18,7 @@ function getColor(value: number): string {
 
 export function CorrelationHeatmap({
   matrix,
-  symbols = ["BTCUSD", "GOLD", "OILCash", "USDJPY"],
+  symbols = [],
   className,
 }: CorrelationHeatmapProps) {
   const getCorr = (a: string, b: string): number | null => {
