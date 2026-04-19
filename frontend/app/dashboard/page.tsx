@@ -153,9 +153,9 @@ export default function DashboardPage() {
           timestamp: e.created_at,
         }));
         // Only seed if store is empty (don't overwrite live WS events)
-        // Use seedEvents (no unread increment) for DB-loaded historical events
+        // Backend returns DESC (newest first); keep order so addEvent prepend stays consistent
         if (useBotStore.getState().events.length === 0 && dbEvents.length > 0) {
-          useBotStore.getState().seedEvents(dbEvents.reverse());
+          useBotStore.getState().seedEvents(dbEvents);
         }
       }
     } catch (e) {
