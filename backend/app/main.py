@@ -131,8 +131,6 @@ async def lifespan(app: FastAPI):
         if db_profiles:
             apply_db_symbol_profiles(db_profiles)
             enabled = [s for s, p in db_profiles.items() if p.get("is_enabled") and "canonical" not in p]
-            if enabled:
-                settings.symbols = ",".join(enabled)
             logger.info(f"Symbol profiles loaded from DB: {len(db_profiles)} entries, enabled: {enabled}")
     except Exception as e:
         logger.warning(f"Symbol profile DB load failed (using static defaults): {e}")

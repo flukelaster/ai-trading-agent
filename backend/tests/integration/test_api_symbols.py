@@ -161,6 +161,53 @@ class TestValidation:
         assert resp.status_code == 422
 
 
+class TestRetrain:
+    @pytest.mark.asyncio
+    async def test_retrain_requires_manager(self, client):
+        await client.post("/api/symbols", json=_sample_create())
+        resp = await client.post("/api/symbols/EURUSD/retrain")
+        assert resp.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_retrain_queues_task_and_sets_training(self, db_session, redis_client):
+        from unittest.mock import AsyncMock, MagicMock
+        connector = AsyncMock()
+
+        retrain_started = False
+
+        async def fake_retrain(symbol, engine):
+            nonlocal retrain_started
+            retrain_started = True
+
+        scheduler = MagicMock()
+        scheduler._ml_retrain_symbol = fake_retrain
+        manager = MagicMock()
+        engine_mock = MagicMock()
+        manager.get_engine.return_value = engine_mock
+
+        app = _build_app(db_session, connector=connector, redis_client=redis_client)
+        app.state.scheduler = scheduler
+        app.state.manager = manager
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            await c.post("/api/symbols", json=_sample_create())
+            resp = await c.post("/api/symbols/EURUSD/retrain")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "training"
+
+            resp2 = await c.get("/api/symbols/EURUSD")
+            assert resp2.json()["ml_status"] == "training"
+
+            # Retrain already running: second call should 409
+            resp3 = await c.post("/api/symbols/EURUSD/retrain")
+            assert resp3.status_code == 409
+
+        # Give the background task a moment to run
+        import asyncio
+        await asyncio.sleep(0.05)
+        assert retrain_started is True
+
+
 class TestValidateBroker:
     @pytest.mark.asyncio
     async def test_validate_calls_mt5(self, client):

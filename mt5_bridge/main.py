@@ -147,6 +147,8 @@ async def get_symbol_spec(symbol: str):
     if not info.visible:
         mt5.symbol_select(symbol, True)
         info = mt5.symbol_info(symbol)
+        if info is None:
+            return mt5_response(False, error=f"Symbol {symbol} not available after select")
     return mt5_response(True, data={
         "symbol": info.name,
         "digits": int(info.digits),

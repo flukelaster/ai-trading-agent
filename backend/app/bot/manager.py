@@ -36,19 +36,20 @@ class BotManager:
         self._sentiment_analyzer = None
         self._notifier = None
         self._binance_connector = None
-        # Validate symbol profiles exist
-        for symbol in settings.symbol_list:
+        # Prefer DB-sourced enable flags; fall back to env-var symbol list when empty.
+        db_enabled = [
+            s for s, p in SYMBOL_PROFILES.items()
+            if p.get("is_enabled") is True and "canonical" not in p
+        ]
+        initial = db_enabled or settings.symbol_list
+        for symbol in initial:
             if symbol not in SYMBOL_PROFILES:
                 logger.warning(f"BotManager: Symbol '{symbol}' missing from SYMBOL_PROFILES — using defaults (review contract_size!)")
 
-        # Create an engine for each configured symbol (all use MT5 Bridge)
-        for symbol in settings.symbol_list:
+        for symbol in initial:
             profile = SYMBOL_PROFILES.get(symbol, {})
-            sym_connector = connector
-            logger.info(f"BotManager: {symbol} → MT5 Bridge")
-
             engine = BotEngine(
-                connector=sym_connector,
+                connector=connector,
                 db_session=db_session,
                 redis_client=redis_client,
                 symbol=symbol,

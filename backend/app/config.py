@@ -127,15 +127,6 @@ def apply_db_symbol_profiles(db_profiles: dict[str, dict]) -> None:
     SYMBOL_PROFILES.update(db_profiles)
 
 
-def get_enabled_symbols_override() -> list[str] | None:
-    """Return enabled canonical symbols, or None if none are marked enabled."""
-    enabled = [
-        s for s, p in SYMBOL_PROFILES.items()
-        if p.get("is_enabled") is True and "canonical" not in p
-    ]
-    return enabled or None
-
-
 # Session profiles — SL/TP multiplier overrides by trading session
 SESSION_PROFILES = {
     "asian":   {"hours": (0, 8),   "sl_atr_mult": 1.2, "tp_atr_mult": 1.5, "confidence_boost": 0.05},

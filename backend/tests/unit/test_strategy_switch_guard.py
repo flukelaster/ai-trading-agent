@@ -40,8 +40,14 @@ class TestFeatureFlag:
 
 
 # ─── Validate switch ────────────────────────────────────────────────────────
-# Note: is_market_open check is skipped in tests because app.bot.scheduler
-# cannot be imported without full app context. The guard catches ImportError.
+
+
+@pytest.fixture(autouse=True)
+def _force_market_open(monkeypatch):
+    """Bypass weekend/daily-close gate so validate_switch tests are time-independent."""
+    import app.bot.scheduler as sched
+
+    monkeypatch.setattr(sched, "is_market_open", lambda _symbol: True)
 
 
 class TestValidateSwitch:

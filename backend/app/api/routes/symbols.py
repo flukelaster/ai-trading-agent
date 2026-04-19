@@ -179,6 +179,7 @@ async def update_symbol(
     for field, value in req.model_dump().items():
         setattr(cfg, field, value)
     cfg.updated_at = datetime.utcnow()
+    cfg.updated_by = "owner"
 
     await _audit(db, request, "symbol_updated", symbol)
     await db.commit()
@@ -198,6 +199,7 @@ async def delete_symbol(
     cfg.is_enabled = False
     cfg.is_deleted = True
     cfg.updated_at = datetime.utcnow()
+    cfg.updated_by = "owner"
 
     await _audit(db, request, "symbol_deleted", symbol)
     await db.commit()
@@ -215,6 +217,7 @@ async def toggle_symbol(
     cfg = await _require_config(db, symbol)
     cfg.is_enabled = not cfg.is_enabled
     cfg.updated_at = datetime.utcnow()
+    cfg.updated_by = "owner"
 
     action = "symbol_enabled" if cfg.is_enabled else "symbol_disabled"
     await _audit(db, request, action, symbol)
@@ -262,11 +265,26 @@ async def retrain_symbol(
 
     cfg.ml_status = "training"
     cfg.updated_at = datetime.utcnow()
+    cfg.updated_by = "owner"
     await db.commit()
 
-    asyncio.create_task(scheduler._ml_retrain_symbol(symbol, engine))
+    task = asyncio.create_task(scheduler._ml_retrain_symbol(symbol, engine))
+    _retrain_tasks.add(task)
+    task.add_done_callback(_on_retrain_done)
 
     return {"status": "training", "symbol": symbol}
+
+
+_retrain_tasks: set[asyncio.Task] = set()
+
+
+def _on_retrain_done(task: asyncio.Task) -> None:
+    _retrain_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error(f"retrain task raised: {exc!r}")
 
 
 @router.get("/{symbol}/ml-status", dependencies=[Depends(require_auth)])
