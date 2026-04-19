@@ -2,6 +2,7 @@
 Bot Engine — main trading loop integrating strategy, risk, AI sentiment, and orders.
 """
 
+import asyncio
 import enum
 import json
 import random
@@ -78,6 +79,26 @@ from app.mt5.connector import MT5BridgeConnector
 from app.mt5.market_data import MarketDataService
 from app.mt5.order_executor import OrderExecutor
 from app.news.fetcher import NewsFetcher
+
+
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro, *, name: str | None = None) -> asyncio.Task:
+    """Fire-and-forget with exception logging + hard reference (prevents GC)."""
+    task = asyncio.create_task(coro, name=name)
+    _BACKGROUND_TASKS.add(task)
+
+    def _done(t: asyncio.Task) -> None:
+        _BACKGROUND_TASKS.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.error(f"background task {t.get_name()} raised: {exc!r}")
+
+    task.add_done_callback(_done)
+    return task
 from app.risk.circuit_breaker import CircuitBreaker
 from app.risk.manager import RiskManager
 from app.strategy import get_strategy
@@ -748,11 +769,13 @@ class BotEngine:
         latency_ms = int((time.monotonic() - start_time) * 1000)
 
         # Audit log (truly fire-and-forget — don't block order path)
-        import asyncio as _asyncio
-        _asyncio.create_task(self._log_order_audit(
-            order_type, lot, sl_tp.sl, sl_tp.tp, entry_price, result,
-            self.strategy.name, latency_ms,
-        ))
+        _spawn_background(
+            self._log_order_audit(
+                order_type, lot, sl_tp.sl, sl_tp.tp, entry_price, result,
+                self.strategy.name, latency_ms,
+            ),
+            name=f"order_audit_{self.symbol}",
+        )
 
         if not result.get("success"):
             error_msg = result.get("error", "Unknown error")
@@ -868,8 +891,10 @@ class BotEngine:
                 from app.constants import LOSING_STREAK_ALERT_THRESHOLD
                 if consecutive_losses >= LOSING_STREAK_ALERT_THRESHOLD and self.notifier:
                     factor = STREAK_3_FACTOR if consecutive_losses >= 3 else STREAK_2_FACTOR
-                    import asyncio as _asyncio
-                    _asyncio.create_task(self.notifier.send_losing_streak_alert(self.symbol, consecutive_losses, factor))
+                    _spawn_background(
+                        self.notifier.send_losing_streak_alert(self.symbol, consecutive_losses, factor),
+                        name=f"loss_streak_alert_{self.symbol}",
+                    )
         except Exception:
             pass
         return lot

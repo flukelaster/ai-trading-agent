@@ -19,8 +19,40 @@ from app.db.session import get_db
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# In-memory challenge store (short-lived, per-request)
-_challenges: dict[str, bytes] = {}
+# Challenge store — prefers Redis (multi-instance safe, 5 min TTL); falls back to
+# process-local dict when Redis is unreachable (single-instance dev).
+_CHALLENGE_TTL_SECONDS = 300
+_local_challenges: dict[str, bytes] = {}
+
+
+def _redis(request: Request | None):
+    if request is None:
+        return None
+    return getattr(request.app.state, "redis", None)
+
+
+async def _store_challenge(request: Request | None, key: str, value: bytes) -> None:
+    client = _redis(request)
+    if client is not None:
+        try:
+            await client.set(f"webauthn:challenge:{key}", value, ex=_CHALLENGE_TTL_SECONDS)
+            return
+        except Exception as e:
+            logger.warning(f"WebAuthn Redis store failed, using memory: {e}")
+    _local_challenges[key] = value
+
+
+async def _pop_challenge(request: Request | None, key: str) -> bytes | None:
+    client = _redis(request)
+    if client is not None:
+        try:
+            raw = await client.get(f"webauthn:challenge:{key}")
+            if raw is not None:
+                await client.delete(f"webauthn:challenge:{key}")
+                return raw if isinstance(raw, bytes) else raw.encode()
+        except Exception as e:
+            logger.warning(f"WebAuthn Redis read failed, using memory: {e}")
+    return _local_challenges.pop(key, None)
 
 RP_ID = settings.webauthn_rp_id if hasattr(settings, "webauthn_rp_id") else "localhost"
 RP_NAME = "AI Trading Agent"
@@ -71,7 +103,7 @@ class RegisterOptionsRequest(BaseModel):
 
 
 @router.post("/register/options")
-async def register_options(req: RegisterOptionsRequest, db: AsyncSession = Depends(get_db)):
+async def register_options(req: RegisterOptionsRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Generate WebAuthn registration challenge. Only works if setup not complete."""
     from webauthn import generate_registration_options
     from webauthn.helpers.structs import AuthenticatorSelectionCriteria, ResidentKeyRequirement
@@ -111,8 +143,7 @@ async def register_options(req: RegisterOptionsRequest, db: AsyncSession = Depen
         ],
     )
 
-    # Store challenge for verification
-    _challenges[str(owner.id)] = options.challenge
+    await _store_challenge(request, str(owner.id), options.challenge)
 
     from webauthn.helpers import options_to_json
     return {"options": options_to_json(options), "owner_id": owner.id}
@@ -125,13 +156,13 @@ class RegisterVerifyRequest(BaseModel):
 
 
 @router.post("/register/verify")
-async def register_verify(req: RegisterVerifyRequest, db: AsyncSession = Depends(get_db)):
+async def register_verify(req: RegisterVerifyRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Verify registration response and store credential."""
     from webauthn import verify_registration_response
     from webauthn.helpers import parse_registration_credential_json
     import json
 
-    challenge = _challenges.pop(str(req.owner_id), None)
+    challenge = await _pop_challenge(request, str(req.owner_id))
     if not challenge:
         raise HTTPException(status_code=400, detail="Registration challenge expired")
 
@@ -175,7 +206,7 @@ async def register_verify(req: RegisterVerifyRequest, db: AsyncSession = Depends
 # ─── Login ────────────────────────────────────────────────────────────────────
 
 @router.post("/login/options")
-async def login_options(db: AsyncSession = Depends(get_db)):
+async def login_options(request: Request, db: AsyncSession = Depends(get_db)):
     """Generate WebAuthn login challenge."""
     from webauthn import generate_authentication_options
 
@@ -199,7 +230,7 @@ async def login_options(db: AsyncSession = Depends(get_db)):
         ],
     )
 
-    _challenges["login"] = options.challenge
+    await _store_challenge(request, "login", options.challenge)
 
     from webauthn.helpers import options_to_json
     return {"options": options_to_json(options)}
@@ -217,7 +248,7 @@ async def login_verify(req: LoginVerifyRequest, request: Request, response: Resp
     from webauthn.helpers import parse_authentication_credential_json
     import json
 
-    challenge = _challenges.pop("login", None)
+    challenge = await _pop_challenge(request, "login")
     if not challenge:
         raise HTTPException(status_code=400, detail="Login challenge expired")
 
