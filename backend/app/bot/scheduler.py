@@ -786,7 +786,23 @@ class BotScheduler:
             from app.ml.trainer import ModelTrainer
 
             trainer = ModelTrainer()
-            X, y = trainer.prepare_dataset(df, macro_df=macro_df, sentiment_df=sentiment_df)
+
+            # Pull per-symbol ML params + convert pips → absolute price delta.
+            profile = SYMBOL_PROFILES.get(symbol, {})
+            pip_value = profile.get("pip_value", 1.0) or 1.0
+            tp_pips = profile.get("ml_tp_pips", 5.0)
+            sl_pips = profile.get("ml_sl_pips", 5.0)
+            forward_bars = profile.get("ml_forward_bars", 10)
+            tp_delta = tp_pips * pip_value
+            sl_delta = sl_pips * pip_value
+            X, y = trainer.prepare_dataset(
+                df,
+                forward_bars=forward_bars,
+                tp_pips=tp_delta,
+                sl_pips=sl_delta,
+                macro_df=macro_df,
+                sentiment_df=sentiment_df,
+            )
             if len(X) < 200:
                 logger.warning(f"ML retrain [{symbol}] skipped: insufficient labeled samples ({len(X)})")
                 await self._set_symbol_ml_status(symbol, "failed")

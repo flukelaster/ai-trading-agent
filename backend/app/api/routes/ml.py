@@ -97,8 +97,21 @@ async def train_model(req: TrainRequest):
 
         trainer = ModelTrainer()
 
+        # Convert pips → absolute price delta using the symbol's pip_value.
+        # build_labels compares bars as `entry ± delta`, so pip_value multiplier
+        # is required for instruments whose pips are not already in price units.
+        from app.config import SYMBOL_PROFILES
+
+        pip_value = SYMBOL_PROFILES.get(symbol, {}).get("pip_value", 1.0) or 1.0
+        tp_delta = req.tp_pips * pip_value
+        sl_delta = req.sl_pips * pip_value
+        logger.info(
+            f"Training {symbol}: tp_pips={req.tp_pips} × pip_value={pip_value} = tp_delta={tp_delta}; "
+            f"sl_pips={req.sl_pips} × pip_value={pip_value} = sl_delta={sl_delta}"
+        )
+
         # Prepare dataset (with macro features if available)
-        X, y = trainer.prepare_dataset(df, req.forward_bars, req.tp_pips, req.sl_pips, macro_df=macro_df)
+        X, y = trainer.prepare_dataset(df, req.forward_bars, tp_delta, sl_delta, macro_df=macro_df)
         if len(X) < 200:
             return {"error": f"Insufficient labeled samples for {symbol}: {len(X)} (need 200+)"}
 
@@ -152,8 +165,6 @@ async def train_model(req: TrainRequest):
         return {**result.to_dict(), "symbol": symbol}
 
     except Exception as e:
-        from loguru import logger
-
         logger.error(f"Train model error [{symbol}]: {e}")
         return {"error": f"Training failed: {e}"}
 
