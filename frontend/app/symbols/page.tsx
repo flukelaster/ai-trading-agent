@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { AxiosError } from "axios";
+import { CandlestickChart } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/button";
+import { PageInstructions } from "@/components/layout/PageInstructions";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -13,15 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   createSymbolConfig,
   deleteSymbolConfig,
@@ -45,6 +39,13 @@ function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "Unexpected error";
 }
+
+const ML_STATUS_STYLE: Record<string, string> = {
+  ready: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+  training: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  failed: "bg-red-500/10 text-red-500 border-red-500/20",
+  pending: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+};
 
 export default function SymbolsPage() {
   const [configs, setConfigs] = useState<SymbolConfig[]>([]);
@@ -125,7 +126,11 @@ export default function SymbolsPage() {
   };
 
   const handleDelete = async (cfg: SymbolConfig) => {
-    if (!confirm(`Delete ${cfg.symbol}? This disables the symbol and removes it from the active list.`)) {
+    if (
+      !confirm(
+        `Delete ${cfg.symbol}? This disables the symbol and removes it from the active list.`,
+      )
+    ) {
       return;
     }
     try {
@@ -164,7 +169,7 @@ export default function SymbolsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 page-enter">
       <PageHeader
         title="Symbols"
         subtitle="Manage tradable instruments, profiles, and broker aliases"
@@ -172,97 +177,120 @@ export default function SymbolsPage() {
         <Button onClick={openCreate}>Add Symbol</Button>
       </PageHeader>
 
+      <PageInstructions
+        items={[
+          "Add, enable, or edit trading symbols. Edits hot-reload across BotManager without restart.",
+          "Validate the broker alias before enabling — the bot queries MT5 Bridge for lot limits, digits, and contract size.",
+          "New symbols need ML training before they can trade. Click Retrain to queue a training job.",
+        ]}
+      />
+
       {banner && (
         <div
           className={
-            banner.kind === "ok"
-              ? "rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600"
-              : "rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            "rounded-xl border px-4 py-3 text-sm " +
+            (banner.kind === "ok"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              : "border-destructive/40 bg-destructive/10 text-destructive")
           }
         >
           {banner.msg}
         </div>
       )}
 
-      <div className="rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Symbol</TableHead>
-              <TableHead>Display</TableHead>
-              <TableHead>Broker alias</TableHead>
-              <TableHead>TF</TableHead>
-              <TableHead>Lot (def / max)</TableHead>
-              <TableHead>SL/TP ATR</TableHead>
-              <TableHead>ML</TableHead>
-              <TableHead>Enabled</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={9}>
-                  <Skeleton className="h-24 w-full" />
-                </TableCell>
-              </TableRow>
-            ) : configs.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                  No symbols configured. Click &quot;Add Symbol&quot; to create one.
-                </TableCell>
-              </TableRow>
-            ) : (
-              configs.map((cfg) => (
-                <TableRow key={cfg.symbol}>
-                  <TableCell className="font-mono font-semibold">{cfg.symbol}</TableCell>
-                  <TableCell>{cfg.display_name}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {cfg.broker_alias ?? "—"}
-                  </TableCell>
-                  <TableCell>{cfg.default_timeframe}</TableCell>
-                  <TableCell>
-                    {cfg.default_lot} / {cfg.max_lot}
-                  </TableCell>
-                  <TableCell>
-                    {cfg.sl_atr_mult} / {cfg.tp_atr_mult}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={cfg.ml_status === "ready" ? "default" : "outline"}>
-                      {cfg.ml_status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={cfg.is_enabled}
-                      onCheckedChange={() => void handleToggle(cfg)}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right space-x-1">
-                    <Button variant="ghost" size="sm" onClick={() => void handleValidate(cfg)}>
-                      Validate
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => void handleRetrain(cfg)}>
-                      Retrain
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(cfg)}>
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive"
-                      onClick={() => void handleDelete(cfg)}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {loading ? (
+        <div className="text-center text-muted-foreground py-12 text-sm">Loading symbols...</div>
+      ) : configs.length === 0 ? (
+        <EmptyState
+          icon={CandlestickChart}
+          heading="No symbols configured"
+          description='Click "Add Symbol" to create the first trading instrument.'
+          action={{ label: "Add Symbol", onClick: openCreate }}
+        />
+      ) : (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground bg-muted/30">
+                  <th className="px-4 py-3 font-medium">Symbol</th>
+                  <th className="px-4 py-3 font-medium">Display</th>
+                  <th className="px-4 py-3 font-medium">Broker alias</th>
+                  <th className="px-4 py-3 font-medium">TF</th>
+                  <th className="px-4 py-3 font-medium">Lot (def / max)</th>
+                  <th className="px-4 py-3 font-medium">SL / TP ATR</th>
+                  <th className="px-4 py-3 font-medium">ML</th>
+                  <th className="px-4 py-3 font-medium">Enabled</th>
+                  <th className="px-4 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {configs.map((cfg) => (
+                  <tr
+                    key={cfg.symbol}
+                    className="border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-mono font-semibold">{cfg.symbol}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{cfg.display_name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      {cfg.broker_alias ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{cfg.default_timeframe}</td>
+                    <td className="px-4 py-3 tabular-nums">
+                      {cfg.default_lot} / {cfg.max_lot}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                      {cfg.sl_atr_mult} / {cfg.tp_atr_mult}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        variant="outline"
+                        className={
+                          ML_STATUS_STYLE[cfg.ml_status] ??
+                          "bg-muted/40 text-muted-foreground border-border"
+                        }
+                      >
+                        {cfg.ml_status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Switch
+                        checked={cfg.is_enabled}
+                        onCheckedChange={() => void handleToggle(cfg)}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleValidate(cfg)}
+                        >
+                          Validate
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => void handleRetrain(cfg)}>
+                          Retrain
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(cfg)}>
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => void handleDelete(cfg)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
