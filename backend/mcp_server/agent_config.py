@@ -76,11 +76,15 @@ async def run_multi_agent(
 def _build_user_message(job_type: str, job_input: dict | None) -> str:
     input_str = json.dumps(job_input, default=str) if job_input else "{}"
     if job_type == "candle_analysis":
-        symbol = (job_input or {}).get("symbol", "GOLD")
+        symbol = (job_input or {}).get("symbol")
+        if not symbol:
+            raise ValueError("candle_analysis job requires 'symbol' in job_input")
         timeframe = (job_input or {}).get("timeframe", "M15")
         return f"A new {timeframe} candle has closed for {symbol}. Analyze market conditions, detect regime, flag risks. Trading is handled by the strategy engine.\n\nJob input: {input_str}"
     elif job_type == "manual_analysis":
-        symbol = (job_input or {}).get("symbol", "GOLD")
+        symbol = (job_input or {}).get("symbol")
+        if not symbol:
+            raise ValueError("manual_analysis job requires 'symbol' in job_input")
         return f"Manual analysis requested for {symbol}. Provide thorough analysis with recommendation.\n\nJob input: {input_str}"
     elif job_type == "weekly_review":
         return f"Perform a weekly trading review.\n\nJob input: {input_str}"

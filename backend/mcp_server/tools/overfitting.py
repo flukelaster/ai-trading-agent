@@ -7,7 +7,7 @@ from mcp_server.tools import backend_url as _backend_url
 
 async def compute_overfitting_score(
     strategy: str,
-    symbol: str = "GOLD",
+    symbol: str,
     timeframe: str = "M15",
     source: str = "db",
     count: int = 5000,

@@ -10,35 +10,20 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
 from app.bot.engine import BotEngine, BotState
-from app.config import settings
-
-# Market close windows (UTC). None = 24/7 (e.g. crypto).
-# daily_close: (start_hour, end_hour) when MT5 daily maintenance occurs.
-MARKET_SCHEDULE = {
-    "GOLD":    {"weekend": True, "daily_close": (22, 23)},
-    "OILCash": {"weekend": True, "daily_close": (22, 23)},
-    "BTCUSD":  {"weekend": False, "daily_close": None},
-    "USDJPY":  {"weekend": True, "daily_close": (22, 22)},
-}
+from app.config import SYMBOL_PROFILES, settings
+from app.market.sessions import is_market_open as _session_is_open
 
 
 def is_market_open(symbol: str) -> bool:
-    """Check if the market for *symbol* is likely open on MT5."""
+    """Check if the market for *symbol* is likely open on MT5.
+
+    Asset class is resolved from SYMBOL_PROFILES; unknown symbols default to the
+    conservative forex schedule (weekend closed + 22:00-23:00 UTC maintenance).
+    """
     from app.config import get_canonical_symbol
-    now = datetime.utcnow()
     canonical = get_canonical_symbol(symbol)
-    schedule = MARKET_SCHEDULE.get(canonical, MARKET_SCHEDULE.get(symbol, {"weekend": True, "daily_close": None}))
-
-    # Weekend check (Saturday 00:00 – Sunday 23:59 UTC, approximate)
-    if schedule["weekend"] and now.weekday() >= 5:
-        return False
-
-    # Daily close window
-    dc = schedule.get("daily_close")
-    if dc and dc[0] <= now.hour < dc[1]:
-        return False
-
-    return True
+    profile = SYMBOL_PROFILES.get(canonical) or SYMBOL_PROFILES.get(symbol) or {}
+    return _session_is_open(profile.get("asset_class"), now=datetime.utcnow())
 
 # Timeframe → cron schedule mapping
 TIMEFRAME_CRON = {

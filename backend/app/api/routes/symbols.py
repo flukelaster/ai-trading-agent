@@ -32,6 +32,7 @@ _SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9._-]{2,32}$")
 class SymbolBase(BaseModel):
     display_name: str = Field(min_length=1, max_length=64)
     broker_alias: str | None = None
+    asset_class: str = Field(default="forex", max_length=16)
     default_timeframe: Timeframe = "M15"
     pip_value: float = Field(gt=0)
     default_lot: float = Field(gt=0)
@@ -44,6 +45,16 @@ class SymbolBase(BaseModel):
     ml_sl_pips: float = Field(gt=0)
     ml_forward_bars: int = Field(ge=1, le=100, default=10)
     ml_timeframe: Timeframe = "M15"
+
+    @field_validator("asset_class")
+    @classmethod
+    def _check_asset_class(cls, v: str) -> str:
+        from app.market.sessions import supported_asset_classes
+        if v.lower() not in supported_asset_classes():
+            raise ValueError(
+                f"asset_class must be one of {supported_asset_classes()}; got {v!r}"
+            )
+        return v.lower()
 
     @model_validator(mode="after")
     def _check_lot_bounds(self) -> "SymbolBase":
@@ -73,6 +84,7 @@ class SymbolResponse(BaseModel):
     symbol: str
     display_name: str
     broker_alias: str | None
+    asset_class: str
     is_enabled: bool
     default_timeframe: str
     pip_value: float

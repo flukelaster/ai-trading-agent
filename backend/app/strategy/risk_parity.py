@@ -9,11 +9,9 @@ Worst case: low-volatility asset gets oversized position, then volatility spikes
 
 import pandas as pd
 
+from app.config import get_active_symbols
 from app.strategy.base import BaseStrategy
 from app.strategy.indicators import atr, ema
-
-
-ALL_SYMBOLS = ["GOLD", "OILCash", "BTCUSD", "USDJPY"]
 
 
 class RiskParityStrategy(BaseStrategy):
@@ -54,15 +52,18 @@ class RiskParityStrategy(BaseStrategy):
         }
 
     async def _prepare_cross_data(self, market_data) -> None:
-        """Fetch ATR of all symbols and compute inverse-volatility weights."""
+        """Fetch ATR of active symbols and compute inverse-volatility weights."""
         import asyncio
         atr_pcts = {}
+        active = get_active_symbols()
+        if len(active) < 2:
+            return
         try:
             dfs = await asyncio.gather(*[
                 market_data.get_ohlcv(sym, "M15", self._vol_lookback + 20)
-                for sym in ALL_SYMBOLS
+                for sym in active
             ])
-            for sym, df in zip(ALL_SYMBOLS, dfs):
+            for sym, df in zip(active, dfs):
                 if df is not None and not df.empty and len(df) >= self._atr_period + 2:
                     atr_val = atr(df["high"], df["low"], df["close"], self._atr_period).iloc[-1]
                     price = df["close"].iloc[-1]

@@ -244,10 +244,28 @@ export const unarchiveTrades = (before: string) => api.post("/api/admin/trades/u
 export const getArchiveCount = () => api.get("/api/admin/trades/archive-count");
 
 // Symbol Config
+export type AssetClass =
+  | "forex"
+  | "metal"
+  | "energy"
+  | "index"
+  | "crypto"
+  | "stock";
+
+export const ASSET_CLASSES: AssetClass[] = [
+  "forex",
+  "metal",
+  "energy",
+  "index",
+  "crypto",
+  "stock",
+];
+
 export interface SymbolConfig {
   symbol: string;
   display_name: string;
   broker_alias: string | null;
+  asset_class: AssetClass;
   is_enabled: boolean;
   default_timeframe: string;
   pip_value: number;

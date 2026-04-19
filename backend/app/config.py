@@ -16,6 +16,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 10.0,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
+        "asset_class": "metal",
     },
     "OILCash": {
         "display_name": "WTI Oil",
@@ -31,6 +32,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 0.5,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
+        "asset_class": "energy",
     },
     "BTCUSD": {
         "display_name": "Bitcoin",
@@ -46,6 +48,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 500.0,
         "ml_forward_bars": 5,     # BTC moves fast — shorter horizon
         "ml_timeframe": "H1",     # H1 better for BTC volatility
+        "asset_class": "crypto",
     },
     "USDJPY": {
         "display_name": "USD/JPY",
@@ -61,6 +64,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_sl_pips": 0.3,
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
+        "asset_class": "forex",
     },
 }
 
@@ -102,6 +106,19 @@ def resolve_broker_symbol(symbol: str) -> str:
         return _get_engine(symbol).symbol
     except Exception:
         return symbol
+
+
+def get_active_symbols() -> list[str]:
+    """Return all active engine symbols, falling back to SYMBOL_PROFILES canonicals.
+
+    Prefers the live BotManager (reflects runtime add/remove via Symbols UI). Falls
+    back to non-alias profiles when the manager is unavailable (tests, startup).
+    """
+    try:
+        from app.api.routes.bot import get_manager
+        return list(get_manager().engines.keys())
+    except Exception:
+        return [sym for sym, p in SYMBOL_PROFILES.items() if "canonical" not in p]
 
 
 # Auto-register aliased profiles so SYMBOL_PROFILES["GOLDmicro"] works directly

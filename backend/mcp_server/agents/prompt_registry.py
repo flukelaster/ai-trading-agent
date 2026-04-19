@@ -51,6 +51,9 @@ def _load_defaults() -> None:
     from app.ai.prompts import OPTIMIZATION_SYSTEM_PROMPT
     from app.ai.prompts import get_sentiment_prompt
 
+    # Sentiment default uses a `{symbol}` placeholder so the /agent-prompts UI
+    # displays the generic template instead of a gold-specific variant.
+    # Runtime sentiment calls in app/ai/news_sentiment.py pass the real symbol.
     _DEFAULTS.update({
         "orchestrator": ORCH,
         "technical_analyst": TECH,
@@ -58,7 +61,7 @@ def _load_defaults() -> None:
         "risk_analyst": RISK,
         "reflector": REFL,
         "single_agent": single,
-        "sentiment": get_sentiment_prompt("GOLD"),
+        "sentiment": get_sentiment_prompt("{symbol}"),
         "optimization": OPTIMIZATION_SYSTEM_PROMPT,
     })
     _defaults_loaded = True

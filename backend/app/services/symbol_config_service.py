@@ -32,6 +32,7 @@ def config_to_profile(cfg: SymbolConfig) -> dict:
         "ml_forward_bars": cfg.ml_forward_bars,
         "ml_timeframe": cfg.ml_timeframe,
         "broker_alias": cfg.broker_alias,
+        "asset_class": cfg.asset_class,
         "is_enabled": cfg.is_enabled,
         "ml_status": cfg.ml_status,
     }

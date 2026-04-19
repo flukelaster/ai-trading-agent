@@ -123,7 +123,7 @@ async def apply_strategy(
     return response
 
 
-async def get_switch_status(symbol: str = "GOLD") -> dict:
+async def get_switch_status(symbol: str) -> dict:
     """Get current auto-strategy-switch status for a symbol.
 
     Args:
