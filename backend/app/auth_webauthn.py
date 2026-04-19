@@ -46,9 +46,8 @@ async def _pop_challenge(request: Request | None, key: str) -> bytes | None:
     client = _redis(request)
     if client is not None:
         try:
-            raw = await client.get(f"webauthn:challenge:{key}")
+            raw = await client.getdel(f"webauthn:challenge:{key}")
             if raw is not None:
-                await client.delete(f"webauthn:challenge:{key}")
                 return raw if isinstance(raw, bytes) else raw.encode()
         except Exception as e:
             logger.warning(f"WebAuthn Redis read failed, using memory: {e}")
