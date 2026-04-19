@@ -22,13 +22,12 @@ async def get_ohlcv(
     count: int = Query(200, le=5000),
 ):
     engine = _get_engine(symbol)
-    # Use engine's actual symbol (may differ from alias, e.g., GOLDmicro vs GOLD)
-    actual_symbol = engine.symbol
-    df = await engine.market_data.get_ohlcv(actual_symbol, timeframe, count)
+    # market_data.get_ohlcv internally resolves canonical → broker alias
+    df = await engine.market_data.get_ohlcv(engine.symbol, timeframe, count)
     if df.empty:
         return {"candles": []}
 
-    profile = SYMBOL_PROFILES.get(actual_symbol, SYMBOL_PROFILES.get(symbol, {}))
+    profile = SYMBOL_PROFILES.get(engine.symbol, {})
     decimals = profile.get("price_decimals", 2)
 
     candles = []

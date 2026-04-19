@@ -8,6 +8,7 @@ from loguru import logger
 
 from app.constants import MT5_MAGIC_NUMBER
 from app.mt5.connector import MT5BridgeConnector
+from app.mt5.symbol_resolver import to_broker_alias
 
 # Errors that should NOT be retried (permanent failures)
 _NO_RETRY_ERRORS = {"margin", "insufficient", "invalid volume", "market closed", "symbol not found"}
@@ -21,6 +22,7 @@ class OrderExecutor:
         self, symbol: str, order_type: str, lot: float, sl: float, tp: float,
         comment: str = "", magic: int = MT5_MAGIC_NUMBER, max_retries: int = 3,
     ) -> dict:
+        symbol = to_broker_alias(symbol)
         logger.info(f"Placing order: {order_type} {lot} {symbol} SL={sl} TP={tp}")
 
         for attempt in range(max_retries):
@@ -60,6 +62,8 @@ class OrderExecutor:
         return result
 
     async def close_all_positions(self, symbol: str | None = None) -> dict:
+        if symbol:
+            symbol = to_broker_alias(symbol)
         logger.warning(f"Closing ALL positions (symbol={symbol})")
         result = await self.connector.close_all_positions(symbol=symbol)
         return result
@@ -70,7 +74,8 @@ class OrderExecutor:
             return []
         positions = result.get("data", [])
         if symbol:
-            positions = [p for p in positions if p.get("symbol") == symbol]
+            broker = to_broker_alias(symbol)
+            positions = [p for p in positions if p.get("symbol") in (symbol, broker)]
         return positions
 
     async def modify_position(self, ticket: int, sl: float | None = None, tp: float | None = None) -> dict:

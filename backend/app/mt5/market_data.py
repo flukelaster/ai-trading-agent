@@ -11,6 +11,7 @@ import pandas as pd
 from loguru import logger
 
 from app.mt5.connector import MT5BridgeConnector
+from app.mt5.symbol_resolver import to_broker_alias
 
 # Max tick age before considered stale (seconds)
 MAX_TICK_AGE_SECONDS = 30
@@ -22,6 +23,7 @@ class MarketDataService:
         self._avg_spread: dict[str, float] = {}  # symbol → rolling avg spread
 
     async def get_current_tick(self, symbol: str, validate: bool = True) -> dict | None:
+        symbol = to_broker_alias(symbol)
         result = await self.connector.get_tick(symbol)
         if not result.get("success"):
             logger.warning(f"Failed to get tick for {symbol}: {result.get('error')}")
@@ -61,6 +63,7 @@ class MarketDataService:
         return tick
 
     async def get_ohlcv(self, symbol: str, timeframe: str = "M15", count: int = 100, validate: bool = True) -> pd.DataFrame:
+        symbol = to_broker_alias(symbol)
         result = await self.connector.get_ohlcv(symbol, timeframe, count)
         if not result.get("success") or not result.get("data"):
             logger.warning(f"Failed to get OHLCV for {symbol}: {result.get('error')}")
@@ -76,6 +79,7 @@ class MarketDataService:
 
     async def get_ohlcv_range(self, symbol: str, timeframe: str, from_date: str, to_date: str) -> pd.DataFrame:
         """Fetch historical OHLCV data by date range from MT5 Bridge."""
+        symbol = to_broker_alias(symbol)
         result = await self.connector.get_ohlcv_range(symbol, timeframe, from_date, to_date)
         if not result.get("success") or not result.get("data"):
             logger.warning(f"Failed to get historical OHLCV for {symbol}: {result.get('error')}")
