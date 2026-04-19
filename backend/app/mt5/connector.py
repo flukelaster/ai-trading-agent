@@ -4,11 +4,17 @@ MT5 Bridge Connector — HTTP client that calls the MT5 Bridge on Windows VPS.
 
 import asyncio
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from loguru import logger
 
 from app.config import settings
+
+
+def _enc(symbol: str) -> str:
+    """URL-encode symbol for path segment (handles `#`, spaces, etc.)."""
+    return quote(symbol, safe="")
 
 
 class MT5BridgeConnector:
@@ -84,14 +90,14 @@ class MT5BridgeConnector:
         return await self._request("get", "/health")
 
     async def get_tick(self, symbol: str) -> dict:
-        return await self._request_fast("get", f"/tick/{symbol}")
+        return await self._request_fast("get", f"/tick/{_enc(symbol)}")
 
     async def get_ohlcv(self, symbol: str, timeframe: str = "M15", count: int = 100) -> dict:
-        return await self._request("get", f"/ohlcv/{symbol}", params={"timeframe": timeframe, "count": count})
+        return await self._request("get", f"/ohlcv/{_enc(symbol)}", params={"timeframe": timeframe, "count": count})
 
     async def get_symbol_spec(self, symbol: str) -> dict:
         """Fetch broker-side symbol spec (digits, volume limits, contract size)."""
-        return await self._request("get", f"/symbol-spec/{symbol}")
+        return await self._request("get", f"/symbol-spec/{_enc(symbol)}")
 
     async def get_account(self) -> dict:
         return await self._request("get", "/account")
@@ -135,7 +141,7 @@ class MT5BridgeConnector:
         client = await self._get_client()
         try:
             response = await client.get(
-                f"/ohlcv/{symbol}/history",
+                f"/ohlcv/{_enc(symbol)}/history",
                 params={"timeframe": timeframe, "from_date": from_date, "to_date": to_date},
                 timeout=30.0,
             )
