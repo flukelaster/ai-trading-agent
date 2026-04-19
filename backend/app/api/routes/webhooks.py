@@ -25,6 +25,12 @@ class TradingViewAlert(BaseModel):
     action: str  # "BUY" or "SELL"
     price: float | None = None
     key: str  # webhook secret for validation
+    timestamp: int | None = Field(None, description="Unix seconds — reject if older than WEBHOOK_MAX_AGE_SECONDS")
+    nonce: str | None = Field(None, description="Unique per-alert token — rejected on replay")
+
+
+WEBHOOK_MAX_AGE_SECONDS = 60
+_WEBHOOK_NONCE_TTL_SECONDS = 300
 
 
 @router.post("/tradingview")
@@ -32,8 +38,10 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     """
     Receive TradingView alert and execute trade via strategy engine.
 
-    TradingView alert message format (JSON):
-    {"symbol": "GOLD", "action": "BUY", "price": 4720, "key": "your-webhook-key"}
+    Each alert MUST include:
+      key       — shared secret (HMAC-compared)
+      timestamp — unix seconds, rejected if older than WEBHOOK_MAX_AGE_SECONDS
+      nonce     — unique token, rejected on replay within _WEBHOOK_NONCE_TTL_SECONDS
     """
     # Validate webhook key
     expected_key = os.environ.get("TRADINGVIEW_WEBHOOK_KEY", "")
@@ -55,6 +63,22 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
     if not hmac.compare_digest(alert.key, expected_key):
         logger.warning(f"TradingView webhook: invalid key from {request.client.host if request.client else 'unknown'}")
         raise HTTPException(status_code=401, detail="Invalid webhook key")
+
+    # Timestamp + nonce check to block replay attacks.
+    if alert.timestamp is None or alert.nonce is None:
+        raise HTTPException(status_code=400, detail="timestamp and nonce required")
+
+    import time
+    now = int(time.time())
+    if abs(now - alert.timestamp) > WEBHOOK_MAX_AGE_SECONDS:
+        raise HTTPException(status_code=401, detail="webhook expired")
+
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client is not None:
+        nonce_key = f"webhook:nonce:{alert.nonce}"
+        # SETNX + EXPIRE: returns True only if the nonce has not been seen.
+        if not await redis_client.set(nonce_key, "1", nx=True, ex=_WEBHOOK_NONCE_TTL_SECONDS):
+            raise HTTPException(status_code=409, detail="replay detected")
 
     if _manager is None:
         raise HTTPException(status_code=503, detail="Bot manager not initialized")

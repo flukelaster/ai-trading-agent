@@ -52,11 +52,24 @@ def _auth_enabled() -> bool:
 
 
 def _assert_auth_consistent() -> None:
-    """Fail fast on startup if password hash is set but username isn't."""
+    """Fail fast on startup if auth config could produce forgeable tokens."""
     if settings.auth_password_hash and not settings.auth_username:
         raise RuntimeError(
             "AUTH_PASSWORD_HASH is set but AUTH_USERNAME is empty — refusing to start. "
             "Either set both, or clear AUTH_PASSWORD_HASH to disable auth."
+        )
+    # Empty SECRET_KEY produces trivially-forgeable JWTs: python-jose accepts
+    # an empty HMAC key. Refuse to start when any JWT-issuing path is live.
+    if _auth_enabled() and not settings.secret_key:
+        raise RuntimeError(
+            "SECRET_KEY is empty while auth is enabled — refusing to start. "
+            "Set SECRET_KEY to a long random value."
+        )
+    _PLACEHOLDERS = {"change-me-in-production", "changeme", "secret", "please-change"}
+    if settings.secret_key.strip().lower() in _PLACEHOLDERS:
+        raise RuntimeError(
+            "SECRET_KEY is set to a placeholder value — refusing to start. "
+            "Generate a real secret."
         )
 
 

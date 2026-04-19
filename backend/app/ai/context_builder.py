@@ -119,7 +119,6 @@ class AIContextBuilder:
             return "Insufficient trade history for pattern analysis."
 
         wins = [t for t in trades if t.profit > 0]
-        losses = [t for t in trades if t.profit <= 0]
         total_wr = len(wins) / len(trades) * 100
 
         # By hour

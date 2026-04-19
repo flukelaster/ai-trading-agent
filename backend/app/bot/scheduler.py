@@ -572,8 +572,11 @@ class BotScheduler:
             total_trades = 0
             total_wins = 0
 
+            from app.db.session import async_session
+
             for symbol, engine in self._engines.items():
-                # Get today's closed trades
+                # Get today's closed trades — use an isolated session so a
+                # dirty engine.db doesn't taint the daily summary job.
                 today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
                 stmt = select(Trade).where(and_(
                     Trade.symbol == symbol,
@@ -581,8 +584,9 @@ class BotScheduler:
                     Trade.profit.isnot(None),
                     Trade.is_archived.is_(False),
                 ))
-                result = await engine.db.execute(stmt)
-                trades = result.scalars().all()
+                async with async_session() as session:
+                    result = await session.execute(stmt)
+                    trades = result.scalars().all()
 
                 pnl = sum(t.profit for t in trades)
                 wins = sum(1 for t in trades if t.profit > 0)
@@ -764,8 +768,7 @@ class BotScheduler:
             X_train, X_val = X.iloc[:split_idx], X.iloc[split_idx:]
             y_train, y_val = y.iloc[:split_idx], y.iloc[split_idx:]
 
-            loop = asyncio.get_event_loop()
-            new_result = await loop.run_in_executor(None, trainer.train_walk_forward, X_train, y_train)
+            new_result = await asyncio.to_thread(trainer.train_walk_forward, X_train, y_train)
 
             if len(X_val) > 20 and trainer.model is not None:
                 available = [c for c in trainer.feature_columns if c in X_val.columns]

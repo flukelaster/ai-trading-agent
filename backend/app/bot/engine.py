@@ -64,7 +64,11 @@ def _get_h1_trend(df) -> int:
         elif current_price < ema_val * MTF_EMA_BELOW:
             return -1
         return 0
-    except Exception:
+    except Exception as e:
+        # Don't silently disable the MTF filter — a misconfigured indicator
+        # should be visible in logs, not hidden behind a neutral return value.
+        from loguru import logger as _logger
+        _logger.warning(f"MTF trend check failed: {e!r} — falling back to neutral")
         return 0
 
 import redis.asyncio as redis
@@ -574,7 +578,7 @@ class BotEngine:
         """Get AI sentiment if enabled. Returns sentiment dict or None."""
         if self.sentiment_analyzer and self.risk_manager.use_ai_filter:
             sentiment = await self.sentiment_analyzer.get_latest_sentiment(self.symbol)
-            if sentiment.confidence > 0:
+            if sentiment is not None and sentiment.confidence > 0:
                 return {"label": sentiment.label, "confidence": sentiment.confidence}
         return None
 
@@ -675,15 +679,18 @@ class BotEngine:
                     ohlcv = await eng.market_data.get_ohlcv(sym, eng.timeframe, 60)
                     if ohlcv is not None and len(ohlcv) > 30:
                         price_series[sym] = ohlcv["close"].values
+                rolling_corr: dict | None = None
                 if len(price_series) >= 2:
                     rolling_matrix = compute_rolling_correlation(price_series, window=30)
-                    # Update global CORRELATIONS with rolling values for this check
                     from app.risk import correlation as _corr_mod
-                    _corr_mod.CORRELATIONS = {**_corr_mod.STATIC_CORRELATIONS, **rolling_matrix.matrix}
+                    rolling_corr = {**_corr_mod.STATIC_CORRELATIONS, **rolling_matrix.matrix}
             except Exception as e:
                 logger.debug(f"Rolling correlation unavailable, using static: {e}")
+                rolling_corr = None
 
-            has_conflict, conflict_reason = check_correlation_conflict(self.symbol, signal, active_positions)
+            has_conflict, conflict_reason = check_correlation_conflict(
+                self.symbol, signal, active_positions, correlations=rolling_corr,
+            )
             if has_conflict:
                 logger.info(f"Correlation conflict: {conflict_reason}")
                 await self._log_event(BotEventType.TRADE_BLOCKED, conflict_reason)
@@ -895,8 +902,15 @@ class BotEngine:
                         self.notifier.send_losing_streak_alert(self.symbol, consecutive_losses, factor),
                         name=f"loss_streak_alert_{self.symbol}",
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            # Surfacing this is important — silently dropping the streak check
+            # means the bot overtrades after losses. Rollback the shared session
+            # per known-issue mitigation.
+            logger.warning(f"Streak adjustment failed [{self.symbol}]: {e!r}")
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
         return lot
 
     def _create_paper_order(self, order_type: str, lot: float, entry_price: float, sl_tp, comment: str) -> dict:

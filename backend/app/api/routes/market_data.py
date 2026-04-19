@@ -2,12 +2,17 @@
 Market data API routes — OHLCV candles for charting (multi-symbol).
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.routes.bot import _get_engine, get_manager
+from app.auth import require_auth
 from app.config import SYMBOL_PROFILES
 
-router = APIRouter(prefix="/api/market-data", tags=["market-data"])
+router = APIRouter(
+    prefix="/api/market-data",
+    tags=["market-data"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 @router.get("/ohlcv")

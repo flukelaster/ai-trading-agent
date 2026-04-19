@@ -8,19 +8,22 @@ import redis.asyncio as redis_lib
 from loguru import logger
 from app.mt5.connector import MT5BridgeConnector
 from app.notifications.telegram import TelegramNotifier
+from app.risk.circuit_breaker import CircuitBreaker
 from mcp_server.guardrails import TradingGuardrails
 
 _connector: MT5BridgeConnector | None = None
 _guardrails: TradingGuardrails | None = None
 _notifier: TelegramNotifier | None = None
+_redis: redis_lib.Redis | None = None
 
 
 def init_broker(redis: redis_lib.Redis) -> None:
     """Initialize broker with Redis for guardrails. Called once at agent startup."""
-    global _connector, _guardrails, _notifier
+    global _connector, _guardrails, _notifier, _redis
     _connector = MT5BridgeConnector()
     _guardrails = TradingGuardrails(redis)
     _notifier = TelegramNotifier()
+    _redis = redis
 
 
 def _require_init():
@@ -100,13 +103,19 @@ async def place_order(
     avg_spread = spread  # Simplified — production would track rolling average
 
     # ─── GUARDRAIL CHECK (non-bypassable) ────────────────────────────────
+    # daily_pnl must come from CircuitBreaker (closed-trade realized P&L).
+    # account.profit is *floating* unrealized P&L, which would let open winners
+    # mask realized losses and bypass the daily-loss limit.
+    cb = CircuitBreaker(_redis, symbol=symbol)
+    realized_daily_pnl = await cb.get_daily_pnl()
+
     result = await _guardrails.validate_order(
         symbol=symbol,
         lot=lot,
         order_type=order_type,
         current_positions=positions,
         account_balance=account.get("balance", 0),
-        daily_pnl=account.get("profit", 0),
+        daily_pnl=realized_daily_pnl,
         spread=spread,
         avg_spread=avg_spread,
     )
@@ -207,15 +216,41 @@ async def place_order(
 async def modify_position(ticket: int, sl: float | None = None, tp: float | None = None) -> dict:
     """Modify stop-loss and/or take-profit of an existing position.
 
-    Args:
-        ticket: Position ticket number
-        sl: New stop-loss price (None to keep current)
-        tp: New take-profit price (None to keep current)
-
-    Returns:
-        Dict with modification result.
+    Guardrails:
+    - Non-live rollout modes intercept and log instead of mutating broker state.
+    - Stop-loss cannot be widened to more than MAX_SL_WIDEN_MULT × the distance
+      from the current entry price; the AI agent can't neutralize risk by
+      dragging SL to zero.
     """
     _require_init()
+    rollout_mode = _guardrails.get_rollout_mode()
+    if rollout_mode in ("shadow", "paper"):
+        logger.info(f"[{rollout_mode}] modify_position intercepted: ticket={ticket} sl={sl} tp={tp}")
+        return {"modified": False, "rollout": rollout_mode, "ticket": ticket}
+
+    if sl is not None:
+        positions_res = await _connector.get_positions()
+        if positions_res.get("success"):
+            for p in positions_res.get("data", []):
+                if p.get("ticket") != ticket:
+                    continue
+                current_sl = p.get("sl") or 0
+                entry = p.get("open_price") or p.get("price") or 0
+                if current_sl and entry:
+                    current_dist = abs(entry - current_sl)
+                    new_dist = abs(entry - sl)
+                    MAX_SL_WIDEN_MULT = 2.0
+                    if new_dist > current_dist * MAX_SL_WIDEN_MULT:
+                        return {
+                            "modified": False,
+                            "rejected": True,
+                            "reason": (
+                                f"SL widen {new_dist:.5f} exceeds {MAX_SL_WIDEN_MULT}x "
+                                f"current distance {current_dist:.5f}"
+                            ),
+                        }
+                break
+
     result = await _connector.modify_position(ticket, sl=sl, tp=tp)
     if result.get("success"):
         return {"modified": True, "ticket": ticket}
@@ -225,13 +260,12 @@ async def modify_position(ticket: int, sl: float | None = None, tp: float | None
 async def close_position(ticket: int) -> dict:
     """Close a specific position by ticket number.
 
-    Args:
-        ticket: Position ticket number
-
-    Returns:
-        Dict with close result.
+    In shadow/paper rollout modes the close is intercepted (logged only) so the
+    AI agent cannot liquidate a real account while we're still dry-running.
     """
     _require_init()
+    rollout_mode = _guardrails.get_rollout_mode()
+
     # Get position info before closing for notification
     positions_res = await _connector.get_positions()
     pos_info = None
@@ -240,6 +274,10 @@ async def close_position(ticket: int) -> dict:
             if p.get("ticket") == ticket:
                 pos_info = p
                 break
+
+    if rollout_mode in ("shadow", "paper"):
+        logger.info(f"[{rollout_mode}] close_position intercepted: ticket={ticket}")
+        return {"closed": False, "rollout": rollout_mode, "ticket": ticket}
 
     result = await _connector.close_position(ticket)
     if result.get("success"):
