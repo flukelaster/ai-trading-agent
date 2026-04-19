@@ -390,6 +390,38 @@ class AgentMemory(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class SymbolConfig(Base):
+    """User-managed symbol trading config — replaces static SYMBOL_PROFILES when present."""
+    __tablename__ = "symbol_configs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(64))
+    broker_alias: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    default_timeframe: Mapped[str] = mapped_column(String(8), default="M15", server_default="M15")
+    pip_value: Mapped[float] = mapped_column(Float)
+    default_lot: Mapped[float] = mapped_column(Float)
+    max_lot: Mapped[float] = mapped_column(Float)
+    price_decimals: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    sl_atr_mult: Mapped[float] = mapped_column(Float, default=1.5, server_default="1.5")
+    tp_atr_mult: Mapped[float] = mapped_column(Float, default=2.0, server_default="2.0")
+    contract_size: Mapped[float] = mapped_column(Float, default=1.0, server_default="1.0")
+    ml_tp_pips: Mapped[float] = mapped_column(Float)
+    ml_sl_pips: Mapped[float] = mapped_column(Float)
+    ml_forward_bars: Mapped[int] = mapped_column(Integer, default=10, server_default="10")
+    ml_timeframe: Mapped[str] = mapped_column(String(8), default="M15", server_default="M15")
+
+    ml_status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    ml_last_trained_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+
 class AIUsageLog(Base):
     __tablename__ = "ai_usage_logs"
 

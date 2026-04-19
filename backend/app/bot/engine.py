@@ -109,8 +109,8 @@ class BotEngine:
         self.db = db_session
         self.redis = redis_client
 
-        # Symbol profile (per-symbol config)
         profile = symbol_profile or {}
+        self.symbol_profile = profile
         self.symbol = symbol or settings.symbol
         self.timeframe = profile.get("default_timeframe", settings.timeframe)
         self.contract_size = profile.get("contract_size", 100)
@@ -170,6 +170,18 @@ class BotEngine:
         self._position_breakeven: set[int] = set()  # tickets moved to breakeven
         self.started_at: datetime | None = None
         self.last_signal_time: datetime | None = None
+
+    def apply_profile(self, profile: dict) -> None:
+        """Update engine + risk manager params from a profile dict (hot-reload path)."""
+        self.symbol_profile = profile
+        self.timeframe = profile.get("default_timeframe", self.timeframe)
+        self.contract_size = profile.get("contract_size", self.contract_size)
+        rm = self.risk_manager
+        rm.pip_value = profile.get("pip_value", rm.pip_value)
+        rm.price_decimals = profile.get("price_decimals", rm.price_decimals)
+        rm.sl_atr_mult = profile.get("sl_atr_mult", rm.sl_atr_mult)
+        rm.tp_atr_mult = profile.get("tp_atr_mult", rm.tp_atr_mult)
+        rm.max_lot = profile.get("max_lot", rm.max_lot)
 
     def set_sentiment_analyzer(self, analyzer: NewsSentimentAnalyzer):
         self.sentiment_analyzer = analyzer

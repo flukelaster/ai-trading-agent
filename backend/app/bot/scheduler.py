@@ -679,6 +679,24 @@ class BotScheduler:
         except Exception as e:
             logger.warning(f"Vault health check failed: {e}")
 
+    async def _set_symbol_ml_status(self, symbol: str, status: str, mark_trained: bool = False) -> None:
+        """Write ml_status back to symbol_configs so the UI badge reflects reality."""
+        try:
+            from sqlalchemy import update
+            from app.db.models import SymbolConfig
+            from app.db.session import async_session
+
+            values = {"ml_status": status, "updated_at": datetime.utcnow()}
+            if mark_trained:
+                values["ml_last_trained_at"] = datetime.utcnow()
+            async with async_session() as session:
+                await session.execute(
+                    update(SymbolConfig).where(SymbolConfig.symbol == symbol).values(**values)
+                )
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"ml_status writeback [{symbol}] failed: {e}")
+
     async def _ml_retrain_symbol(self, symbol: str, engine):
         """Train ML model for a single symbol."""
         try:
@@ -715,6 +733,7 @@ class BotScheduler:
 
                 if df.empty or len(df) < 500:
                     logger.warning(f"ML retrain [{symbol}] skipped: insufficient data ({len(df)} bars)")
+                    await self._set_symbol_ml_status(symbol, "failed")
                     return
 
                 macro_df = None
@@ -738,6 +757,7 @@ class BotScheduler:
             X, y = trainer.prepare_dataset(df, macro_df=macro_df, sentiment_df=sentiment_df)
             if len(X) < 200:
                 logger.warning(f"ML retrain [{symbol}] skipped: insufficient labeled samples ({len(X)})")
+                await self._set_symbol_ml_status(symbol, "failed")
                 return
 
             split_idx = int(len(X) * 0.85)
@@ -808,5 +828,8 @@ class BotScheduler:
                 except Exception:
                     pass
 
+            await self._set_symbol_ml_status(symbol, "ready", mark_trained=True)
+
         except Exception as e:
             logger.error(f"ML retrain [{symbol}] error: {e}")
+            await self._set_symbol_ml_status(symbol, "failed")

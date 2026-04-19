@@ -243,6 +243,70 @@ export const archiveTrades = (before: string) => api.post("/api/admin/trades/arc
 export const unarchiveTrades = (before: string) => api.post("/api/admin/trades/unarchive", null, { params: { before } });
 export const getArchiveCount = () => api.get("/api/admin/trades/archive-count");
 
+// Symbol Config
+export interface SymbolConfig {
+  symbol: string;
+  display_name: string;
+  broker_alias: string | null;
+  is_enabled: boolean;
+  default_timeframe: string;
+  pip_value: number;
+  default_lot: number;
+  max_lot: number;
+  price_decimals: number;
+  sl_atr_mult: number;
+  tp_atr_mult: number;
+  contract_size: number;
+  ml_tp_pips: number;
+  ml_sl_pips: number;
+  ml_forward_bars: number;
+  ml_timeframe: string;
+  ml_status: string;
+  ml_last_trained_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export type SymbolConfigInput = Omit<
+  SymbolConfig,
+  "is_enabled" | "ml_status" | "ml_last_trained_at" | "created_at" | "updated_at"
+>;
+
+export interface SymbolSpec {
+  symbol: string;
+  digits: number;
+  point: number;
+  volume_min: number;
+  volume_max: number;
+  volume_step: number;
+  trade_contract_size: number;
+  trade_tick_size: number;
+  trade_tick_value: number;
+  visible: boolean;
+}
+
+export const listSymbolConfigs = () => api.get<SymbolConfig[]>("/api/symbols");
+export const getSymbolConfig = (symbol: string) =>
+  api.get<SymbolConfig>(`/api/symbols/${symbol}`);
+export const createSymbolConfig = (input: SymbolConfigInput) =>
+  api.post<SymbolConfig>("/api/symbols", input);
+export const updateSymbolConfig = (symbol: string, input: Omit<SymbolConfigInput, "symbol">) =>
+  api.put<SymbolConfig>(`/api/symbols/${symbol}`, input);
+export const deleteSymbolConfig = (symbol: string) =>
+  api.delete<{ status: string; symbol: string }>(`/api/symbols/${symbol}`);
+export const toggleSymbolConfig = (symbol: string) =>
+  api.post<SymbolConfig>(`/api/symbols/${symbol}/toggle`);
+export const validateSymbolConfig = (symbol: string) =>
+  api.post<{ ok: boolean; message: string; spec: SymbolSpec | null }>(
+    `/api/symbols/${symbol}/validate`,
+  );
+export const retrainSymbolConfig = (symbol: string) =>
+  api.post<{ status: string; symbol: string }>(`/api/symbols/${symbol}/retrain`);
+export const getSymbolMlStatus = (symbol: string) =>
+  api.get<{ symbol: string; status: string; last_trained_at: string | null }>(
+    `/api/symbols/${symbol}/ml-status`,
+  );
+
 // AI usage monitoring
 export const getAIUsageSummary = (days: number) =>
   api.get("/api/ai-usage/summary", { params: { days } });

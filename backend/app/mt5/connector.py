@@ -89,6 +89,10 @@ class MT5BridgeConnector:
     async def get_ohlcv(self, symbol: str, timeframe: str = "M15", count: int = 100) -> dict:
         return await self._request("get", f"/ohlcv/{symbol}", params={"timeframe": timeframe, "count": count})
 
+    async def get_symbol_spec(self, symbol: str) -> dict:
+        """Fetch broker-side symbol spec (digits, volume limits, contract size)."""
+        return await self._request("get", f"/symbol-spec/{symbol}")
+
     async def get_account(self) -> dict:
         return await self._request("get", "/account")
 
