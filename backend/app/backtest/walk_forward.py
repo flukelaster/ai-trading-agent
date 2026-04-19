@@ -74,7 +74,7 @@ def compute_param_stability(params_list: list[dict]) -> tuple[float, dict[str, f
 
     cvs = {}
     for key in all_keys:
-        values = [p[key] for p in params_list if key in p and isinstance(p[key], (int, float))]
+        values = [p[key] for p in params_list if key in p and isinstance(p[key], int | float)]
         if len(values) < 2:
             continue
         arr = np.array(values, dtype=float)

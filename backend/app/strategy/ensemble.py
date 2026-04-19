@@ -25,7 +25,7 @@ class EnsembleStrategy(BaseStrategy):
         self._strategy_performance: dict[str, float] = {}  # name -> recent win_rate
 
         # Normalize if static weights
-        if all(isinstance(w, (int, float)) for _, w in strategies):
+        if all(isinstance(w, int | float) for _, w in strategies):
             total_weight = sum(w for _, w in strategies)
             if abs(total_weight - 1.0) > 0.01:
                 logger.warning(f"Ensemble weights sum to {total_weight:.2f}, normalizing to 1.0")

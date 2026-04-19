@@ -49,7 +49,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(Non
                     if isinstance(message["channel"], bytes)
                     else message["channel"],
                     "data": json.loads(message["data"])
-                    if isinstance(message["data"], (str, bytes))
+                    if isinstance(message["data"], str | bytes)
                     else message["data"],
                 }
                 await websocket.send_json(data)

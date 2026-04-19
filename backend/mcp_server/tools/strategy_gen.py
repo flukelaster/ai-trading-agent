@@ -140,7 +140,7 @@ def generate_strategy_config(
                 continue
             if key in ranges:
                 min_val, max_val = ranges[key]
-                if isinstance(value, (int, float)) and not (min_val <= value <= max_val):
+                if isinstance(value, int | float) and not (min_val <= value <= max_val):
                     validation_errors.append(f"'{key}' = {value} out of range [{min_val}, {max_val}]")
                     continue
             params[key] = value

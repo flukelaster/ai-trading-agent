@@ -52,7 +52,6 @@ async def get_performance_analytics(
 
 
 async def _compute_performance(symbol, days, db, _manager, SimpleNamespace):
-
     cutoff = datetime.utcnow() - timedelta(days=days)
     query = select(Trade).where(
         Trade.open_time >= cutoff,

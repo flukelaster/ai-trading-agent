@@ -117,7 +117,7 @@ Profit factor: {pf:.2f}"""
         for key, (low, high) in PARAM_RANGES.items():
             if key in suggested:
                 val = suggested[key]
-                if isinstance(val, (int, float)):
+                if isinstance(val, int | float):
                     suggested[key] = max(low, min(high, val))
 
         # Backtest validation if collector is available
