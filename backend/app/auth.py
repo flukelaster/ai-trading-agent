@@ -51,6 +51,28 @@ def _auth_enabled() -> bool:
     return bool(settings.auth_password_hash)
 
 
+def _assert_auth_consistent() -> None:
+    """Fail fast on startup if auth config could produce forgeable tokens."""
+    if settings.auth_password_hash and not settings.auth_username:
+        raise RuntimeError(
+            "AUTH_PASSWORD_HASH is set but AUTH_USERNAME is empty — refusing to start. "
+            "Either set both, or clear AUTH_PASSWORD_HASH to disable auth."
+        )
+    # Empty SECRET_KEY produces trivially-forgeable JWTs: python-jose accepts
+    # an empty HMAC key. Refuse to start when any JWT-issuing path is live.
+    if _auth_enabled() and not settings.secret_key:
+        raise RuntimeError(
+            "SECRET_KEY is empty while auth is enabled — refusing to start. "
+            "Set SECRET_KEY to a long random value."
+        )
+    _PLACEHOLDERS = {"change-me-in-production", "changeme", "secret", "please-change"}
+    if settings.secret_key.strip().lower() in _PLACEHOLDERS:
+        raise RuntimeError(
+            "SECRET_KEY is set to a placeholder value — refusing to start. "
+            "Generate a real secret."
+        )
+
+
 # ─── Models ───────────────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
@@ -115,7 +137,7 @@ async def require_auth(credentials: HTTPAuthorizationCredentials | None = Depend
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     if not _auth_enabled():
         raise HTTPException(status_code=400, detail="Authentication is not configured")
 
@@ -123,15 +145,20 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=500, detail="SECRET_KEY not configured — cannot sign tokens")
 
     pwd_context = _get_pwd_context()
+    # Strip newlines to blunt log injection via username field.
+    safe_user = req.username.replace("\n", " ").replace("\r", " ")[:64]
+    ip = request.client.host if request.client else "unknown"
 
     if req.username != settings.auth_username:
+        logger.warning(f"login_failed user={safe_user!r} reason=unknown_user ip={ip}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not pwd_context.verify(req.password, settings.auth_password_hash):
+        logger.warning(f"login_failed user={safe_user!r} reason=bad_password ip={ip}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token(req.username)
-    logger.info(f"User '{req.username}' logged in")
+    logger.info(f"login_ok user={safe_user!r} ip={ip}")
     return TokenResponse(access_token=token)
 
 

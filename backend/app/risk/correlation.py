@@ -125,16 +125,22 @@ def check_correlation_conflict(
     symbol: str,
     signal: int,
     active_positions: dict[str, list[dict]],
+    correlations: dict[tuple[str, str], float] | None = None,
 ) -> tuple[bool, str]:
     """
     Check if a new trade would conflict with existing positions on correlated symbols.
+
+    `correlations` overrides the module-level lookup with rolling values passed
+    in by the caller — avoids mutating CORRELATIONS from concurrent coroutines.
     Returns (has_conflict, reason).
     """
     # Resolve aliases (e.g., GOLDmicro → GOLD) for correlation lookup
     from app.config import get_canonical_symbol
     canonical = get_canonical_symbol(symbol)
 
-    for (sym_a, sym_b), corr in CORRELATIONS.items():
+    corr_map = correlations if correlations is not None else CORRELATIONS
+
+    for (sym_a, sym_b), corr in corr_map.items():
         other = None
         if canonical == sym_a:
             other = sym_b

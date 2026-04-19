@@ -8,10 +8,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import require_auth
 from app.db.models import AIUsageLog
 from app.db.session import get_db
 
-router = APIRouter(prefix="/api/ai-usage", tags=["ai-usage"])
+router = APIRouter(
+    prefix="/api/ai-usage",
+    tags=["ai-usage"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 def _effective_cost(sdk: float | None, calc: float | None) -> float:

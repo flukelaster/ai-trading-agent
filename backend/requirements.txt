@@ -8,7 +8,7 @@ alembic==1.14.1
 redis==5.2.1
 python-dotenv==1.0.1
 websockets==14.1
-claude-agent-sdk>=0.1.50
+claude-agent-sdk==0.1.50
 httpx==0.28.1
 feedparser==6.0.11
 apscheduler==3.10.4

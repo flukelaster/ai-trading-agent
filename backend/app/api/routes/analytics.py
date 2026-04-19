@@ -9,11 +9,16 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import require_auth
 from app.cache import cached
 from app.db.models import Trade
 from app.db.session import get_db
 
-router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+router = APIRouter(
+    prefix="/api/analytics",
+    tags=["analytics"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 @router.get("/performance")

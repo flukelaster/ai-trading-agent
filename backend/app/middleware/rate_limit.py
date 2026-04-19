@@ -102,10 +102,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.auth_capacity = self.AUTH_BURST
 
     def _client_ip(self, request: Request) -> str:
-        # Railway/Vercel put real IP in X-Forwarded-For
+        # Use the rightmost X-Forwarded-For entry — added by the trusted Railway
+        # proxy. The leftmost value is client-supplied and spoofable.
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
-            return fwd.split(",")[0].strip()
+            parts = [p.strip() for p in fwd.split(",") if p.strip()]
+            if parts:
+                return parts[-1]
         return request.client.host if request.client else "unknown"
 
     async def dispatch(self, request: Request, call_next) -> Response:

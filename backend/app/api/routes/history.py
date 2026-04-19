@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
 
+from app.auth import require_auth
 from app.cache import cached
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Trade
 from app.db.session import get_db
 
-router = APIRouter(prefix="/api/history", tags=["history"])
+router = APIRouter(
+    prefix="/api/history",
+    tags=["history"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 @router.get("/trades")

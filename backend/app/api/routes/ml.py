@@ -17,7 +17,11 @@ from sqlalchemy import desc, select
 
 from app.config import resolve_broker_symbol, settings
 
-router = APIRouter(prefix="/api/ml", tags=["ml"])
+router = APIRouter(
+    prefix="/api/ml",
+    tags=["ml"],
+    dependencies=[Depends(require_auth)],
+)
 
 _collector = None
 _db_session = None
@@ -90,11 +94,10 @@ async def train_model(req: TrainRequest):
             return {"error": f"Insufficient labeled samples for {symbol}: {len(X)} (need 200+)"}
 
         # Train in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
         if req.use_walk_forward:
-            result = await loop.run_in_executor(None, trainer.train_walk_forward, X, y)
+            result = await asyncio.to_thread(trainer.train_walk_forward, X, y)
         else:
-            result = await loop.run_in_executor(None, trainer.train, X, y, req.test_size)
+            result = await asyncio.to_thread(trainer.train, X, y, req.test_size)
 
         # Save model to file (local) and serialize to bytes (for DB)
         trainer.save_model(model_path)

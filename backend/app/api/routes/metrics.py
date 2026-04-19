@@ -2,11 +2,16 @@
 Metrics API — exposes timing and counter data for observability.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.auth import require_auth
 from app.metrics import get_metrics
 
-router = APIRouter(prefix="/api/metrics", tags=["metrics"])
+router = APIRouter(
+    prefix="/api/metrics",
+    tags=["metrics"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 @router.get("")

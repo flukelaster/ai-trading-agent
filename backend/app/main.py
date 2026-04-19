@@ -2,6 +2,7 @@
 AI Trading Agent — FastAPI Main Application (multi-symbol)
 """
 
+import os
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis_lib
@@ -72,6 +73,9 @@ async def lifespan(app: FastAPI):
     configure_logging()
 
     logger.info("Starting Trading Bot (multi-symbol)...")
+
+    from app.auth import _assert_auth_consistent
+    _assert_auth_consistent()
 
     # Phase 1 observability: slow query logger — attach once, survives entire app lifetime
     install_slow_query_logger(db_engine, threshold_ms=settings.db_slow_query_threshold_ms)
@@ -315,10 +319,16 @@ async def lifespan(app: FastAPI):
     await redis_client.close()
 
 
+# Gate Swagger / ReDoc / OpenAPI behind ENABLE_API_DOCS — default off so prod
+# doesn't expose the full route catalog to unauthenticated scanners.
+_docs_enabled = os.getenv("ENABLE_API_DOCS", "0") == "1"
 app = FastAPI(
     title="Trading Bot",
     version="2.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 # Security headers middleware
