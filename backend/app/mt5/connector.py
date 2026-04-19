@@ -99,6 +99,10 @@ class MT5BridgeConnector:
         """Fetch broker-side symbol spec (digits, volume limits, contract size)."""
         return await self._request("get", f"/symbol-spec/{_enc(symbol)}")
 
+    async def list_symbols(self) -> dict:
+        """Fetch all broker-visible symbols with specs (used by catalog dropdown)."""
+        return await self._request("get", "/symbols")
+
     async def get_account(self) -> dict:
         return await self._request("get", "/account")
 

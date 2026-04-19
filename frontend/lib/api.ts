@@ -303,6 +303,28 @@ export interface SymbolSpec {
   visible: boolean;
 }
 
+export interface BrokerCatalogItem {
+  symbol: string;
+  path: string;
+  description: string;
+  asset_class: AssetClass;
+  price_decimals: number;
+  pip_value: number;
+  contract_size: number;
+  volume_min: number;
+  volume_max: number;
+  volume_step: number;
+  currency_base: string;
+  currency_profit: string;
+}
+export interface BrokerCatalog {
+  refreshed_at: string;
+  count: number;
+  items: BrokerCatalogItem[];
+}
+export const getBrokerCatalog = () =>
+  api.get<BrokerCatalog>("/api/symbols/broker-catalog");
+
 export const listSymbolConfigs = () => api.get<SymbolConfig[]>("/api/symbols");
 export const getSymbolConfig = (symbol: string) =>
   api.get<SymbolConfig>(`/api/symbols/${symbol}`);

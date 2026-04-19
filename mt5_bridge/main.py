@@ -163,6 +163,35 @@ async def get_symbol_spec(symbol: str):
     })
 
 
+@app.get("/symbols", dependencies=[Depends(verify_api_key)])
+async def list_symbols():
+    """Return all broker-visible symbols with specs (used by Add Symbol UI catalog)."""
+    if not ensure_connected():
+        return mt5_response(False, error="MT5 not connected")
+    symbols = mt5.symbols_get()
+    if symbols is None:
+        return mt5_response(False, error="symbols_get returned None")
+    items = [
+        {
+            "symbol": s.name,
+            "path": s.path,
+            "description": s.description,
+            "digits": int(s.digits),
+            "point": float(s.point),
+            "volume_min": float(s.volume_min),
+            "volume_max": float(s.volume_max),
+            "volume_step": float(s.volume_step),
+            "trade_contract_size": float(s.trade_contract_size),
+            "trade_tick_size": float(s.trade_tick_size),
+            "trade_tick_value": float(s.trade_tick_value),
+            "currency_base": s.currency_base,
+            "currency_profit": s.currency_profit,
+        }
+        for s in symbols
+    ]
+    return mt5_response(True, data={"count": len(items), "items": items})
+
+
 @app.get("/ohlcv/{symbol}", dependencies=[Depends(verify_api_key)])
 async def get_ohlcv(symbol: str, timeframe: str = "M15", count: int = 100):
     if not ensure_connected():
