@@ -19,11 +19,13 @@ import {
 import {
   createSymbolConfig,
   deleteSymbolConfig,
+  getBrokerCatalog,
   listSymbolConfigs,
   retrainSymbolConfig,
   toggleSymbolConfig,
   updateSymbolConfig,
   validateSymbolConfig,
+  type BrokerCatalogItem,
   type SymbolConfig,
   type SymbolConfigInput,
 } from "@/lib/api";
@@ -54,6 +56,9 @@ export default function SymbolsPage() {
   const [editing, setEditing] = useState<SymbolConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  const [catalog, setCatalog] = useState<BrokerCatalogItem[] | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -84,9 +89,24 @@ export default function SymbolsPage() {
   const removeLocal = (symbol: string) =>
     setConfigs((prev) => prev.filter((c) => c.symbol !== symbol));
 
+  const ensureCatalogLoaded = async () => {
+    if (catalog || catalogLoading) return;
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const resp = await getBrokerCatalog();
+      setCatalog(resp.data.items);
+    } catch (err) {
+      setCatalogError(errorMessage(err));
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
   const openCreate = () => {
     setEditing(null);
     setDialogOpen(true);
+    void ensureCatalogLoaded();
   };
 
   const openEdit = (cfg: SymbolConfig) => {
@@ -312,6 +332,9 @@ export default function SymbolsPage() {
             onSubmit={handleSubmit}
             onCancel={() => setDialogOpen(false)}
             submitting={submitting}
+            brokerCatalog={catalog ?? undefined}
+            catalogLoading={catalogLoading}
+            catalogError={catalogError}
           />
         </DialogContent>
       </Dialog>

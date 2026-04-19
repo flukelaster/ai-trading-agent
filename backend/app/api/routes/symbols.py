@@ -145,6 +145,35 @@ async def _publish(request: Request, symbol: str, action: str) -> None:
         await svc.publish_reload(redis_client, symbol, action)
 
 
+_PATH_TO_CLASS: tuple[tuple[str, str], ...] = (
+    ("cryptocurrenc", "crypto"),
+    ("crypto", "crypto"),
+    ("metal", "metal"),
+    ("energ", "energy"),
+    ("ind", "index"),
+    ("share", "stock"),
+    ("stock", "stock"),
+    ("equit", "stock"),
+    ("forex", "forex"),
+)
+
+
+def _infer_asset_class(path: str) -> str:
+    """Map MT5 symbol path (e.g. "Forex\\Majors\\EURUSD") to supported asset class."""
+    if not path:
+        return "forex"
+    first = path.split("\\")[0].lower()
+    for needle, cls in _PATH_TO_CLASS:
+        if needle in first:
+            return cls
+    return "forex"
+
+
+def _pip_value_from_spec(digits: int, point: float) -> float:
+    """Forex 3/5-digit quotes: 1 pip = 10 × point. Else: 1 pip = point."""
+    return point * 10 if digits in (3, 5) else point
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -152,6 +181,55 @@ async def _publish(request: Request, symbol: str, action: str) -> None:
 async def list_symbols(db: AsyncSession = Depends(get_db)) -> list[SymbolResponse]:
     configs = await svc.list_configs(db)
     return [SymbolResponse.model_validate(c) for c in configs]
+
+
+@router.get("/broker-catalog", dependencies=[Depends(require_auth)])
+async def broker_catalog(request: Request) -> dict:
+    """Live XM broker catalog — used by Add Symbol dialog for searchable dropdown + autofill.
+
+    Cached 1h in Redis. Bypasses cache when Redis unavailable.
+    """
+    connector = getattr(request.app.state, "connector", None)
+    if connector is None:
+        raise HTTPException(status_code=503, detail="MT5 connector unavailable")
+
+    async def _fetch() -> dict:
+        result = await connector.list_symbols()
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=502,
+                detail=result.get("error") or "bridge error",
+            )
+        raw_items = (result.get("data") or {}).get("items", [])
+        return {
+            "refreshed_at": datetime.utcnow().isoformat(),
+            "count": len(raw_items),
+            "items": [
+                {
+                    "symbol": it["symbol"],
+                    "path": it.get("path") or "",
+                    "description": it.get("description") or "",
+                    "asset_class": _infer_asset_class(it.get("path") or ""),
+                    "price_decimals": int(it["digits"]),
+                    "pip_value": _pip_value_from_spec(
+                        int(it["digits"]), float(it["point"])
+                    ),
+                    "contract_size": float(it["trade_contract_size"]),
+                    "volume_min": float(it["volume_min"]),
+                    "volume_max": float(it["volume_max"]),
+                    "volume_step": float(it.get("volume_step") or 0.01),
+                    "currency_base": it.get("currency_base") or "",
+                    "currency_profit": it.get("currency_profit") or "",
+                }
+                for it in raw_items
+            ],
+        }
+
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client is not None:
+        from app.cache import cached
+        return await cached(redis_client, "xm:catalog:v1", 3600, _fetch)
+    return await _fetch()
 
 
 @router.get("/{symbol}", dependencies=[Depends(require_auth)])

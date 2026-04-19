@@ -291,3 +291,146 @@ class TestProfileMerge:
 
         # Restore static profiles so later tests are not polluted
         apply_db_symbol_profiles({})
+
+
+def _bridge_symbols_payload() -> dict:
+    return {
+        "success": True,
+        "data": {
+            "count": 4,
+            "items": [
+                {
+                    "symbol": "EURUSD#",
+                    "path": "Forex\\Majors\\EURUSD",
+                    "description": "Euro vs US Dollar",
+                    "digits": 5,
+                    "point": 0.00001,
+                    "volume_min": 0.01,
+                    "volume_max": 100.0,
+                    "volume_step": 0.01,
+                    "trade_contract_size": 100000.0,
+                    "trade_tick_size": 0.00001,
+                    "trade_tick_value": 1.0,
+                    "currency_base": "EUR",
+                    "currency_profit": "USD",
+                },
+                {
+                    "symbol": "USDJPY#",
+                    "path": "Forex\\Majors\\USDJPY",
+                    "description": "US Dollar vs Japanese Yen",
+                    "digits": 3,
+                    "point": 0.001,
+                    "volume_min": 0.01,
+                    "volume_max": 100.0,
+                    "volume_step": 0.01,
+                    "trade_contract_size": 100000.0,
+                    "trade_tick_size": 0.001,
+                    "trade_tick_value": 0.67,
+                    "currency_base": "USD",
+                    "currency_profit": "JPY",
+                },
+                {
+                    "symbol": "ENJUSD#",
+                    "path": "Crypto\\ENJUSD",
+                    "description": "Enjin Coin",
+                    "digits": 5,
+                    "point": 0.00001,
+                    "volume_min": 1.0,
+                    "volume_max": 1000.0,
+                    "volume_step": 0.1,
+                    "trade_contract_size": 1.0,
+                    "trade_tick_size": 0.00001,
+                    "trade_tick_value": 0.00001,
+                    "currency_base": "ENJ",
+                    "currency_profit": "USD",
+                },
+                {
+                    "symbol": "XAUUSD",
+                    "path": "CFD Metals\\XAUUSD",
+                    "description": "Gold vs US Dollar",
+                    "digits": 2,
+                    "point": 0.01,
+                    "volume_min": 0.01,
+                    "volume_max": 50.0,
+                    "volume_step": 0.01,
+                    "trade_contract_size": 100.0,
+                    "trade_tick_size": 0.01,
+                    "trade_tick_value": 1.0,
+                    "currency_base": "XAU",
+                    "currency_profit": "USD",
+                },
+            ],
+        },
+    }
+
+
+class TestBrokerCatalog:
+    @pytest_asyncio.fixture
+    async def catalog_client(self, db_session, redis_client):
+        connector = AsyncMock()
+        connector.list_symbols.return_value = _bridge_symbols_payload()
+        app = _build_app(db_session, connector=connector, redis_client=redis_client)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c, connector
+
+    @pytest.mark.asyncio
+    async def test_returns_mapped_catalog(self, catalog_client):
+        client, _ = catalog_client
+        resp = await client.get("/api/symbols/broker-catalog")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == 4
+        items = {it["symbol"]: it for it in body["items"]}
+
+        eur = items["EURUSD#"]
+        assert eur["asset_class"] == "forex"
+        assert eur["price_decimals"] == 5
+        assert eur["pip_value"] == pytest.approx(0.0001)  # 5-digit: point*10
+        assert eur["contract_size"] == 100000.0
+        assert eur["volume_min"] == 0.01
+
+        jpy = items["USDJPY#"]
+        assert jpy["pip_value"] == pytest.approx(0.01)  # 3-digit: point*10
+
+        enj = items["ENJUSD#"]
+        assert enj["asset_class"] == "crypto"
+        assert enj["pip_value"] == pytest.approx(0.0001)
+
+        gold = items["XAUUSD"]
+        assert gold["asset_class"] == "metal"
+        assert gold["price_decimals"] == 2
+        assert gold["pip_value"] == pytest.approx(0.01)  # 2-digit: pip = point
+
+    @pytest.mark.asyncio
+    async def test_second_call_hits_redis_cache(self, catalog_client):
+        client, connector = catalog_client
+        r1 = await client.get("/api/symbols/broker-catalog")
+        r2 = await client.get("/api/symbols/broker-catalog")
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert r1.json()["items"] == r2.json()["items"]
+        # Bridge called only once — second response served from Redis cache
+        assert connector.list_symbols.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_bridge_failure_returns_502(self, db_session, redis_client):
+        connector = AsyncMock()
+        connector.list_symbols.return_value = {
+            "success": False,
+            "data": None,
+            "error": "MT5 not connected",
+        }
+        app = _build_app(db_session, connector=connector, redis_client=redis_client)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            resp = await c.get("/api/symbols/broker-catalog")
+            assert resp.status_code == 502
+
+    @pytest.mark.asyncio
+    async def test_connector_missing_returns_503(self, db_session, redis_client):
+        app = _build_app(db_session, connector=None, redis_client=redis_client)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            resp = await c.get("/api/symbols/broker-catalog")
+            assert resp.status_code == 503

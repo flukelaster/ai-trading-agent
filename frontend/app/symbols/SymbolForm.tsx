@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,7 +10,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ASSET_CLASSES, type AssetClass, type SymbolConfig, type SymbolConfigInput } from "@/lib/api";
+import {
+  ASSET_CLASSES,
+  type AssetClass,
+  type BrokerCatalogItem,
+  type SymbolConfig,
+  type SymbolConfigInput,
+} from "@/lib/api";
 
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"] as const;
 
@@ -20,6 +26,9 @@ interface SymbolFormProps {
   onCancel: () => void;
   onValidateAlias?: (alias: string) => Promise<void>;
   submitting?: boolean;
+  brokerCatalog?: BrokerCatalogItem[];
+  catalogError?: string | null;
+  catalogLoading?: boolean;
 }
 
 type FormState = {
@@ -110,6 +119,9 @@ export function SymbolForm({
   onCancel,
   onValidateAlias,
   submitting,
+  brokerCatalog,
+  catalogError,
+  catalogLoading,
 }: SymbolFormProps) {
   const [state, setState] = useState<FormState>(toFormState(initial));
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +130,22 @@ export function SymbolForm({
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setState((prev) => ({ ...prev, [key]: value }));
+
+  const applyCatalogItem = (item: BrokerCatalogItem) => {
+    setState((prev) => ({
+      ...prev,
+      symbol: prev.symbol || item.symbol.replace(/[#.]/g, ""),
+      display_name: prev.display_name || item.description || item.symbol,
+      broker_alias: item.symbol,
+      asset_class: item.asset_class,
+      price_decimals: String(item.price_decimals),
+      pip_value: String(item.pip_value),
+      contract_size: String(item.contract_size),
+      default_lot: String(item.volume_min),
+      max_lot: String(Math.min(item.volume_max, 100)),
+    }));
+    setError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,6 +170,14 @@ export function SymbolForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {!isEdit && (
+        <BrokerCatalogPicker
+          items={brokerCatalog}
+          loading={catalogLoading}
+          error={catalogError}
+          onSelect={applyCatalogItem}
+        />
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Symbol (canonical)" required>
           <Input
@@ -334,5 +370,86 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function BrokerCatalogPicker({
+  items,
+  loading,
+  error,
+  onSelect,
+}: {
+  items?: BrokerCatalogItem[];
+  loading?: boolean;
+  error?: string | null;
+  onSelect: (item: BrokerCatalogItem) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    if (!items || items.length === 0) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return items.slice(0, 50);
+    return items
+      .filter(
+        (it) =>
+          it.symbol.toLowerCase().includes(q) ||
+          it.description.toLowerCase().includes(q),
+      )
+      .slice(0, 50);
+  }, [items, query]);
+
+  if (error || (!loading && (!items || items.length === 0))) {
+    return (
+      <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+        Broker catalog unavailable{error ? `: ${error}` : ""}. Fill fields manually below.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1 text-sm" ref={containerRef}>
+      <span className="text-xs font-medium text-muted-foreground">
+        Pick from XM broker (auto-fills fields)
+      </span>
+      <div className="relative">
+        <Input
+          placeholder={loading ? "Loading broker catalog..." : "Search symbol or description (e.g. ENJ, gold, Apple)"}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          disabled={loading}
+        />
+        {open && filtered.length > 0 && (
+          <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover shadow-md">
+            {filtered.map((it) => (
+              <li key={it.symbol}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onSelect(it);
+                    setQuery(it.symbol);
+                    setOpen(false);
+                  }}
+                  className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs hover:bg-accent"
+                >
+                  <span className="font-mono font-semibold">{it.symbol}</span>
+                  <span className="text-muted-foreground">
+                    {it.description || it.path} · {it.asset_class} · min {it.volume_min} / max {it.volume_max}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
