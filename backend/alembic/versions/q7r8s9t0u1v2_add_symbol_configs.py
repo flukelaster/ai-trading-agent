@@ -94,6 +94,11 @@ _SEED_ROWS = [
 
 def upgrade() -> None:
     op.execute("SET lock_timeout = '30s'")
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if "symbol_configs" in inspector.get_table_names():
+        # Already created out-of-band (e.g. manual SQL during incident recovery).
+        return
     op.create_table(
         "symbol_configs",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),

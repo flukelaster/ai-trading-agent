@@ -16,13 +16,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Raise lock_timeout for this statement to survive zero-downtime deploy
+    # Idempotent: the column + index may already exist when lifespan schema
+    # bootstrap added them on older deploys before this migration ran.
     op.execute("SET lock_timeout = '30s'")
-    op.add_column(
-        "trades",
-        sa.Column("is_archived", sa.Boolean(), nullable=False, server_default="false"),
-    )
-    op.create_index("ix_trades_is_archived", "trades", ["is_archived"])
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+
+    columns = {c["name"] for c in inspector.get_columns("trades")}
+    if "is_archived" not in columns:
+        op.add_column(
+            "trades",
+            sa.Column("is_archived", sa.Boolean(), nullable=False, server_default="false"),
+        )
+
+    indexes = {i["name"] for i in inspector.get_indexes("trades")}
+    if "ix_trades_is_archived" not in indexes:
+        op.create_index("ix_trades_is_archived", "trades", ["is_archived"])
 
 
 def downgrade() -> None:
