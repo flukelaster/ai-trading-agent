@@ -5,7 +5,7 @@ import redis.asyncio as redis_lib
 from loguru import logger
 
 from mcp_server.strategy_switch_guard import StrategySwitchGuard
-from mcp_server.tools import backend_url as _backend_url
+from mcp_server.tools import auth_headers, backend_url as _backend_url
 
 _guard: StrategySwitchGuard | None = None
 
@@ -92,6 +92,7 @@ async def apply_strategy(
                     "symbol": symbol,
                     "reasoning": reasoning[:500],
                 },
+                headers=auth_headers(),
             )
             if resp.status_code != 200:
                 return {

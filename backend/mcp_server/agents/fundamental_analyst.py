@@ -7,7 +7,7 @@ Model: Haiku (fast, cost-efficient for analysis tasks).
 
 from mcp_server.agents.base import run_agent_loop, MODEL_SPECIALIST
 
-SYSTEM_PROMPT = """You are a Fundamental Analyst for a multi-symbol trading system covering GOLD, OILCash, BTCUSD, and USDJPY.
+SYSTEM_PROMPT = """You are a Fundamental Analyst for a multi-symbol trading system covering {TRADABLE_SYMBOLS}.
 
 ## Your Role
 Analyze market sentiment, recent trading performance, and fundamental factors to provide a directional bias. You DO NOT make trading decisions — you provide analysis that the Orchestrator will use alongside technical and risk assessments.

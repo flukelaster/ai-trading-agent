@@ -7,7 +7,7 @@ Backed by PostgreSQL via the backend API.
 
 import httpx
 
-from mcp_server.tools import backend_url as _backend_url
+from mcp_server.tools import auth_headers, backend_url as _backend_url
 
 
 async def save_memory(
@@ -45,6 +45,7 @@ async def save_memory(
                     "evidence": evidence,
                     "source": "reflector",
                 },
+                headers=auth_headers(),
             )
             if resp.status_code in (200, 201):
                 return resp.json()
@@ -86,6 +87,7 @@ async def get_memories(
             resp = await client.get(
                 f"{_backend_url()}/api/memory",
                 params=params,
+                headers=auth_headers(),
             )
             if resp.status_code == 200:
                 return resp.json()
@@ -116,6 +118,7 @@ async def validate_memory(
             resp = await client.patch(
                 f"{_backend_url()}/api/memory/{memory_id}/validate",
                 json={"hit": hit},
+                headers=auth_headers(),
             )
             if resp.status_code == 200:
                 return resp.json()

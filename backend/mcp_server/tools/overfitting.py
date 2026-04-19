@@ -2,7 +2,7 @@
 
 import httpx
 
-from mcp_server.tools import backend_url as _backend_url
+from mcp_server.tools import auth_headers, backend_url as _backend_url
 
 
 async def compute_overfitting_score(
@@ -39,6 +39,7 @@ async def compute_overfitting_score(
                     "source": source,
                     "count": count,
                 },
+                headers=auth_headers(),
             )
             if resp.status_code == 200:
                 return resp.json()

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from mcp_server.tools import backend_url as _backend_url
+from mcp_server.tools import auth_headers, backend_url as _backend_url
 
 
 async def log_decision(
@@ -53,6 +53,7 @@ async def log_decision(
                     "symbol": symbol,
                     "detail": entry["detail"],
                 },
+                headers=auth_headers(),
             )
             # If the events endpoint doesn't accept POSTs, log locally
             if resp.status_code not in (200, 201):

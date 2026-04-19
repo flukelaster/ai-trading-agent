@@ -118,22 +118,45 @@ def get_default_prompt(agent_id: str) -> str:
     return _DEFAULTS.get(agent_id, "")
 
 
+def _tradable_symbols_str() -> str:
+    """Return comma-separated canonical symbols from current SYMBOL_PROFILES.
+
+    Excludes broker-alias entries (those carry a 'canonical' key). Falls back
+    to env-configured symbol_list if profiles not yet populated.
+    """
+    try:
+        from app.config import SYMBOL_PROFILES, settings
+        names = [s for s, p in SYMBOL_PROFILES.items() if "canonical" not in p]
+        if not names:
+            names = list(settings.symbol_list)
+        return ", ".join(sorted(names))
+    except Exception:
+        return "the configured instruments"
+
+
+def _inject_symbols(prompt: str) -> str:
+    return prompt.replace("{TRADABLE_SYMBOLS}", _tradable_symbols_str())
+
+
 async def get_active_prompt(agent_id: str) -> str:
-    """Get custom prompt from Redis, fallback to hardcoded default."""
+    """Get custom prompt from Redis, fallback to hardcoded default.
+
+    Substitutes {TRADABLE_SYMBOLS} with the current symbol list at call time,
+    so agents always see the live instrument set.
+    """
     _load_defaults()
     default = _DEFAULTS.get(agent_id, "")
 
-    if _redis is None:
-        return default
+    resolved = default
+    if _redis is not None:
+        try:
+            custom = await _redis.get(f"{REDIS_PREFIX}{agent_id}")
+            if custom:
+                resolved = custom if isinstance(custom, str) else custom.decode("utf-8")
+        except Exception as e:
+            logger.warning(f"Prompt registry Redis read failed for {agent_id}: {e}")
 
-    try:
-        custom = await _redis.get(f"{REDIS_PREFIX}{agent_id}")
-        if custom:
-            return custom if isinstance(custom, str) else custom.decode("utf-8")
-    except Exception as e:
-        logger.warning(f"Prompt registry Redis read failed for {agent_id}: {e}")
-
-    return default
+    return _inject_symbols(resolved)
 
 
 async def set_custom_prompt(agent_id: str, prompt: str) -> None:

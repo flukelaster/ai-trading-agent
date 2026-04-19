@@ -2,7 +2,7 @@
 
 import httpx
 
-from mcp_server.tools import backend_url as _backend_url
+from mcp_server.tools import auth_headers, backend_url as _backend_url
 
 
 async def get_trade_history(days: int = 7, symbol: str | None = None, limit: int = 50) -> dict:
@@ -21,7 +21,7 @@ async def get_trade_history(days: int = 7, symbol: str | None = None, limit: int
         if symbol:
             params["symbol"] = symbol
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{_backend_url()}/api/history/trades", params=params)
+            resp = await client.get(f"{_backend_url()}/api/history/trades", params=params, headers=auth_headers())
             if resp.status_code == 200:
                 return {"trades": resp.json()}
             return {"error": f"Backend returned {resp.status_code}"}
@@ -43,7 +43,7 @@ async def get_daily_pnl(symbol: str | None = None) -> dict:
         if symbol:
             params["symbol"] = symbol
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{_backend_url()}/api/history/daily-pnl", params=params)
+            resp = await client.get(f"{_backend_url()}/api/history/daily-pnl", params=params, headers=auth_headers())
             if resp.status_code == 200:
                 return {"daily_pnl": resp.json()}
             return {"error": f"Backend returned {resp.status_code}"}
@@ -66,7 +66,7 @@ async def get_performance(days: int = 30, symbol: str | None = None) -> dict:
         if symbol:
             params["symbol"] = symbol
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{_backend_url()}/api/history/performance", params=params)
+            resp = await client.get(f"{_backend_url()}/api/history/performance", params=params, headers=auth_headers())
             if resp.status_code == 200:
                 return resp.json()
             return {"error": f"Backend returned {resp.status_code}"}

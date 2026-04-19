@@ -119,6 +119,14 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Schema stmt skipped: {str(e)[:120]}")
     logger.info("DB schema check complete")
 
+    # Mint long-lived JWT so MCP tools can call the backend API (localhost) with auth.
+    import os as _os
+    from app.auth import mint_internal_token
+    _internal_token = mint_internal_token()
+    if _internal_token:
+        _os.environ["INTERNAL_API_TOKEN"] = _internal_token
+        logger.info("Minted INTERNAL_API_TOKEN for MCP tool → backend calls")
+
     # Initialize shared components
     connector = MT5BridgeConnector()
     redis_client = redis_lib.from_url(settings.redis_url)

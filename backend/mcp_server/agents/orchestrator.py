@@ -24,7 +24,7 @@ from mcp_server.agents.base import (
     MODEL_ORCHESTRATOR,
 )
 
-SYSTEM_PROMPT = """You are the Orchestrator of a multi-agent trading system for GOLD, OILCash, BTCUSD, and USDJPY.
+SYSTEM_PROMPT = """You are the Orchestrator of a multi-agent trading system for {TRADABLE_SYMBOLS}.
 
 ## Language & Format
 Always respond in English. Do NOT use Thai.

@@ -2,7 +2,7 @@
 
 import httpx
 
-from mcp_server.tools import backend_url as _backend_url
+from mcp_server.tools import auth_headers, backend_url as _backend_url
 
 
 async def get_latest_sentiment() -> dict:
@@ -17,7 +17,7 @@ async def get_latest_sentiment() -> dict:
     """
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{_backend_url()}/api/ai/sentiment")
+            resp = await client.get(f"{_backend_url()}/api/ai/sentiment", headers=auth_headers())
             if resp.status_code == 200:
                 return resp.json()
             return {"error": f"Backend returned {resp.status_code}"}
@@ -39,6 +39,7 @@ async def get_sentiment_history(days: int = 7) -> dict:
             resp = await client.get(
                 f"{_backend_url()}/api/ai/sentiment/history",
                 params={"days": days},
+                headers=auth_headers(),
             )
             if resp.status_code == 200:
                 return {"entries": resp.json()}

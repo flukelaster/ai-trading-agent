@@ -87,11 +87,22 @@ class TokenResponse(BaseModel):
 
 # ─── Token Management ─────────────────────────────────────────────────────────
 
-def create_access_token(username: str) -> str:
+def create_access_token(username: str, expire_hours: int | None = None) -> str:
     jwt = _get_jwt()
-    expire = datetime.now(timezone.utc) + timedelta(hours=settings.jwt_expire_hours)
+    hours = expire_hours if expire_hours is not None else settings.jwt_expire_hours
+    expire = datetime.now(timezone.utc) + timedelta(hours=hours)
     payload = {"sub": username, "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
+
+
+def mint_internal_token() -> str:
+    """Long-lived JWT (90 days) for internal MCP tools → backend API calls.
+
+    Empty string when auth disabled.
+    """
+    if not _auth_enabled() or not settings.secret_key:
+        return ""
+    return create_access_token("internal_agent", expire_hours=90 * 24)
 
 
 def verify_token(token: str) -> str | None:

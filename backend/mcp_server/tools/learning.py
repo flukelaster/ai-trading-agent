@@ -7,7 +7,7 @@ Used by the Reflector agent before each trading session.
 
 import httpx
 
-from mcp_server.tools import backend_url as _backend_url
+from mcp_server.tools import auth_headers, backend_url as _backend_url
 
 
 async def analyze_recent_trades(days: int = 7, symbol: str | None = None) -> dict:
@@ -29,10 +29,12 @@ async def analyze_recent_trades(days: int = 7, symbol: str | None = None) -> dic
             params["symbol"] = symbol
 
         async with httpx.AsyncClient(timeout=15) as client:
-            trades_resp = await client.get(f"{_backend_url()}/api/history/trades", params=params)
+            _h = auth_headers()
+            trades_resp = await client.get(f"{_backend_url()}/api/history/trades", params=params, headers=_h)
             perf_resp = await client.get(
                 f"{_backend_url()}/api/history/performance",
                 params={"days": days, "symbol": symbol} if symbol else {"days": days},
+                headers=_h,
             )
 
         trades = trades_resp.json() if trades_resp.status_code == 200 else []
@@ -96,7 +98,7 @@ async def get_optimization_history(limit: int = 5) -> dict:
     """
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{_backend_url()}/api/ai/optimization/latest")
+            resp = await client.get(f"{_backend_url()}/api/ai/optimization/latest", headers=auth_headers())
             if resp.status_code == 200:
                 return {"optimizations": resp.json()}
             return {"optimizations": [], "note": "No optimization history available"}
