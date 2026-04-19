@@ -2,6 +2,7 @@
 AI Trading Agent — FastAPI Main Application (multi-symbol)
 """
 
+import os
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis_lib
@@ -320,8 +321,7 @@ async def lifespan(app: FastAPI):
 
 # Gate Swagger / ReDoc / OpenAPI behind ENABLE_API_DOCS — default off so prod
 # doesn't expose the full route catalog to unauthenticated scanners.
-import os as _os
-_docs_enabled = _os.getenv("ENABLE_API_DOCS", "0") == "1"
+_docs_enabled = os.getenv("ENABLE_API_DOCS", "0") == "1"
 app = FastAPI(
     title="Trading Bot",
     version="2.0.0",

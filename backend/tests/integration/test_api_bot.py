@@ -23,6 +23,8 @@ def _make_test_app():
     async def _fake_db():
         db = AsyncMock()
         db.add = MagicMock()
+        db.commit = AsyncMock()
+        db.rollback = AsyncMock()
         yield db
 
     app.dependency_overrides[get_db] = _fake_db
