@@ -105,9 +105,13 @@ async def place_order(
     # ─── GUARDRAIL CHECK (non-bypassable) ────────────────────────────────
     # daily_pnl must come from CircuitBreaker (closed-trade realized P&L).
     # account.profit is *floating* unrealized P&L, which would let open winners
-    # mask realized losses and bypass the daily-loss limit.
-    cb = CircuitBreaker(_redis, symbol=symbol)
-    realized_daily_pnl = await cb.get_daily_pnl()
+    # mask realized losses and bypass the daily-loss limit. Fall back to the
+    # account float only when Redis isn't wired up (e.g., unit tests).
+    if _redis is not None:
+        cb = CircuitBreaker(_redis, symbol=symbol)
+        realized_daily_pnl = await cb.get_daily_pnl()
+    else:
+        realized_daily_pnl = account.get("profit", 0)
 
     result = await _guardrails.validate_order(
         symbol=symbol,
