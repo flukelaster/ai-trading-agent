@@ -10,12 +10,16 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import OHLCVData
+from app.db.session import async_session
 from app.mt5.market_data import MarketDataService
 
 
 class HistoricalDataCollector:
     def __init__(self, market_data: MarketDataService, db_session: AsyncSession):
         self.market_data = market_data
+        # Retained for backward compatibility (load_from_db / status readers that
+        # run inside a request-scoped session). Write paths open their own
+        # session to avoid racing with the scheduler's long-lived shared session.
         self.db = db_session
 
     async def collect(
@@ -23,14 +27,11 @@ class HistoricalDataCollector:
     ) -> dict:
         """
         Fetch historical OHLCV from MT5 in 30-day chunks and upsert into DB.
-        Returns summary of collected data.
-        """
-        # Reset any dirty transaction state from previous failed operations
-        try:
-            await self.db.rollback()
-        except Exception:
-            pass
 
+        Uses a dedicated session per call so concurrent scheduler work on the
+        shared bot session does not raise "concurrent operations are not
+        permitted" from asyncpg.
+        """
         dt_from = datetime.fromisoformat(from_date)
         dt_to = datetime.fromisoformat(to_date)
         total_bars = 0
@@ -50,14 +51,17 @@ class HistoricalDataCollector:
                 current = chunk_end
                 continue
 
-            new_bars = await self._upsert_bars(symbol, timeframe, df)
+            # Each chunk commits in its own isolated session — partial progress
+            # is durable if a later chunk fails.
+            async with async_session() as session:
+                new_bars = await self._upsert_bars(session, symbol, timeframe, df)
+                await session.commit()
             total_bars += len(df)
             total_new += new_bars
             logger.info(f"Chunk {chunk_from}->{chunk_to}: {len(df)} bars, {new_bars} new")
 
             current = chunk_end
 
-        await self.db.commit()
         return {
             "symbol": symbol,
             "timeframe": timeframe,
@@ -67,7 +71,9 @@ class HistoricalDataCollector:
             "new_bars_inserted": total_new,
         }
 
-    async def _upsert_bars(self, symbol: str, timeframe: str, df: pd.DataFrame) -> int:
+    async def _upsert_bars(
+        self, session: AsyncSession, symbol: str, timeframe: str, df: pd.DataFrame
+    ) -> int:
         """Insert bars, skip duplicates via ON CONFLICT DO NOTHING."""
         rows = []
         for time_idx, row in df.iterrows():
@@ -90,7 +96,7 @@ class HistoricalDataCollector:
             VALUES (:symbol, :timeframe, :time, :open, :high, :low, :close, :volume)
             ON CONFLICT (symbol, timeframe, time) DO NOTHING
         """)
-        result = await self.db.execute(stmt, rows)
+        result = await session.execute(stmt, rows)
         return result.rowcount
 
     async def load_from_db(
