@@ -696,7 +696,7 @@ class BotScheduler:
             import joblib
             from sqlalchemy import select, update
 
-            from app.data.collector import DataCollector
+            from app.data.collector import HistoricalDataCollector
             from app.db.models import MLModelLog
             from app.db.session import async_session
 
@@ -717,7 +717,7 @@ class BotScheduler:
                     current_accuracy = metrics.get("accuracy", 0.0)
 
                 from_date = (datetime.utcnow() - timedelta(days=90)).strftime("%Y-%m-%d")
-                collector = DataCollector(session)
+                collector = HistoricalDataCollector(engine.market_data, session)
                 df = await collector.load_from_db(symbol, engine.timeframe, from_date=from_date)
 
                 if df.empty or len(df) < 500:
