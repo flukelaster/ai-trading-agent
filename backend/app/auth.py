@@ -51,6 +51,15 @@ def _auth_enabled() -> bool:
     return bool(settings.auth_password_hash)
 
 
+def _assert_auth_consistent() -> None:
+    """Fail fast on startup if password hash is set but username isn't."""
+    if settings.auth_password_hash and not settings.auth_username:
+        raise RuntimeError(
+            "AUTH_PASSWORD_HASH is set but AUTH_USERNAME is empty — refusing to start. "
+            "Either set both, or clear AUTH_PASSWORD_HASH to disable auth."
+        )
+
+
 # ─── Models ───────────────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
@@ -115,7 +124,7 @@ async def require_auth(credentials: HTTPAuthorizationCredentials | None = Depend
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     if not _auth_enabled():
         raise HTTPException(status_code=400, detail="Authentication is not configured")
 
@@ -123,15 +132,20 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=500, detail="SECRET_KEY not configured — cannot sign tokens")
 
     pwd_context = _get_pwd_context()
+    # Strip newlines to blunt log injection via username field.
+    safe_user = req.username.replace("\n", " ").replace("\r", " ")[:64]
+    ip = request.client.host if request.client else "unknown"
 
     if req.username != settings.auth_username:
+        logger.warning(f"login_failed user={safe_user!r} reason=unknown_user ip={ip}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not pwd_context.verify(req.password, settings.auth_password_hash):
+        logger.warning(f"login_failed user={safe_user!r} reason=bad_password ip={ip}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token(req.username)
-    logger.info(f"User '{req.username}' logged in")
+    logger.info(f"login_ok user={safe_user!r} ip={ip}")
     return TokenResponse(access_token=token)
 
 

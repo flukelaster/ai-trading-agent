@@ -13,12 +13,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import log_audit
 from app.auth import require_auth
 from app.config import settings
 from app.db.models import BotEvent
 from app.db.session import get_db
 
-router = APIRouter(prefix="/api/bot", tags=["bot"])
+router = APIRouter(
+    prefix="/api/bot",
+    tags=["bot"],
+    dependencies=[Depends(require_auth)],
+)
 
 # BotManager will be injected via app.state
 _manager = None
@@ -84,23 +89,36 @@ class SettingsUpdate(BaseModel):
 
 
 @router.post("/start", dependencies=[Depends(require_auth)])
-async def start_bot(symbol: str | None = Query(None)):
+async def start_bot(request: Request, symbol: str | None = Query(None), db: AsyncSession = Depends(get_db)):
     mgr = get_manager()
     await mgr.start(symbol)
+    await log_audit(
+        db, "bot_start", resource=f"symbol:{symbol or 'all'}",
+        ip=request.client.host if request.client else None,
+    )
     return {"status": "started", "symbol": symbol or "all"}
 
 
 @router.post("/stop", dependencies=[Depends(require_auth)])
-async def stop_bot(symbol: str | None = Query(None)):
+async def stop_bot(request: Request, symbol: str | None = Query(None), db: AsyncSession = Depends(get_db)):
     mgr = get_manager()
     await mgr.stop(symbol)
+    await log_audit(
+        db, "bot_stop", resource=f"symbol:{symbol or 'all'}",
+        ip=request.client.host if request.client else None,
+    )
     return {"status": "stopped", "symbol": symbol or "all"}
 
 
 @router.post("/emergency-stop", dependencies=[Depends(require_auth)])
-async def emergency_stop(symbol: str | None = Query(None)):
+async def emergency_stop(request: Request, symbol: str | None = Query(None), db: AsyncSession = Depends(get_db)):
     mgr = get_manager()
     result = await mgr.emergency_stop(symbol)
+    await log_audit(
+        db, "bot_emergency_stop", resource=f"symbol:{symbol or 'all'}",
+        detail={"result": result},
+        ip=request.client.host if request.client else None,
+    )
     return {"status": "emergency_stopped", "result": result}
 
 
@@ -188,8 +206,9 @@ async def get_account():
 
 
 @router.put("/strategy", dependencies=[Depends(require_auth)])
-async def update_strategy(data: StrategyUpdate):
+async def update_strategy(data: StrategyUpdate, request: Request, db: AsyncSession = Depends(get_db)):
     engine = _get_engine(data.symbol)
+    ip = request.client.host if request.client else None
     if data.name == "ai_autonomous":
         try:
             await engine.redis.set("trading_mode", "ai_autonomous")
@@ -197,8 +216,9 @@ async def update_strategy(data: StrategyUpdate):
             logger.debug(f"Redis trading_mode write failed: {e}")
         settings.trading_mode = "ai_autonomous"
         engine.strategy = None
+        await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
+                        detail={"strategy": "ai_autonomous"}, ip=ip)
         return {"status": "updated", "strategy": "ai_autonomous", "symbol": engine.symbol}
-    # Switch back to strategy-first mode
     try:
         await engine.redis.set("trading_mode", "strategy")
     except Exception as e:
@@ -206,6 +226,8 @@ async def update_strategy(data: StrategyUpdate):
     settings.trading_mode = "strategy"
     try:
         await engine.update_strategy(data.name, data.params)
+        await log_audit(db, "bot_strategy_change", resource=f"symbol:{engine.symbol}",
+                        detail={"strategy": data.name, "params": data.params}, ip=ip)
         return {"status": "updated", "strategy": data.name, "symbol": engine.symbol}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -237,8 +259,7 @@ async def apply_strategy_in_ai_mode(data: StrategyApply):
 
 
 @router.put("/settings", dependencies=[Depends(require_auth)])
-async def update_settings(data: SettingsUpdate):
-    # Resolve fixed_lot from lot_mode: "auto" → None, "fixed" → use fixed_lot value
+async def update_settings(data: SettingsUpdate, request: Request, db: AsyncSession = Depends(get_db)):
     from app.bot.engine import _UNSET
     resolved_fixed_lot = _UNSET
     if data.lot_mode == "auto":
@@ -286,6 +307,11 @@ async def update_settings(data: SettingsUpdate):
         except Exception as e:
             logger.debug(f"Redis enable_auto_strategy_switch write failed: {e}")
 
+    await log_audit(
+        db, "bot_settings_change", resource=f"symbol:{data.symbol or 'all'}",
+        detail=data.model_dump(exclude_none=True),
+        ip=request.client.host if request.client else None,
+    )
     return {"status": "updated"}
 
 

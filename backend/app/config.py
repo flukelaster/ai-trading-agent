@@ -241,8 +241,9 @@ class Settings(BaseSettings):
     log_format: str = "text"  # "json" for production, "text" for development
     log_dir: str = "logs"
 
-    # Authentication
-    auth_username: str = "admin"          # legacy password auth (deprecated)
+    # Authentication — both fields required to enable password auth; default
+    # empty so the app fails closed when the operator hasn't configured them.
+    auth_username: str = ""
     auth_password_hash: str = ""          # bcrypt hash; empty = auth disabled
     jwt_expire_hours: int = 24
 

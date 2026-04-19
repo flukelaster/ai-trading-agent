@@ -17,7 +17,11 @@ from sqlalchemy import desc, select
 
 from app.config import resolve_broker_symbol, settings
 
-router = APIRouter(prefix="/api/ml", tags=["ml"])
+router = APIRouter(
+    prefix="/api/ml",
+    tags=["ml"],
+    dependencies=[Depends(require_auth)],
+)
 
 _collector = None
 _db_session = None

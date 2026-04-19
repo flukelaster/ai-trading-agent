@@ -15,8 +15,17 @@ def _make_test_app():
     """Create a minimal FastAPI app for testing."""
     from fastapi import FastAPI
     from app.api.routes.bot import router
+    from app.db.session import get_db
+
     app = FastAPI()
     app.include_router(router)
+
+    async def _fake_db():
+        db = AsyncMock()
+        db.add = MagicMock()
+        yield db
+
+    app.dependency_overrides[get_db] = _fake_db
     return app
 
 

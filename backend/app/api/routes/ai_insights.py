@@ -15,7 +15,11 @@ from app.cache import cached
 from app.db.models import AIOptimizationLog, NewsSentiment
 from app.db.session import get_db
 
-router = APIRouter(prefix="/api/ai", tags=["ai"])
+router = APIRouter(
+    prefix="/api/ai",
+    tags=["ai"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 @router.get("/sentiment")
