@@ -45,6 +45,7 @@ class BotScheduler:
         if isinstance(manager, BotManager):
             self.manager = manager
             self._legacy_bot: BotEngine | None = None
+            manager.set_scheduler(self)
         else:
             # Backward compat: wrap single engine
             self.manager = None
@@ -53,6 +54,7 @@ class BotScheduler:
         self.scheduler = AsyncIOScheduler()
         self._candle_job_ids: dict[str, str] = {}  # timeframe → job_id
         self._health_monitor = None  # set via set_health_monitor()
+        self._background_tasks: set[asyncio.Task] = set()
 
     def set_health_monitor(self, monitor):
         self._health_monitor = monitor
@@ -278,13 +280,34 @@ class BotScheduler:
         self._schedule_candle_jobs()
         logger.info(f"Candle jobs rescheduled after {symbol} changed to {timeframe}")
 
+    def reschedule_candle_jobs(self) -> None:
+        """Rebuild candle cron jobs for the current engine set.
+
+        Called by BotManager.reload_engines() after adding or removing engines
+        so new symbols start receiving candle ticks without a process restart.
+        """
+        self._schedule_candle_jobs()
+
     def stop(self):
         self.scheduler.shutdown(wait=False)
         logger.info("Scheduler stopped")
 
+    def _track_task(self, coro) -> asyncio.Task:
+        """Spawn a background task and hold a strong reference so it is not GC'd."""
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
+
+    def _engines_snapshot(self) -> dict[str, BotEngine]:
+        """Return a stable snapshot for iteration independent of reload_engines."""
+        if self.manager:
+            return self.manager.engines_snapshot()
+        return dict(self._engines)
+
     async def _tick_job(self):
         # Fetch ticks for ALL symbols (even STOPPED) so dashboard shows prices
-        tasks = [self._fetch_tick(sym, eng) for sym, eng in self._engines.items()]
+        tasks = [self._fetch_tick(sym, eng) for sym, eng in self._engines_snapshot().items()]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -324,18 +347,19 @@ class BotScheduler:
         if not active_symbols:
             return
 
+        engines = self._engines_snapshot()
         if trading_mode == "strategy":
             for sym in active_symbols:
-                engine = self._engines.get(sym)
+                engine = engines.get(sym)
                 if engine and engine.state.value == "RUNNING":
                     try:
                         await engine.process_candle()
                     except Exception as e:
                         logger.error(f"process_candle error [{sym}]: {e}")
-            asyncio.create_task(self._run_ai_agent(active_symbols))
+            self._track_task(self._run_ai_agent(active_symbols))
         else:
             for sym in active_symbols:
-                engine = self._engines.get(sym)
+                engine = engines.get(sym)
                 if engine and engine.state.value == "RUNNING":
                     try:
                         await engine._detect_regime()
@@ -350,7 +374,7 @@ class BotScheduler:
         to reduce unnecessary API calls (~50% reduction).
         """
         tasks = []
-        for sym, engine in self._engines.items():
+        for sym, engine in self._engines_snapshot().items():
             if engine.state != BotState.RUNNING:
                 continue
             if not is_market_open(sym):
@@ -451,14 +475,14 @@ class BotScheduler:
         await asyncio.gather(*[_run_for_symbol(sym) for sym in symbols], return_exceptions=True)
 
     async def _sync_job(self):
-        tasks = [e.sync_positions() for e in self._engines.values() if e.state.value == "RUNNING"]
+        tasks = [e.sync_positions() for e in self._engines_snapshot().values() if e.state.value == "RUNNING"]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _weekly_optimize_job(self):
         logger.info("Weekly optimization triggered")
         # Run optimization on first engine that has an optimizer
-        for engine in self._engines.values():
+        for engine in self._engines_snapshot().values():
             if not engine._optimizer or engine.strategy is None:
                 continue
             try:
@@ -498,7 +522,7 @@ class BotScheduler:
     async def _macro_collect_job(self):
         logger.info("Daily macro collection triggered")
         # Macro data is global, just use first engine
-        for engine in self._engines.values():
+        for engine in self._engines_snapshot().values():
             if hasattr(engine, '_macro_service') and engine._macro_service:
                 try:
                     stats = await engine._macro_service.collect_all()
@@ -509,7 +533,7 @@ class BotScheduler:
 
     async def _refresh_economic_calendar(self):
         """Refresh economic calendar from API for all engines."""
-        for engine in self._engines.values():
+        for engine in self._engines_snapshot().values():
             try:
                 count = await engine._event_calendar.refresh()
                 logger.debug(f"Economic calendar refreshed: {count} events")
@@ -519,7 +543,7 @@ class BotScheduler:
 
     async def _daily_reset_job(self):
         logger.info("Daily reset triggered")
-        tasks = [e.circuit_breaker.reset() for e in self._engines.values()]
+        tasks = [e.circuit_breaker.reset() for e in self._engines_snapshot().values()]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _ai_usage_cleanup_job(self):
@@ -559,7 +583,7 @@ class BotScheduler:
 
             from app.db.session import async_session
 
-            for symbol, engine in self._engines.items():
+            for symbol, engine in self._engines_snapshot().items():
                 # Get today's closed trades — use an isolated session so a
                 # dirty engine.db doesn't taint the daily summary job.
                 today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
@@ -589,7 +613,7 @@ class BotScheduler:
             total_win_rate = total_wins / total_trades if total_trades > 0 else 0
 
             # Send via first engine's notifier
-            notifier = next((e.notifier for e in self._engines.values() if e.notifier), None)
+            notifier = next((e.notifier for e in self._engines_snapshot().values() if e.notifier), None)
             if notifier:
                 await notifier.send_daily_summary(symbol_stats, round(total_pnl, 2), total_trades, total_win_rate)
                 logger.info(f"Daily summary sent: PnL=${total_pnl:.2f}, trades={total_trades}")
@@ -599,7 +623,7 @@ class BotScheduler:
     async def _ml_retrain_job(self):
         """Weekly ML retrain — trains per-symbol on last 6 months of data."""
         logger.info("Weekly ML retrain triggered")
-        for symbol, engine in self._engines.items():
+        for symbol, engine in self._engines_snapshot().items():
             await self._ml_retrain_symbol(symbol, engine)
 
     async def _status_broadcast_job(self):
@@ -631,14 +655,14 @@ class BotScheduler:
             await self._health_monitor.check()
 
     async def _pending_trades_recovery_job(self):
-        tasks = [e._recover_pending_trades() for e in self._engines.values()]
+        tasks = [e._recover_pending_trades() for e in self._engines_snapshot().values()]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _reconciliation_job(self):
         tasks = [
             e.reconcile_positions()
-            for e in self._engines.values()
+            for e in self._engines_snapshot().values()
             if e.state.value in ("RUNNING", "PAUSED") and not e.paper_trade
         ]
         if tasks:

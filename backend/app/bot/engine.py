@@ -1491,7 +1491,14 @@ class BotEngine:
             logger.error(f"Failed to push event: {e}")
 
     async def _recover_pending_trades(self):
-        """Recover trades that failed DB save and were stored in Redis fallback."""
+        """Recover trades that failed DB save and were stored in Redis fallback.
+
+        Runs on a 5-minute scheduler cadence concurrently with candle/tick jobs.
+        Uses an isolated session per trade so a concurrent op on self.db cannot
+        raise "concurrent operations are not permitted" from asyncpg.
+        """
+        from app.db.session import async_session
+
         key = f"pending_trades:{self.symbol}"
         try:
             pending = await self.redis.lrange(key, 0, -1)
@@ -1514,16 +1521,13 @@ class BotEngine:
                         open_time=datetime.fromisoformat(data["open_time"]) if data.get("open_time") else _naive_utc(),
                         strategy_name=data.get("strategy_name"),
                     )
-                    self.db.add(trade)
-                    await self.db.commit()
+                    async with async_session() as session:
+                        session.add(trade)
+                        await session.commit()
                     await self.redis.lrem(key, 1, raw)
                     logger.info(f"Recovered pending trade: ticket={data['ticket']}")
                 except Exception as e:
                     logger.warning(f"Failed to recover pending trade: {e}")
-                    try:
-                        await self.db.rollback()
-                    except Exception:
-                        pass
         except Exception as e:
             logger.error(f"Pending trades recovery error [{self.symbol}]: {e}")
 
