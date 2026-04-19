@@ -33,10 +33,14 @@ class BotManager:
         self._positions_cache: dict[str, list[dict]] = {}
         self._positions_cache_time: float = 0
         self._positions_lock = asyncio.Lock()
+        self._engines_lock = asyncio.Lock()
         self._reload_task: asyncio.Task | None = None
         self._sentiment_analyzer = None
         self._notifier = None
         self._binance_connector = None
+        # Optional back-reference set by BotScheduler so reload_engines() can
+        # re-register cron candle jobs for newly-added symbols.
+        self._scheduler = None
         # Prefer DB-sourced enable flags; fall back to env-var symbol list when empty.
         db_enabled = [
             s for s, p in SYMBOL_PROFILES.items()
@@ -65,6 +69,13 @@ class BotManager:
 
     def get_symbols(self) -> list[str]:
         return list(self.engines.keys())
+
+    def engines_snapshot(self) -> dict[str, BotEngine]:
+        """Return a shallow copy safe to iterate during concurrent reloads."""
+        return dict(self.engines)
+
+    def set_scheduler(self, scheduler) -> None:
+        self._scheduler = scheduler
 
     async def start(self, symbol: str | None = None):
         """Start one or all engines."""
@@ -188,41 +199,52 @@ class BotManager:
         return engine
 
     async def reload_engines(self) -> dict:
-        """Rebuild engine set from current SYMBOL_PROFILES + is_enabled flags."""
-        enabled = {
-            s for s, p in SYMBOL_PROFILES.items()
-            if p.get("is_enabled") is True and "canonical" not in p
-        }
-        if not enabled:
-            # Backward compat: fall back to env-var symbol list when DB empty.
-            enabled = set(settings.symbol_list)
+        """Rebuild engine set from current SYMBOL_PROFILES + is_enabled flags.
 
-        current = set(self.engines.keys())
-        to_add = enabled - current
-        to_remove = current - enabled
-        to_update = enabled & current
+        Serialized by _engines_lock so concurrent pubsub + direct reload calls
+        cannot produce partial dict state visible to iterating scheduler jobs.
+        """
+        async with self._engines_lock:
+            enabled = {
+                s for s, p in SYMBOL_PROFILES.items()
+                if p.get("is_enabled") is True and "canonical" not in p
+            }
+            if not enabled:
+                enabled = set(settings.symbol_list)
 
-        stop_coros = [self.engines.pop(s).stop() for s in to_remove]
-        if stop_coros:
-            await asyncio.gather(*stop_coros, return_exceptions=True)
+            current = set(self.engines.keys())
+            to_add = enabled - current
+            to_remove = current - enabled
+            to_update = enabled & current
 
-        for symbol in to_add:
+            stop_coros = [self.engines.pop(s).stop() for s in to_remove]
+            if stop_coros:
+                await asyncio.gather(*stop_coros, return_exceptions=True)
+
+            for symbol in to_add:
+                try:
+                    self.engines[symbol] = self._build_engine(symbol, SYMBOL_PROFILES.get(symbol, {}))
+                except Exception as e:
+                    logger.error(f"BotManager: create {symbol} failed: {e}")
+
+            for symbol in to_update:
+                profile = SYMBOL_PROFILES.get(symbol)
+                if profile:
+                    self.engines[symbol].apply_profile(profile)
+
+            summary = {
+                "added": sorted(to_add),
+                "removed": sorted(to_remove),
+                "updated": sorted(to_update),
+                "active": sorted(self.engines.keys()),
+            }
+
+        if self._scheduler is not None and (to_add or to_remove):
             try:
-                self.engines[symbol] = self._build_engine(symbol, SYMBOL_PROFILES.get(symbol, {}))
+                self._scheduler.reschedule_candle_jobs()
             except Exception as e:
-                logger.error(f"BotManager: create {symbol} failed: {e}")
+                logger.warning(f"BotManager: scheduler candle reschedule failed: {e}")
 
-        for symbol in to_update:
-            profile = SYMBOL_PROFILES.get(symbol)
-            if profile:
-                self.engines[symbol].apply_profile(profile)
-
-        summary = {
-            "added": sorted(to_add),
-            "removed": sorted(to_remove),
-            "updated": sorted(to_update),
-            "active": sorted(self.engines.keys()),
-        }
         logger.info(f"BotManager reload: {summary}")
         return summary
 
