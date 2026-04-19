@@ -30,4 +30,4 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "echo '[migration] start' && timeout 120 alembic upgrade head 2>&1 && echo '[migration] ok' && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --timeout-keep-alive 30"]
+CMD ["sh", "-c", "echo '[migration] start' && timeout 120 alembic upgrade head 2>&1 && echo '[migration] ok' && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --timeout-keep-alive 30 --proxy-headers --forwarded-allow-ips=*"]
