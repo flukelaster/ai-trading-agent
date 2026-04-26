@@ -167,7 +167,7 @@ async def _handle_health(reader: asyncio.StreamReader, writer: asyncio.StreamWri
 async def start_health_server() -> asyncio.Server | None:
     """Start a minimal TCP health server on port 8090."""
     try:
-        server = await asyncio.start_server(_handle_health, "0.0.0.0", 8090)
+        server = await asyncio.start_server(_handle_health, "127.0.0.1", 8090)
         _log("info", "Health check server started on :8090")
         return server
     except OSError as e:
