@@ -18,7 +18,7 @@ lightgbm==4.6.0
 scikit-learn==1.5.2
 statsmodels>=0.14.0
 joblib==1.4.2
-python-jose[cryptography]==3.3.0
+PyJWT[crypto]>=2.10.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 webauthn==2.7.1
@@ -27,3 +27,4 @@ arch>=7.0
 hmmlearn>=0.3
 filterpy>=1.4
 cvxpy>=1.4
+sentry-sdk[fastapi]==2.20.0

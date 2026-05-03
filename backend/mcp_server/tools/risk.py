@@ -70,7 +70,9 @@ def calculate_lot(
         Dict with lot size.
     """
     rm = _get_risk_manager(symbol)
-    lot = rm.calculate_lot_size(balance=balance, sl_pips=sl_pips, atr_pct=atr_pct)
+    # `sl_pips` here is conventionally a price-unit distance — pass through to
+    # the renamed kwarg without semantic change.
+    lot = rm.calculate_lot_size(balance=balance, sl_distance=sl_pips, atr_pct=atr_pct)
     return {"symbol": symbol, "lot": lot, "balance": balance, "sl_pips": sl_pips}
 
 

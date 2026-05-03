@@ -80,7 +80,11 @@ class TradingGuardrails:
         self.redis = redis
 
     def get_rollout_mode(self) -> str:
-        """Get current rollout mode from env or default."""
+        """Synchronous fallback used only when no Redis connection is available
+        (tests, init-time checks). Production callers must use the async
+        :meth:`get_persisted_rollout_mode` so a UI-driven downgrade (e.g.
+        live → paper after an incident) actually takes effect.
+        """
         mode = os.environ.get("ROLLOUT_MODE", "shadow")
         return mode if mode in ROLLOUT_MODES else "shadow"
 
@@ -92,24 +96,35 @@ class TradingGuardrails:
         os.environ["ROLLOUT_MODE"] = mode
 
     async def get_persisted_rollout_mode(self) -> str:
-        """Get rollout mode from Redis (or fall back to env)."""
-        val = await self.redis.get(f"{_KEY_PREFIX}:rollout_mode")
+        """Get rollout mode. Redis is the source of truth — the env var is
+        only used as a bootstrap default before any UI write has happened.
+        Otherwise an env-set ``ROLLOUT_MODE=live`` would silently override an
+        operator's UI downgrade after an incident.
+        """
+        try:
+            val = await self.redis.get(f"{_KEY_PREFIX}:rollout_mode")
+        except Exception:
+            val = None
         if val:
             mode = val.decode() if isinstance(val, bytes) else str(val)
             if mode in ROLLOUT_MODES:
                 return mode
         return self.get_rollout_mode()
 
+    async def check_rollout_mode_async(self, lot: float) -> GuardrailResult:
+        """Async variant that reads Redis first. Prefer this in MCP tool code
+        paths so live-mode downgrades from the UI take effect immediately."""
+        mode = await self.get_persisted_rollout_mode()
+        return self._evaluate_rollout(mode, lot)
+
     def check_rollout_mode(self, lot: float) -> GuardrailResult:
-        """Check if the current rollout mode allows execution, and enforce lot caps.
-
-        Returns:
-            GuardrailResult with allowed=True if execution should proceed,
-            or allowed=False with reason for shadow/paper modes.
-            For micro mode, the lot is capped but execution proceeds.
+        """Sync fallback. Prefer :meth:`check_rollout_mode_async` from any
+        coroutine context so the Redis-persisted mode wins over a stale env
+        value.
         """
-        mode = self.get_rollout_mode()
+        return self._evaluate_rollout(self.get_rollout_mode(), lot)
 
+    def _evaluate_rollout(self, mode: str, lot: float) -> GuardrailResult:
         if mode == "shadow":
             return GuardrailResult(False, "SHADOW MODE: order logged but not executed")
 

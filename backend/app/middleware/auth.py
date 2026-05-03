@@ -30,7 +30,7 @@ EXCLUDED_PREFIXES = (
 
 def _verify_jwt(token: str) -> dict | None:
     """Verify JWT and return payload."""
-    from jose import jwt
+    import jwt
 
     try:
         return jwt.decode(token, settings.secret_key, algorithms=["HS256"])

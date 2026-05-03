@@ -125,15 +125,19 @@ class BotScheduler:
             max_instances=1,
         )
 
-        # Daily reset: midnight UTC
-        self.scheduler.add_job(
-            self._daily_reset_job,
-            "cron",
-            hour=0,
-            minute=0,
-            id="daily_reset",
-            max_instances=1,
-        )
+        # Daily reset — schedule one job per unique reset_hour across asset
+        # classes so a USDJPY symbol's daily window does not span 26 hours
+        # because its market closes at 22 UTC but we reset at 00 UTC.
+        for reset_hour in self._unique_reset_hours():
+            self.scheduler.add_job(
+                self._daily_reset_for_hour,
+                "cron",
+                hour=reset_hour,
+                minute=0,
+                id=f"daily_reset_h{reset_hour:02d}",
+                max_instances=1,
+                args=[reset_hour],
+            )
 
         # Weekly ML retrain: Monday 04:00 UTC (before market open, after macro collect)
         self.scheduler.add_job(
@@ -217,6 +221,17 @@ class BotScheduler:
             max_instances=1,
         )
 
+        # Daily DB backup: 02:30 UTC. Skips when backups are not configured (no
+        # ENABLE_DB_BACKUPS=1) so dev environments do not pile up dumps.
+        self.scheduler.add_job(
+            self._db_backup_job,
+            "cron",
+            hour=2,
+            minute=30,
+            id="db_backup",
+            max_instances=1,
+        )
+
         # Economic calendar refresh every hour
         self.scheduler.add_job(
             self._refresh_economic_calendar,
@@ -250,8 +265,12 @@ class BotScheduler:
         for job_id in self._candle_job_ids.values():
             try:
                 self.scheduler.remove_job(job_id)
-            except Exception:
-                pass
+            except Exception as e:
+                # JobLookupError is expected when a job has already been removed
+                # by a parallel reschedule; log anything else so a stuck job
+                # surfaces instead of letting the next add_job collide.
+                if e.__class__.__name__ != "JobLookupError":
+                    logger.warning(f"remove_job({job_id}) failed: {e!r}")
         self._candle_job_ids.clear()
 
         # Group engines by timeframe
@@ -301,6 +320,20 @@ class BotScheduler:
         task.add_done_callback(self._background_tasks.discard)
         return task
 
+    @staticmethod
+    def _log_gather_errors(job_name: str, results, labels: list | None = None) -> None:
+        """Surface exceptions returned by ``asyncio.gather(return_exceptions=True)``.
+
+        Without this, individual symbol/task failures are silently swallowed —
+        the gather succeeds even though half the work raised. Pair the result
+        list with optional labels (e.g. symbols) so log messages identify which
+        item failed.
+        """
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                label = labels[idx] if labels and idx < len(labels) else f"task[{idx}]"
+                logger.warning(f"{job_name} {label} raised: {result!r}")
+
     def _engines_snapshot(self) -> dict[str, BotEngine]:
         """Return a stable snapshot for iteration independent of reload_engines."""
         if self.manager:
@@ -308,10 +341,12 @@ class BotScheduler:
         return dict(self._engines)
 
     async def _tick_job(self):
-        # Fetch ticks for ALL symbols (even STOPPED) so dashboard shows prices
-        tasks = [self._fetch_tick(sym, eng) for sym, eng in self._engines_snapshot().items()]
+        snapshot = self._engines_snapshot()
+        symbols = list(snapshot.keys())
+        tasks = [self._fetch_tick(sym, eng) for sym, eng in snapshot.items()]
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            self._log_gather_errors("tick_job", results, symbols)
 
     async def _fetch_tick(self, symbol: str, engine: BotEngine):
         try:
@@ -339,7 +374,7 @@ class BotScheduler:
                     else:
                         logger.warning(f"Invalid trading_mode in Redis: '{cached}', ignoring")
         except Exception as e:
-            logger.debug(f"Redis trading_mode read failed: {e}")
+            logger.warning(f"Redis trading_mode read failed (using fallback {trading_mode!r}): {e}")
 
         # Filter to symbols with open markets
         active_symbols = [sym for sym in symbols if is_market_open(sym)]
@@ -366,7 +401,7 @@ class BotScheduler:
                     try:
                         await engine._detect_regime()
                     except Exception as e:
-                        logger.debug(f"Regime detection [{sym}]: {e}")
+                        logger.warning(f"Regime detection failed [{sym}] — risk profile may be stale: {e}")
             await self._run_ai_agent(active_symbols)
 
     async def _sentiment_job(self):
@@ -459,7 +494,7 @@ class BotScheduler:
                             f"AI hallucination [{sym}]: {hc['high_severity_count']} high-severity flags: {hc['flags']}"
                         )
                 except Exception as e:
-                    logger.debug(f"Hallucination check failed [{sym}]: {e}")
+                    logger.warning(f"Hallucination check failed [{sym}] — AI claims unverified: {e}")
 
                 # Log AI analysis to DB for activity page
                 from app.db.models import BotEventType
@@ -483,12 +518,16 @@ class BotScheduler:
             except Exception as e:
                 logger.warning(f"AI agent [{sym}] error: {e}")
 
-        await asyncio.gather(*[_run_for_symbol(sym) for sym in symbols], return_exceptions=True)
+        results = await asyncio.gather(*[_run_for_symbol(sym) for sym in symbols], return_exceptions=True)
+        self._log_gather_errors("run_ai_agent", results, symbols)
 
     async def _sync_job(self):
-        tasks = [e.sync_positions() for e in self._engines_snapshot().values() if e.state.value == "RUNNING"]
+        snapshot = self._engines_snapshot()
+        symbols = [s for s, e in snapshot.items() if e.state.value == "RUNNING"]
+        tasks = [snapshot[s].sync_positions() for s in symbols]
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            self._log_gather_errors("sync_job", results, symbols)
 
     async def _weekly_optimize_job(self):
         logger.info("Weekly optimization triggered")
@@ -557,26 +596,108 @@ class BotScheduler:
             except Exception as e:
                 logger.warning(f"Economic calendar refresh failed: {e}")
 
-    async def _daily_reset_job(self):
-        logger.info("Daily reset triggered")
-        tasks = [e.circuit_breaker.reset() for e in self._engines_snapshot().values()]
-        await asyncio.gather(*tasks, return_exceptions=True)
+    def _unique_reset_hours(self) -> list[int]:
+        """Reset hours used across the asset classes we have engines for.
+
+        Falls back to ``[0]`` when called before any engine is built (e.g. during
+        scheduler.start() if no symbols enabled yet) so the daily reset still
+        fires at midnight UTC.
+        """
+        from app.market.sessions import _RULES
+
+        snapshot = self._engines_snapshot()
+        if not snapshot:
+            return [0]
+        hours = set()
+        for engine in snapshot.values():
+            asset_class = (engine.symbol_profile or {}).get("asset_class") or "forex"
+            rule = _RULES.get(asset_class.lower(), _RULES["forex"])
+            hours.add(rule["reset_hour_utc"])
+        return sorted(hours) or [0]
+
+    async def _daily_reset_for_hour(self, reset_hour: int):
+        """Reset circuit breakers only for engines whose asset class resets at
+        this hour. Per-asset-class resets keep daily P&L windows = 24 hours."""
+        from app.market.sessions import _RULES
+
+        snapshot = self._engines_snapshot()
+        symbols = []
+        for sym, eng in snapshot.items():
+            asset_class = (eng.symbol_profile or {}).get("asset_class") or "forex"
+            rule = _RULES.get(asset_class.lower(), _RULES["forex"])
+            if rule["reset_hour_utc"] == reset_hour:
+                symbols.append(sym)
+        if not symbols:
+            return
+        logger.info(f"Daily reset h{reset_hour:02d}UTC for {symbols}")
+        tasks = [snapshot[s].circuit_breaker.reset() for s in symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        self._log_gather_errors(f"daily_reset_h{reset_hour:02d}", results, symbols)
+
+    async def _db_backup_job(self):
+        """Run scripts/backup_db.sh as a subprocess and surface its exit code.
+
+        Gated on ``ENABLE_DB_BACKUPS=1`` so dev / CI environments do not write
+        backup files. The script handles rotation; we only orchestrate the run.
+        """
+        import os
+        import shutil
+
+        if os.getenv("ENABLE_DB_BACKUPS", "0") != "1":
+            return
+        script = shutil.which("backup_db.sh") or "/app/scripts/backup_db.sh"
+        if not os.path.exists(script):
+            logger.warning(f"db_backup_job skipped: script not found at {script}")
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "bash",
+                script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                logger.error(
+                    f"db_backup_job failed rc={proc.returncode} stderr={stderr.decode(errors='replace')[:500]}"
+                )
+            else:
+                logger.info(f"db_backup_job ok: {stdout.decode(errors='replace').splitlines()[-1] if stdout else ''}")
+        except Exception as e:
+            logger.error(f"db_backup_job exception: {e!r}")
 
     async def _ai_usage_cleanup_job(self):
-        """Delete AIUsageLog rows older than 90 days."""
+        """Delete AIUsageLog rows older than 90 days, batched 1000 per round
+        with a short sleep between. Avoids the ACCESS EXCLUSIVE lock spike that
+        a single multi-million-row DELETE would cause once the table is large.
+        """
         try:
             from datetime import timedelta
 
-            from sqlalchemy import delete
+            from sqlalchemy import text
 
-            from app.db.models import AIUsageLog
             from app.db.session import async_session
 
             cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=90)
-            async with async_session() as db:
-                result = await db.execute(delete(AIUsageLog).where(AIUsageLog.timestamp < cutoff))
-                await db.commit()
-                logger.info(f"AI usage cleanup: deleted {result.rowcount} rows older than 90d")
+            batch_size = 1000
+            total_deleted = 0
+            for _ in range(200):
+                async with async_session() as db:
+                    result = await db.execute(
+                        text(
+                            "DELETE FROM ai_usage_logs WHERE id IN ("
+                            "SELECT id FROM ai_usage_logs WHERE timestamp < :cutoff LIMIT :n"
+                            ")"
+                        ),
+                        {"cutoff": cutoff, "n": batch_size},
+                    )
+                    await db.commit()
+                deleted = result.rowcount or 0
+                total_deleted += deleted
+                if deleted < batch_size:
+                    break
+                await asyncio.sleep(0.5)
+            logger.info(f"AI usage cleanup: deleted {total_deleted} rows older than 90d")
         except Exception as e:
             logger.error(f"AI usage cleanup failed: {e}")
 
@@ -674,18 +795,20 @@ class BotScheduler:
             await self._health_monitor.check()
 
     async def _pending_trades_recovery_job(self):
-        tasks = [e._recover_pending_trades() for e in self._engines_snapshot().values()]
+        snapshot = self._engines_snapshot()
+        symbols = list(snapshot.keys())
+        tasks = [snapshot[s]._recover_pending_trades() for s in symbols]
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            self._log_gather_errors("pending_trades_recovery", results, symbols)
 
     async def _reconciliation_job(self):
-        tasks = [
-            e.reconcile_positions()
-            for e in self._engines_snapshot().values()
-            if e.state.value in ("RUNNING", "PAUSED") and not e.paper_trade
-        ]
+        snapshot = self._engines_snapshot()
+        symbols = [s for s, e in snapshot.items() if e.state.value in ("RUNNING", "PAUSED") and not e.paper_trade]
+        tasks = [snapshot[s].reconcile_positions() for s in symbols]
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            self._log_gather_errors("reconciliation", results, symbols)
 
     async def _memory_consolidation_job(self):
         """Daily memory consolidation — promote, expire, decay memories."""
@@ -747,8 +870,13 @@ class BotScheduler:
 
             # Phase 1: short session — read current accuracy + load training data, then release.
             async with async_session() as session:
+                from sqlalchemy.orm import defer
+
                 result = await session.execute(
-                    select(MLModelLog).where(MLModelLog.is_active, MLModelLog.model_name == model_name).limit(1)
+                    select(MLModelLog)
+                    .where(MLModelLog.is_active, MLModelLog.model_name == model_name)
+                    .options(defer(MLModelLog.model_binary))
+                    .limit(1)
                 )
                 current_log = result.scalar_one_or_none()
                 current_accuracy = 0.0
@@ -848,6 +976,8 @@ class BotScheduler:
                         .where(MLModelLog.is_active, MLModelLog.model_name == model_name)
                         .values(is_active=False)
                     )
+                    from app.ml.integrity import compute_model_digest
+
                     log = MLModelLog(
                         model_name=model_name,
                         timeframe=engine.timeframe,
@@ -859,6 +989,7 @@ class BotScheduler:
                         feature_importance=json.dumps(new_result.feature_importance),
                         model_path=model_path,
                         model_binary=model_bytes,
+                        model_digest=compute_model_digest(model_bytes),
                         is_active=True,
                     )
                     session.add(log)
@@ -874,8 +1005,8 @@ class BotScheduler:
             if hasattr(engine, "notifier") and engine.notifier:
                 try:
                     await engine.notifier.send_message(msg)
-                except Exception:
-                    pass
+                except Exception as notif_err:
+                    logger.warning(f"ML retrain notify [{symbol}] failed: {notif_err!r}")
 
             await self._set_symbol_ml_status(symbol, "ready", mark_trained=True)
 

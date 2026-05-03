@@ -189,6 +189,10 @@ class MLModelLog(Base):
     feature_importance: Mapped[str] = mapped_column(Text)  # JSON
     model_path: Mapped[str] = mapped_column(String(255))
     model_binary: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    # HMAC-SHA256 of ``model_binary`` signed with SECRET_KEY at save time.
+    # Verified before joblib.load() so a tampered DB row cannot trigger pickle
+    # RCE when the strategy / scheduler reloads the model.
+    model_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

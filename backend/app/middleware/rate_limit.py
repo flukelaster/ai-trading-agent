@@ -110,6 +110,33 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return parts[-1]
         return request.client.host if request.client else "unknown"
 
+    def _identity(self, request: Request) -> str:
+        """Identify the requester for rate-limit bucketing.
+
+        Prefers the authenticated subject decoded from the bearer token so a
+        single user behind a shared NAT does not absorb a stranger's quota
+        (and vice versa). Falls back to the trusted client IP when the request
+        is unauthenticated or the token cannot be decoded.
+
+        Explicitly rejects the literal ``__noauth__`` sentinel so a client
+        cannot forge ``Authorization: Bearer __noauth__`` and have every
+        request bucketed under one shared identity.
+        """
+        auth = request.headers.get("authorization") or ""
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+            if not token or token == "__noauth__":
+                return f"ip:{self._client_ip(request)}"
+            try:
+                from app.auth import verify_token
+
+                sub = verify_token(token)
+                if sub and sub != "__noauth__":
+                    return f"u:{sub}"
+            except Exception:
+                pass
+        return f"ip:{self._client_ip(request)}"
+
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
         if any(path.startswith(p) for p in self.exempt_prefixes):
@@ -117,15 +144,27 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         redis_client: redis_lib.Redis | None = getattr(request.app.state, "redis", None)
         if redis_client is None:
+            # Fail closed for auth endpoints so a Redis outage cannot become an
+            # unrestricted brute-force window. Other paths fall through (the
+            # service is more useful than degraded protection on read APIs).
+            if path in self.AUTH_PATHS:
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "rate_limiter_unavailable"},
+                    headers={"Retry-After": "30"},
+                )
             return await call_next(request)
 
-        ip = self._client_ip(request)
         is_auth_path = path in self.AUTH_PATHS
         capacity = self.auth_capacity if is_auth_path else self.capacity
         refill = self.auth_refill if is_auth_path else self.refill_rate
-        # Shared bucket for all auth paths so an attacker cannot multiply the limit
-        # by spreading attempts across /login, /login/options, /login/verify, etc.
-        key = f"rl:{ip}:auth" if is_auth_path else f"rl:{ip}:{path}"
+        # Auth paths bucket by IP because the user is not authenticated yet.
+        # Other paths bucket by user when a valid bearer token is present, so
+        # one user's burst does not consume a co-located peer's quota.
+        if is_auth_path:
+            key = f"rl:ip:{self._client_ip(request)}:auth"
+        else:
+            key = f"rl:{self._identity(request)}:{path}"
         now = time.time()
 
         try:
@@ -142,12 +181,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             remaining = int(float(result[1]))
             retry_after = int(result[2])
         except Exception as e:
-            # Redis down — fail open rather than block legitimate traffic
+            # Redis hiccup mid-request — fail closed for auth, fail open for
+            # everything else. Avoids letting a Redis blip become a brute-force
+            # window while keeping read APIs available under partial outage.
+            if is_auth_path:
+                logger.warning(f"Rate limiter Redis error on auth path (fail-closed): {e!r}")
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "rate_limiter_unavailable"},
+                    headers={"Retry-After": "30"},
+                )
             logger.debug(f"Rate limiter Redis error (fail-open): {e}")
             return await call_next(request)
 
         if not allowed:
-            logger.warning(f"rate_limited ip={ip} path={path} retry_after={retry_after}s")
+            logger.warning(f"rate_limited key={key} path={path} retry_after={retry_after}s")
             return JSONResponse(
                 status_code=429,
                 content={"error": "rate_limited", "retry_after": retry_after},

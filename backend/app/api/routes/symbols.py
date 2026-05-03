@@ -24,7 +24,19 @@ router = APIRouter(prefix="/api/symbols", tags=["symbols"])
 
 Timeframe = Literal["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
 MLStatus = Literal["pending", "training", "ready", "failed"]
+# Pattern for the canonical symbol identifier. Allows broker-style names like
+# "USDJPYm", "OILCash", "GOLD.fx". The disallowed substring guard below blocks
+# ``..`` so the symbol cannot be used to escape a directory when interpolated
+# into a model file path (``models/{symbol}_signal.pkl``).
 _SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9._-]{2,32}$")
+
+
+def _validate_symbol_name(symbol: str) -> str:
+    if not _SYMBOL_PATTERN.match(symbol):
+        raise ValueError("symbol must be alphanumeric (2-32 chars, . _ - allowed)")
+    if ".." in symbol or symbol.startswith(".") or symbol.startswith("-"):
+        raise ValueError("symbol must not start with '.'/'-' or contain '..'")
+    return symbol
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -113,9 +125,7 @@ class SymbolCreateRequest(SymbolBase):
     @field_validator("symbol")
     @classmethod
     def _check_symbol(cls, v: str) -> str:
-        if not _SYMBOL_PATTERN.match(v):
-            raise ValueError("symbol must be alphanumeric (2-32 chars, . _ - allowed)")
-        return v
+        return _validate_symbol_name(v)
 
 
 class SymbolUpdateRequest(SymbolBase):
@@ -212,6 +222,70 @@ async def _reload_engines_direct(request: Request) -> None:
         logger.warning(f"Direct engine reload failed (pubsub will retry): {e}")
 
 
+# Cap concurrent bootstrap tasks so a burst of /symbols POST requests cannot
+# exhaust the DB connection pool. Each task does a multi-minute ML retrain that
+# holds a session for its duration; without this gate, 5 simultaneous adds eat
+# 5 connections from a pool of ~20.
+_BOOTSTRAP_SEMAPHORE = asyncio.Semaphore(2)
+
+
+async def _bootstrap_new_symbol(app_state, symbol: str, timeframe: str, days: int = 90) -> None:
+    """Seed historical OHLCV + kick off ML retrain for a freshly-created symbol.
+
+    Runs as a background task — caller's HTTP response returns immediately. The
+    collector handles missing-data and partial-fetch cases internally; the ML
+    retrain job updates ``ml_status`` to ``ready`` or ``failed`` on completion.
+
+    Skips entirely when ``hist_collector`` is not registered on ``app_state`` —
+    that indicates a non-production wiring (tests, partial bootstrap) where
+    running seed/retrain would race with the test's own assertions.
+
+    Claims the row by flipping ``ml_status`` to ``'training'`` *before* spending
+    minutes on the seed: avoids paying collector cost when an explicit
+    /retrain has already started for the same symbol.
+
+    Serialized through ``_BOOTSTRAP_SEMAPHORE`` so we do not pile up retrains.
+    """
+    from datetime import timedelta
+
+    collector = getattr(app_state, "hist_collector", None)
+    scheduler = getattr(app_state, "scheduler", None)
+    manager = getattr(app_state, "manager", None)
+
+    if collector is None or scheduler is None or manager is None:
+        return
+
+    async with _BOOTSTRAP_SEMAPHORE:
+        engine = manager.get_engine(symbol)
+        if engine is None:
+            return
+
+        async with async_session() as session:
+            result = await session.execute(
+                SymbolConfig.__table__.update()
+                .where(SymbolConfig.symbol == symbol, SymbolConfig.ml_status == "pending")
+                .values(ml_status="training", updated_at=datetime.utcnow(), updated_by="bootstrap")
+            )
+            await session.commit()
+        if result.rowcount == 0:
+            logger.info(f"Bootstrap [{symbol}] skipped — ml_status already advanced")
+            return
+
+        now = datetime.utcnow()
+        from_date = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+        to_date = now.strftime("%Y-%m-%d")
+        try:
+            stats = await collector.collect(symbol, timeframe, from_date, to_date)
+            logger.info(f"Bootstrap seed [{symbol}]: {stats['new_bars_inserted']} new bars")
+        except Exception as e:
+            logger.warning(f"Bootstrap seed [{symbol}] failed: {e}")
+
+        try:
+            await scheduler._ml_retrain_symbol(symbol, engine)
+        except Exception as e:
+            logger.error(f"Bootstrap retrain [{symbol}] failed: {e}")
+
+
 _PATH_TO_CLASS: tuple[tuple[str, str], ...] = (
     ("cryptocurrenc", "crypto"),
     ("crypto", "crypto"),
@@ -304,6 +378,47 @@ async def get_symbol(symbol: str, db: AsyncSession = Depends(get_db)) -> SymbolR
     return SymbolResponse.model_validate(cfg)
 
 
+async def _validate_asset_class_against_broker(
+    request: Request,
+    broker_symbol: str,
+    declared: str,
+) -> None:
+    """Cross-check declared asset_class with broker's symbol path.
+
+    Raises 400 when the broker reports an unambiguous asset class that conflicts
+    with the user's choice (e.g. user picked ``forex`` for a crypto symbol).
+    Soft-fails when the broker is unreachable so symbol creation is not blocked
+    by transient bridge outages.
+    """
+    connector = getattr(request.app.state, "connector", None)
+    if connector is None:
+        return
+    try:
+        # Cap on bridge latency: validation runs on the API hot path so a
+        # slow bridge must not turn a symbol-create into a 30s wait.
+        spec = await asyncio.wait_for(connector.get_symbol_spec(broker_symbol), timeout=3.0)
+        if not isinstance(spec, dict) or not spec.get("success"):
+            return
+        data = spec.get("data")
+        if not isinstance(data, dict):
+            return
+        path = data.get("path") or ""
+    except Exception as e:
+        logger.debug(f"asset_class validate skipped [{broker_symbol}]: {e}")
+        return
+    if not path:
+        return
+    inferred = _infer_asset_class(path)
+    if inferred != declared:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"asset_class={declared!r} does not match broker path {path!r} "
+                f"(inferred {inferred!r}). Use {inferred!r} or pick a different symbol."
+            ),
+        )
+
+
 @router.post("", dependencies=[Depends(require_auth)])
 async def create_symbol(
     req: SymbolCreateRequest,
@@ -312,6 +427,8 @@ async def create_symbol(
 ) -> SymbolResponse:
     if await svc.get_config(db, req.symbol):
         raise HTTPException(status_code=409, detail=f"Symbol '{req.symbol}' already exists")
+
+    await _validate_asset_class_against_broker(request, req.broker_alias or req.symbol, req.asset_class)
 
     # Check for soft-deleted row with same symbol — revive it instead of INSERT
     # (DB has a unique constraint on `symbol`, so a raw INSERT would fail with
@@ -343,6 +460,16 @@ async def create_symbol(
     await db.refresh(cfg)
     await _publish(request, req.symbol, "created")
     await _reload_engines_direct(request)
+
+    # Kick off historical seed + ML retrain so the new symbol can produce
+    # signals on the next candle close instead of waiting for Monday's
+    # weekly retrain. Runs detached — API response returns immediately.
+    from app.bot.engine import _spawn_background
+
+    _spawn_background(
+        _bootstrap_new_symbol(request.app.state, req.symbol, req.ml_timeframe or req.default_timeframe),
+        name=f"symbol_bootstrap:{req.symbol}",
+    )
 
     logger.info(f"Symbol {action}: {req.symbol}")
     return SymbolResponse.model_validate(cfg)

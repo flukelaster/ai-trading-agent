@@ -98,6 +98,33 @@ from app.strategy.base import BaseStrategy
 _UNSET = object()  # Sentinel for "parameter not passed" (distinct from None)
 
 
+# Default strategy per asset class — picked when a symbol's profile doesn't
+# override ``strategy_default``. Keep conservative, trend-following choices for
+# the original four symbols (ema_crossover) and lean to mean reversion / breakout
+# for asset classes whose price action favors them.
+_DEFAULT_STRATEGY_BY_ASSET_CLASS: dict[str, str] = {
+    "forex": "ema_crossover",
+    "metal": "ema_crossover",
+    "energy": "breakout",
+    "crypto": "breakout",
+    "index": "mean_reversion",
+    "stock": "momentum_rank",
+}
+
+
+def _resolve_default_strategy(profile: dict) -> str:
+    """Pick the strategy name for a freshly-built engine.
+
+    Order: explicit ``profile['strategy_default']`` → asset-class default →
+    ``ema_crossover`` (legacy fallback).
+    """
+    explicit = profile.get("strategy_default")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    asset_class = (profile.get("asset_class") or "").lower()
+    return _DEFAULT_STRATEGY_BY_ASSET_CLASS.get(asset_class, "ema_crossover")
+
+
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
@@ -148,8 +175,19 @@ class BotEngine:
 
         self.circuit_breaker = CircuitBreaker(redis_client, self.symbol)
 
-        # Initialize with defaults — can be updated via API
-        self.strategy: BaseStrategy = get_strategy("ema_crossover", symbol=self.symbol)
+        # Initialize with defaults — can be updated via API. Strategy choice
+        # honors per-profile override and asset-class heuristics so a freshly
+        # added crypto/index/stock symbol doesn't start on an unsuitable
+        # forex-tuned default.
+        default_strategy = _resolve_default_strategy(profile)
+        try:
+            self.strategy: BaseStrategy = get_strategy(default_strategy, symbol=self.symbol)
+        except Exception as e:
+            logger.warning(
+                f"Default strategy {default_strategy!r} unavailable for {self.symbol} ({e}); "
+                f"falling back to ema_crossover"
+            )
+            self.strategy = get_strategy("ema_crossover", symbol=self.symbol)
         self.risk_manager = RiskManager(
             max_risk_per_trade=settings.max_risk_per_trade,
             max_daily_loss=settings.max_daily_loss,
@@ -161,6 +199,7 @@ class BotEngine:
             price_decimals=profile.get("price_decimals", 2),
             sl_atr_mult=profile.get("sl_atr_mult", 1.5),
             tp_atr_mult=profile.get("tp_atr_mult", 2.0),
+            contract_size=profile.get("contract_size", 100),
         )
         self.sentiment_analyzer: NewsSentimentAnalyzer | None = None
         self.context_builder = AIContextBuilder(db_session)
@@ -214,6 +253,7 @@ class BotEngine:
         rm.sl_atr_mult = profile.get("sl_atr_mult", rm.sl_atr_mult)
         rm.tp_atr_mult = profile.get("tp_atr_mult", rm.tp_atr_mult)
         rm.max_lot = profile.get("max_lot", rm.max_lot)
+        rm.contract_size = profile.get("contract_size", rm.contract_size)
 
     def set_sentiment_analyzer(self, analyzer: NewsSentimentAnalyzer):
         self.sentiment_analyzer = analyzer
@@ -250,8 +290,8 @@ class BotEngine:
             cached = await self.sentiment_analyzer.get_latest_sentiment(symbol=self.symbol)
             if cached and cached.label != "neutral":
                 self._last_sentiment = cached.to_dict()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Sentiment cache load skipped [{self.symbol}]: {e}")
 
         strategy_name = self.strategy.name if self.strategy else "ai_autonomous"
         await self._log_event(BotEventType.STARTED, f"Bot started ({strategy_name})")
@@ -408,7 +448,8 @@ class BotEngine:
                     _recent = _res_wr.scalars().all()
                 if len(_recent) >= 10:
                     recent_wr_pref = sum(1 for t in _recent if t.profit > 0) / len(_recent)
-            except Exception:
+            except Exception as _wr_err:
+                logger.warning(f"recent_wr prefetch failed [{self.symbol}] — using default threshold: {_wr_err}")
                 recent_wr_pref = None
 
             if not await self._check_trade_permission(
@@ -684,8 +725,8 @@ class BotEngine:
                 drawdown_pct=dd_pct,
             )
             self._last_effective_threshold = eff_threshold
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Adaptive confidence calc failed [{self.symbol}] — using base threshold: {e}")
 
         can_trade, reason = self.risk_manager.can_open_trade(
             current_positions=len(positions),
@@ -803,14 +844,15 @@ class BotEngine:
             await self._log_event(BotEventType.SIGNAL_DETECTED, f"Regime: {old_regime} → {regime}")
 
         sl_tp = self.risk_manager.calculate_sl_tp(entry_price, signal, atr)
-        sl_pips = abs(entry_price - sl_tp.sl)
+        # Price-unit distance (NOT pips) — RiskManager.calculate_lot_size now
+        # multiplies by contract_size directly so this is what it expects.
+        sl_distance = abs(entry_price - sl_tp.sl)
 
-        # Position sizing: fixed lot or AI-calculated (Kelly/risk-based)
         if self.fixed_lot is not None:
             lot = round(min(self.fixed_lot, self.risk_manager.max_lot), 2)
             lot = max(lot, MIN_LOT)
         else:
-            lot = await self._calculate_position_size(balance, sl_pips, effective_vol_pct)
+            lot = await self._calculate_position_size(balance, sl_distance, effective_vol_pct)
             # Apply warmup ramp-in
             lot = self._apply_warmup(lot)
             # Apply consecutive loss streak reduction
@@ -1001,8 +1043,8 @@ class BotEngine:
             logger.warning(f"Streak adjustment failed [{self.symbol}]: {e!r}")
             try:
                 await self.db.rollback()
-            except Exception:
-                pass
+            except Exception as rb_err:
+                logger.error(f"Streak adjustment rollback failed [{self.symbol}] — db session is dirty: {rb_err!r}")
         return lot
 
     def _create_paper_order(self, order_type: str, lot: float, entry_price: float, sl_tp, comment: str) -> dict:
@@ -1290,8 +1332,8 @@ class BotEngine:
         except Exception as e:
             try:
                 await self.db.rollback()
-            except Exception:
-                pass
+            except Exception as rb_err:
+                logger.error(f"ML feedback rollback failed [{self.symbol}]: {rb_err!r}")
             logger.warning(f"ML feedback update failed: {e}")
 
     async def _sync_paper_positions(self) -> list[dict]:
@@ -1511,8 +1553,8 @@ class BotEngine:
                 logger.warning(f"Trade save attempt {attempt + 1}/{max_retries} failed: {e}")
                 try:
                     await self.db.rollback()
-                except Exception:
-                    pass
+                except Exception as rb_err:
+                    logger.error(f"Trade save rollback failed [{self.symbol}]: {rb_err!r}")
                 if attempt < max_retries - 1:
                     await _asyncio.sleep(2**attempt)
 
@@ -1539,8 +1581,11 @@ class BotEngine:
         except Exception as e:
             logger.error(f"Redis fallback also failed: {e}")
 
-    async def _calculate_position_size(self, balance: float, sl_pips: float, atr_pct: float) -> float:
-        """Use Kelly Criterion if >= 20 closed trades, otherwise fixed risk sizing."""
+    async def _calculate_position_size(self, balance: float, sl_distance: float, atr_pct: float) -> float:
+        """Use Kelly Criterion if >= 20 closed trades, otherwise fixed risk sizing.
+
+        ``sl_distance`` is price-unit distance, fed straight to RiskManager.
+        """
         try:
             from sqlalchemy import select
 
@@ -1563,7 +1608,7 @@ class BotEngine:
                 if win_rate >= KELLY_MIN_WIN_RATE and avg_win > 0 and avg_loss > 0:
                     lot = self.risk_manager.calculate_kelly_size(
                         balance,
-                        sl_pips,
+                        sl_distance,
                         win_rate,
                         avg_win,
                         avg_loss,
@@ -1573,7 +1618,7 @@ class BotEngine:
         except Exception as e:
             logger.warning(f"Kelly sizing failed, using fixed risk: {e}")
 
-        return self.risk_manager.calculate_lot_size(balance, sl_pips, atr_pct=atr_pct)
+        return self.risk_manager.calculate_lot_size(balance, sl_distance, atr_pct=atr_pct)
 
     async def update_strategy(self, name: str, params: dict | None = None):
         self.strategy = get_strategy(name, params, symbol=self.symbol)
@@ -1598,6 +1643,11 @@ class BotEngine:
         if paper_trade is not None:
             self.paper_trade = paper_trade
             logger.info(f"Paper trade mode: {'ON' if paper_trade else 'OFF'}")
+            # Persist per-engine override so reload_engines() re-applies it
+            # when the same symbol's profile changes (avoid silent revert to
+            # global ``settings.paper_trade``).
+            if self._manager is not None:
+                self._manager.set_paper_trade_override(self.symbol, paper_trade)
         if timeframe is not None:
             valid = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
             if timeframe in valid:
@@ -1622,16 +1672,18 @@ class BotEngine:
             logger.info(f"Lot sizing: {'fixed ' + str(self.fixed_lot) if self.fixed_lot else 'auto (AI)'}")
 
     async def _log_event(self, event_type: BotEventType, message: str):
+        """Persist a bot event using an isolated session so concurrent
+        candle/sync/reconcile jobs don't corrupt the engine's shared session
+        (asyncpg refuses concurrent operations on the same connection)."""
+        from app.db.session import async_session as _async_session
+
         try:
-            event = BotEvent(event_type=event_type, message=message)
-            self.db.add(event)
-            await self.db.commit()
+            async with _async_session() as session:
+                event = BotEvent(event_type=event_type, message=message)
+                session.add(event)
+                await session.commit()
         except Exception as e:
-            logger.error(f"Failed to log event: {e}")
-            try:
-                await self.db.rollback()
-            except Exception:
-                pass
+            logger.error(f"Failed to log event [{self.symbol}] {event_type}: {e}")
 
     async def _log_order_audit(
         self,
@@ -1769,8 +1821,8 @@ class BotEngine:
                         logger.warning(f"Failed to adopt orphan {ticket}: {e}")
                         try:
                             await self.db.rollback()
-                        except Exception:
-                            pass
+                        except Exception as rb_err:
+                            logger.error(f"Adopt-orphan rollback failed [{self.symbol}]: {rb_err!r}")
 
                 if adopted:
                     tickets_str = ", ".join(str(t) for t in sorted(adopted))
@@ -1828,5 +1880,5 @@ class BotEngine:
             logger.error(f"Position reconciliation error [{self.symbol}]: {e}")
             try:
                 await self.db.rollback()
-            except Exception:
-                pass
+            except Exception as rb_err:
+                logger.error(f"Reconcile rollback failed [{self.symbol}]: {rb_err!r}")

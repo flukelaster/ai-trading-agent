@@ -18,14 +18,16 @@ class Metrics:
         self._prefix = "metrics:"
 
     async def record_timing(self, name: str, duration_ms: float):
-        """Record a timing measurement."""
+        """Record a timing measurement. Best-effort: a Redis outage must not
+        crash the request handler, but a sustained metric write failure should
+        be visible at DEBUG so observability gaps don't go unnoticed."""
         key = f"{self._prefix}timing:{name}"
         try:
             await self.redis.lpush(key, str(duration_ms))
-            await self.redis.ltrim(key, 0, 999)  # keep last 1000
-            await self.redis.expire(key, 86400)  # 24h TTL
-        except Exception:
-            pass
+            await self.redis.ltrim(key, 0, 999)
+            await self.redis.expire(key, 86400)
+        except Exception as e:
+            logger.debug(f"metric record_timing[{name}] failed: {e!r}")
 
     async def increment_counter(self, name: str, amount: int = 1):
         """Increment a daily counter."""
@@ -33,8 +35,8 @@ class Metrics:
         try:
             await self.redis.incrby(key, amount)
             await self.redis.expire(key, 86400)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"metric increment_counter[{name}] failed: {e!r}")
 
     async def get_summary(self) -> dict:
         """Get summary of all metrics."""

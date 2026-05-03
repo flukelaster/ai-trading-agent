@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.routes.bot import _get_engine, get_manager
 from app.auth import require_auth
 
-router = APIRouter(prefix="/api/positions", tags=["positions"])
+router = APIRouter(prefix="/api/positions", tags=["positions"], dependencies=[Depends(require_auth)])
 
 
 @router.get("")
@@ -32,7 +32,7 @@ async def get_positions(symbol: str | None = Query(None)):
     return {"positions": all_positions}
 
 
-@router.delete("/{ticket}", dependencies=[Depends(require_auth)])
+@router.delete("/{ticket}")
 async def close_position(ticket: int):
     mgr = get_manager()
     # Use first engine's executor (they share the same connector)
