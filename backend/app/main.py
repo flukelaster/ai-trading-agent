@@ -6,7 +6,7 @@ import os
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis_lib
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -48,6 +48,7 @@ from app.api.routes import (
 )
 from app.api.websocket import router as ws_router
 from app.api.ws_runners import router as ws_runners_router
+from app.auth import require_auth
 from app.auth import router as auth_router
 from app.auth_webauthn import router as webauthn_router
 from app.bot.manager import BotManager
@@ -69,6 +70,35 @@ from app.db.session import engine as db_engine
 from app.health import check_health
 from app.mt5.connector import MT5BridgeConnector
 from app.notifications.telegram import TelegramNotifier
+
+
+def _init_sentry() -> None:
+    """Wire Sentry when ``SENTRY_DSN`` is set. Skipped silently otherwise.
+
+    Initialized at import time (before FastAPI app construction) so the SDK can
+    capture errors that happen during module import / lifespan setup, not only
+    request handlers.
+    """
+    if not settings.sentry_dsn:
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.sentry_environment,
+            traces_sample_rate=settings.sentry_traces_sample_rate,
+            send_default_pii=False,
+            integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        )
+        logger.info(f"Sentry initialized (env={settings.sentry_environment!r})")
+    except Exception as e:
+        logger.warning(f"Sentry init failed: {e!r}")
+
+
+_init_sentry()
 
 
 @asynccontextmanager
@@ -168,19 +198,17 @@ async def lifespan(app: FastAPI):
     first_engine = next(iter(manager.engines.values()))
     hist_collector = HistoricalDataCollector(first_engine.market_data, db_session)
 
-    # Initialize macro data service
+    # Initialize macro data service — register with BotManager so newly-added
+    # engines (via /api/symbols hot-reload) receive the same wiring.
     macro_service = MacroDataService(db_session)
     event_calendar = MacroEventCalendar()
-    for engine in manager.engines.values():
-        engine._macro_service = macro_service
-        engine.context_builder.set_macro_service(macro_service)
-        engine.context_builder.set_event_calendar(event_calendar)
+    manager.set_macro_service(macro_service)
+    manager.set_event_calendar(event_calendar)
 
     # Initialize optimizer (uses Claude Agent SDK via AIClient)
     optimizer = StrategyOptimizer(ai_client, db_session)
     optimizer.set_collector(hist_collector)
-    for engine in manager.engines.values():
-        engine._optimizer = optimizer
+    manager.set_optimizer(optimizer)
 
     # Initialize Telegram notifier
     notifier = TelegramNotifier()
@@ -204,6 +232,7 @@ async def lifespan(app: FastAPI):
     app.state.connector = connector
     app.state.redis = redis_client
     app.state.ai_client = ai_client
+    app.state.hist_collector = hist_collector
 
     # Initialize metrics
     from app.metrics import Metrics, set_metrics
@@ -257,7 +286,8 @@ async def lifespan(app: FastAPI):
     )
     app.state.pool_monitor = pool_monitor
 
-    # Start scheduler
+    # Start scheduler — BotScheduler.__init__ calls manager.set_scheduler(self),
+    # which propagates the back-reference to every engine including future ones.
     scheduler = BotScheduler(manager)
     scheduler.set_health_monitor(health_monitor)
     scheduler.start()
@@ -268,8 +298,6 @@ async def lifespan(app: FastAPI):
         id="db_pool_pressure",
         replace_existing=True,
     )
-    for engine in manager.engines.values():
-        engine._scheduler = scheduler
     app.state.scheduler = scheduler
 
     if macro_service.is_configured:
@@ -322,6 +350,21 @@ async def lifespan(app: FastAPI):
     symbols = manager.get_symbols()
     logger.info(f"Trading Bot initialized — symbols: {symbols}")
 
+    # Loud startup banner for safety-critical config so an operator skimming
+    # logs after a deploy can spot dangerous combinations at a glance.
+    if settings.paper_trade:
+        logger.warning("PAPER TRADE MODE — orders are simulated; no broker calls will hit MT5")
+    else:
+        logger.warning(f"LIVE TRADE MODE — rollout={settings.rollout_mode!r}; orders will hit broker")
+    if not (settings.telegram_bot_token and settings.telegram_chat_id):
+        logger.warning("Telegram alerts DISABLED — set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID to enable")
+    if not settings.fred_api_key:
+        logger.info("FRED macro data DISABLED — set FRED_API_KEY for macro features")
+    if not settings.trusted_host_list:
+        logger.warning("TRUSTED_HOSTS not set — Host header validation disabled (set in production)")
+    if not settings.auth_password_hash:
+        logger.warning("AUTH_PASSWORD_HASH empty — API auth DISABLED (do not run in production)")
+
     yield
 
     # Shutdown
@@ -363,10 +406,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        # CSP: API serves JSON in prod (docs gated by ENABLE_API_DOCS). Drop
+        # both script + style 'unsafe-inline'. If a future endpoint serves an
+        # HTML error page that needs inline style, switch that endpoint to
+        # JSON or use a per-response nonce instead of broadening CSP again.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
+            "style-src 'self'; "
             "img-src 'self' data: blob:; "
             "connect-src 'self' https: wss:; "
             "frame-ancestors 'none'"
@@ -375,6 +422,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Trust only configured hostnames in production (blocks spoofed Host headers).
+# Empty list disables the middleware entirely so dev / tests are not affected.
+if settings.trusted_host_list:
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list)
 
 # Phase 1 observability: warn on long-held DB connections per request
 app.add_middleware(
@@ -441,17 +495,29 @@ app.include_router(ws_runners_router)
 async def health():
     mgr = app.state.manager
     first_engine = next(iter(mgr.engines.values())) if mgr.engines else None
-    return await check_health(
+    payload = await check_health(
         first_engine,
         app.state.connector,
         app.state.redis,
         app.state.ai_client,
     )
+    # Return 503 when degraded so platform liveness probes (Railway, k8s) can
+    # actually evict / restart the pod. Plain 200 every time gave probes
+    # nothing to act on, hiding outages.
+    if payload.get("status") != "ok":
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(payload, status_code=503)
+    return payload
 
 
-@app.get("/health/pool")
+@app.get("/health/pool", dependencies=[Depends(require_auth)])
 async def health_pool():
-    """Live DB pool stats + recent slow queries + long-hold requests."""
+    """Live DB pool stats + recent slow queries + long-hold requests.
+
+    Auth-gated: leaks DB topology, partial SQL, and request-path latencies that
+    are useful for an attacker fingerprinting the deployment.
+    """
     stats = get_pool_stats(db_engine)
     monitor = getattr(app.state, "pool_monitor", None)
     return {

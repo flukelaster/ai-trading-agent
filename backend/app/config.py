@@ -177,7 +177,11 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # AI (Claude Agent SDK uses CLAUDE_CODE_OAUTH_TOKEN env var directly)
+    # AI (Claude Agent SDK uses CLAUDE_CODE_OAUTH_TOKEN env var directly).
+    # Declared but unused: kept so older deployments with ANTHROPIC_API_KEY in
+    # their .env do not fail Settings validation under strict ``extra=forbid``.
+    # Actual API client is built around the SDK's OAuth flow.
+    anthropic_api_key: str = ""
 
     # Binance (for BTCUSD — uses Binance API instead of MT5)
     binance_api_key: str = ""
@@ -280,6 +284,12 @@ class Settings(BaseSettings):
     secret_key: str = ""
     cors_origins: str = "http://localhost:3000"
 
+    # Error reporting (Sentry). Empty DSN disables the integration entirely so
+    # dev / CI environments do not ship breadcrumbs.
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"
+    sentry_traces_sample_rate: float = 0.05
+
     @property
     def symbol_list(self) -> list[str]:
         return [s.strip() for s in self.symbols.split(",") if s.strip()]
@@ -288,9 +298,21 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]
 
-    # DB connection pool
-    db_pool_size: int = 20
-    db_max_overflow: int = 30
+    # Trusted Host header allowlist. Empty = allow all (dev). Set in prod to
+    # block Host header injection / cache poisoning via spoofed forwarded
+    # hosts. Comma-separated, e.g. "myapp.up.railway.app,localhost".
+    trusted_hosts: str = ""
+
+    @property
+    def trusted_host_list(self) -> list[str]:
+        return [h.strip() for h in self.trusted_hosts.split(",") if h.strip()]
+
+    # DB connection pool — sized for Railway Postgres Hobby (25-conn cap).
+    # Total max (pool_size + max_overflow) must stay under the plan's
+    # connection limit minus headroom for migrations / background tools.
+    # Override via env on Pro plans where the cap is higher.
+    db_pool_size: int = 8
+    db_max_overflow: int = 12
     db_pool_timeout: int = 10
     db_pool_recycle: int = 1800
 

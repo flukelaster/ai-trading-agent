@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
+from sqlalchemy.orm import defer
 
 from app.auth import require_auth
 from app.config import resolve_broker_symbol, settings
@@ -143,6 +144,8 @@ async def train_model(req: TrainRequest):
             )
 
             split_idx = int(len(X) * (1 - req.test_size))
+            from app.ml.integrity import compute_model_digest
+
             log = MLModelLog(
                 model_name=model_name,
                 timeframe=req.timeframe,
@@ -154,6 +157,7 @@ async def train_model(req: TrainRequest):
                 feature_importance=json.dumps(result.feature_importance),
                 model_path=model_path,
                 model_binary=model_bytes,
+                model_digest=compute_model_digest(model_bytes),
                 is_active=True,
             )
             _db_session.add(log)
@@ -179,15 +183,22 @@ async def model_status(symbol: str = Query("GOLD")):
 
     model_prefix = f"lightgbm_{symbol.lower()}"
 
-    # Try symbol-specific model first
+    # Status reads metadata only — defer the LargeBinary blob (10-50MB per row)
+    # so /status doesn't pull the full model into memory each call.
+    blob_defer = defer(MLModelLog.model_binary)
+
     result = await _db_session.execute(
-        select(MLModelLog).where(MLModelLog.is_active, MLModelLog.model_name.like(f"{model_prefix}%")).limit(1)
+        select(MLModelLog)
+        .where(MLModelLog.is_active, MLModelLog.model_name.like(f"{model_prefix}%"))
+        .options(blob_defer)
+        .limit(1)
     )
     log = result.scalar_one_or_none()
 
-    # Fallback to any active model
     if not log:
-        result = await _db_session.execute(select(MLModelLog).where(MLModelLog.is_active).limit(1))
+        result = await _db_session.execute(
+            select(MLModelLog).where(MLModelLog.is_active).options(blob_defer).limit(1)
+        )
         log = result.scalar_one_or_none()
 
     if not log:
@@ -222,13 +233,25 @@ async def predict_now(symbol: str = Query("GOLD")):
     symbol = resolve_broker_symbol(symbol)
     model_prefix = f"lightgbm_{symbol.lower()}"
 
-    # Try loading symbol-specific model from file first
+    # Try loading symbol-specific model from file first. Resolve the path and
+    # confirm it is inside ``models/`` so a malformed symbol cannot escape the
+    # directory and joblib.load() arbitrary local files (pickle = RCE).
     from pathlib import Path
 
-    model_data = None
-    symbol_path = f"models/{symbol.lower()}_signal.pkl"
+    from app.api.routes.symbols import _validate_symbol_name
 
-    if Path(symbol_path).exists():
+    model_data = None
+    try:
+        _validate_symbol_name(symbol)
+    except ValueError:
+        return {"error": "Invalid symbol name"}
+
+    models_root = Path("models").resolve()
+    symbol_path = (models_root / f"{symbol.lower()}_signal.pkl").resolve()
+    if models_root not in symbol_path.parents and symbol_path.parent != models_root:
+        return {"error": "Path traversal rejected"}
+
+    if symbol_path.exists():
         model_data = joblib.load(symbol_path)
     elif Path(settings.ml_model_path).exists():
         model_data = joblib.load(settings.ml_model_path)
@@ -258,6 +281,10 @@ async def predict_now(symbol: str = Query("GOLD")):
             )
             log = result.scalar_one_or_none()
         if log and log.model_binary:
+            from app.ml.integrity import verify_model_digest
+
+            if not verify_model_digest(log.model_binary, log.model_digest, context=f"predict[{symbol}]"):
+                return {"error": "model integrity check failed — refuse to load (re-train required)"}
             buf = io.BytesIO(log.model_binary)
             model_data = joblib.load(buf)
 
@@ -308,6 +335,7 @@ async def predict_now(symbol: str = Query("GOLD")):
                 MLModelLog.is_active,
                 MLModelLog.model_name.like(f"{model_prefix}%"),
             )
+            .options(defer(MLModelLog.model_binary))
             .limit(1)
         )
         model_log = model_result.scalar_one_or_none()
@@ -346,6 +374,7 @@ async def get_drift_report(symbol: str = Query("GOLD")):
     result = await _db_session.execute(
         select(MLModelLog)
         .where(MLModelLog.is_active, MLModelLog.model_name.like(f"lightgbm_{symbol.lower()}%"))
+        .options(defer(MLModelLog.model_binary))
         .limit(1)
     )
     model_log = result.scalar_one_or_none()

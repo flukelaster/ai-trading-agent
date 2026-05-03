@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.auth import require_auth
 
-router = APIRouter(prefix="/api/data", tags=["data"])
+router = APIRouter(prefix="/api/data", tags=["data"], dependencies=[Depends(require_auth)])
 
 _collector = None
 
@@ -30,7 +30,7 @@ class CollectRequest(BaseModel):
     to_date: str
 
 
-@router.post("/collect", dependencies=[Depends(require_auth)])
+@router.post("/collect")
 async def collect_data(req: CollectRequest):
     from app.config import resolve_broker_symbol
 

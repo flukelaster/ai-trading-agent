@@ -21,12 +21,17 @@ def init_webhooks(manager):
 
 
 class TradingViewAlert(BaseModel):
-    symbol: str
-    action: str  # "BUY" or "SELL"
+    symbol: str = Field(min_length=2, max_length=32, pattern=r"^[A-Za-z0-9._-]+$")
+    action: str = Field(pattern=r"^(?i:BUY|SELL)$")
     price: float | None = None
-    key: str  # webhook secret for validation
+    key: str = Field(min_length=8, max_length=256)
     timestamp: int | None = Field(None, description="Unix seconds — reject if older than WEBHOOK_MAX_AGE_SECONDS")
-    nonce: str | None = Field(None, description="Unique per-alert token — rejected on replay")
+    nonce: str | None = Field(
+        None,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description="Unique per-alert token — rejected on replay",
+    )
 
 
 WEBHOOK_MAX_AGE_SECONDS = 60
@@ -43,19 +48,20 @@ async def tradingview_webhook(alert: TradingViewAlert, request: Request):
       timestamp — unix seconds, rejected if older than WEBHOOK_MAX_AGE_SECONDS
       nonce     — unique token, rejected on replay within _WEBHOOK_NONCE_TTL_SECONDS
     """
-    # Validate webhook key
+    # Validate webhook key. Fall back to the encrypted Secret row if no env var
+    # is set so operators can rotate the key via the UI without redeploying.
     expected_key = os.environ.get("TRADINGVIEW_WEBHOOK_KEY", "")
     if not expected_key:
-        # Try vault
         try:
-            from app.vault import VaultService
+            from app.db.session import async_session, get_secret_or_none
+            from app.vault import vault as vault_singleton
 
-            vault_key = os.environ.get("VAULT_MASTER_KEY", "")
-            if vault_key:
-                vault = VaultService(vault_key)
-                expected_key = await vault.get("tradingview_webhook_key") or ""
-        except Exception:
-            pass
+            async with async_session() as db:
+                secret = await get_secret_or_none(db, "tradingview_webhook_key")
+                if secret and secret.encrypted_value and secret.nonce:
+                    expected_key = vault_singleton.decrypt(secret.encrypted_value, secret.nonce) or ""
+        except Exception as e:
+            logger.warning(f"webhook secret lookup failed: {type(e).__name__}")
 
     if not expected_key:
         raise HTTPException(status_code=503, detail="TradingView webhook key not configured")

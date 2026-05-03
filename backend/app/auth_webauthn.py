@@ -64,7 +64,7 @@ ORIGIN = settings.webauthn_origin if hasattr(settings, "webauthn_origin") else "
 
 def _create_jwt(owner_id: int, jti: str) -> str:
     """Create a JWT token for session."""
-    from jose import jwt
+    import jwt
 
     expire = datetime.now(UTC) + timedelta(hours=settings.jwt_expire_hours)
     payload = {"sub": str(owner_id), "jti": jti, "exp": expire}
@@ -73,7 +73,7 @@ def _create_jwt(owner_id: int, jti: str) -> str:
 
 def _verify_jwt(token: str) -> dict | None:
     """Verify JWT and return payload."""
-    from jose import jwt
+    import jwt
 
     try:
         return jwt.decode(token, settings.secret_key, algorithms=["HS256"])
@@ -106,19 +106,48 @@ class RegisterOptionsRequest(BaseModel):
     display_name: str = "Admin"
 
 
+def _check_setup_token(req_header: str | None) -> None:
+    """Gate the first-time registration with a one-time setup token.
+
+    Without this, a fresh deployment that exposes /api/auth/register/options
+    publicly lets the first remote attacker register their own passkey before
+    the legitimate operator. Operator generates a random token and sets it as
+    ``WEBAUTHN_SETUP_TOKEN`` before deploy; deletes the env var after first
+    successful setup.
+
+    No-op once setup is complete (subsequent passkey adds use existing-session
+    auth at the network edge).
+    """
+    import os
+
+    expected = os.getenv("WEBAUTHN_SETUP_TOKEN", "")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="WebAuthn registration disabled. Set WEBAUTHN_SETUP_TOKEN env var to enable initial setup.",
+        )
+    if not req_header or not isinstance(req_header, str):
+        raise HTTPException(status_code=401, detail="Missing X-Setup-Token header")
+    import hmac as _hmac
+
+    if not _hmac.compare_digest(req_header, expected):
+        raise HTTPException(status_code=401, detail="Invalid setup token")
+
+
 @router.post("/register/options")
 async def register_options(req: RegisterOptionsRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    """Generate WebAuthn registration challenge. Only works if setup not complete."""
+    """Generate WebAuthn registration challenge. First-time setup requires a
+    matching ``X-Setup-Token`` header so a public deployment cannot be hijacked
+    by whoever reaches /register/options first."""
     from webauthn import generate_registration_options
     from webauthn.helpers.structs import AuthenticatorSelectionCriteria, ResidentKeyRequirement
 
-    # Check if already set up
     result = await db.execute(select(Owner).limit(1))
     owner = result.scalar_one_or_none()
-    if owner and owner.is_setup_complete:
-        # Allow adding more passkeys if setup is complete (for backup devices)
-        pass
-    elif not owner:
+    if not owner or not owner.is_setup_complete:
+        _check_setup_token(request.headers.get("x-setup-token"))
+
+    if not owner:
         owner = Owner(display_name=req.display_name)
         db.add(owner)
         await db.commit()
@@ -178,7 +207,12 @@ async def register_verify(req: RegisterVerifyRequest, request: Request, db: Asyn
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Registration failed: {e}") from e
 
-    # Store credential
+    # Bound the bytes we accept from the authenticator. Any conformant client
+    # produces credential_id ≤ 256 bytes and public_key ≤ 1 KB; larger payloads
+    # are anomalous and a cheap DoS vector against the LargeBinary column.
+    if len(verification.credential_id) > 1024 or len(verification.credential_public_key) > 4096:
+        raise HTTPException(status_code=400, detail="Credential payload too large")
+
     new_cred = WebAuthnCredential(
         owner_id=req.owner_id,
         credential_id=verification.credential_id,
@@ -226,15 +260,20 @@ async def login_options(request: Request, db: AsyncSession = Depends(get_db)):
         allow_credentials=[PublicKeyCredentialDescriptor(id=c.credential_id) for c in creds],
     )
 
-    await _store_challenge(request, "login", options.challenge)
+    # Per-attempt challenge key prevents two concurrent /login/options calls
+    # from clobbering each other's challenge in Redis. Client must echo this
+    # back at /login/verify so we look up the matching challenge.
+    challenge_key = secrets.token_urlsafe(16)
+    await _store_challenge(request, f"login:{challenge_key}", options.challenge)
 
     from webauthn.helpers import options_to_json
 
-    return {"options": options_to_json(options)}
+    return {"options": options_to_json(options), "challenge_key": challenge_key}
 
 
 class LoginVerifyRequest(BaseModel):
     credential: dict
+    challenge_key: str
 
 
 @router.post("/login/verify")
@@ -247,7 +286,9 @@ async def login_verify(
     from webauthn import verify_authentication_response
     from webauthn.helpers import parse_authentication_credential_json
 
-    challenge = await _pop_challenge(request, "login")
+    if not req.challenge_key or len(req.challenge_key) > 64:
+        raise HTTPException(status_code=400, detail="Missing or invalid challenge_key")
+    challenge = await _pop_challenge(request, f"login:{req.challenge_key}")
     if not challenge:
         raise HTTPException(status_code=400, detail="Login challenge expired")
 

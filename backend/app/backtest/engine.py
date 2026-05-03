@@ -138,8 +138,8 @@ class BacktestEngine:
                     else:
                         entry_price -= half_spread
                 sl_tp = self.risk_manager.calculate_sl_tp(entry_price, signal, atr)
-                sl_pips = abs(entry_price - sl_tp.sl)
-                lot = self.risk_manager.calculate_lot_size(balance, sl_pips)
+                sl_distance = abs(entry_price - sl_tp.sl)
+                lot = self.risk_manager.calculate_lot_size(balance, sl_distance)
 
                 open_trade = {
                     "type": "BUY" if signal == 1 else "SELL",

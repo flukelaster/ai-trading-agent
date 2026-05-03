@@ -41,6 +41,14 @@ class BotManager:
         # Optional back-reference set by BotScheduler so reload_engines() can
         # re-register cron candle jobs for newly-added symbols.
         self._scheduler = None
+        # Cached per-process services that newly-added engines need so they
+        # reach feature parity with engines wired during lifespan startup.
+        self._macro_service = None
+        self._event_calendar = None
+        self._optimizer = None
+        # Per-engine paper_trade overrides so a symbol toggled paper via
+        # /api/bot/settings persists across hot-reloads of the same engine.
+        self._paper_trade_overrides: dict[str, bool] = {}
         # Prefer DB-sourced enable flags; fall back to env-var symbol list when empty.
         db_enabled = [s for s, p in SYMBOL_PROFILES.items() if p.get("is_enabled") is True and "canonical" not in p]
         initial = db_enabled or settings.symbol_list
@@ -75,17 +83,51 @@ class BotManager:
 
     def set_scheduler(self, scheduler) -> None:
         self._scheduler = scheduler
+        for engine in self.engines.values():
+            engine._scheduler = scheduler
+
+    def set_macro_service(self, macro_service) -> None:
+        self._macro_service = macro_service
+        for engine in self.engines.values():
+            engine._macro_service = macro_service
+            engine.context_builder.set_macro_service(macro_service)
+
+    def set_event_calendar(self, event_calendar) -> None:
+        self._event_calendar = event_calendar
+        for engine in self.engines.values():
+            engine.context_builder.set_event_calendar(event_calendar)
+
+    def set_optimizer(self, optimizer) -> None:
+        self._optimizer = optimizer
+        for engine in self.engines.values():
+            engine._optimizer = optimizer
+
+    def set_paper_trade_override(self, symbol: str, paper_trade: bool | None) -> None:
+        """Persist a per-engine paper_trade flag so reload_engines re-applies it.
+
+        ``None`` clears the override (engine reverts to global ``settings.paper_trade``).
+        """
+        if paper_trade is None:
+            self._paper_trade_overrides.pop(symbol, None)
+        else:
+            self._paper_trade_overrides[symbol] = paper_trade
 
     async def start(self, symbol: str | None = None):
-        """Start one or all engines."""
+        """Start one or all engines. Failures are logged per-engine and do not
+        abort the rest (gather without return_exceptions cancels siblings on
+        first error — broker hiccups must not knock out healthy engines)."""
         if symbol:
             engine = self.engines.get(symbol)
             if engine:
                 await engine.start()
             else:
                 logger.warning(f"BotManager: unknown symbol {symbol}")
-        else:
-            await asyncio.gather(*(e.start() for e in self.engines.values()))
+            return
+        engines = list(self.engines.items())
+        results = await asyncio.gather(*(e.start() for _, e in engines), return_exceptions=True)
+        for (sym, _), result in zip(engines, results, strict=True):
+            if isinstance(result, Exception):
+                logger.error(f"BotManager.start [{sym}] failed: {result!r}")
 
     async def stop(self, symbol: str | None = None):
         """Stop one or all engines."""
@@ -93,8 +135,12 @@ class BotManager:
             engine = self.engines.get(symbol)
             if engine:
                 await engine.stop()
-        else:
-            await asyncio.gather(*(e.stop() for e in self.engines.values()))
+            return
+        engines = list(self.engines.items())
+        results = await asyncio.gather(*(e.stop() for _, e in engines), return_exceptions=True)
+        for (sym, _), result in zip(engines, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning(f"BotManager.stop [{sym}] failed: {result!r}")
 
     async def emergency_stop(self, symbol: str | None = None) -> dict:
         """Emergency stop — close all positions for one or all symbols."""
@@ -195,6 +241,17 @@ class BotManager:
             engine.set_sentiment_analyzer(self._sentiment_analyzer)
         if self._notifier:
             engine.set_notifier(self._notifier)
+        if self._macro_service:
+            engine._macro_service = self._macro_service
+            engine.context_builder.set_macro_service(self._macro_service)
+        if self._event_calendar is not None:
+            engine.context_builder.set_event_calendar(self._event_calendar)
+        if self._optimizer is not None:
+            engine._optimizer = self._optimizer
+        if self._scheduler is not None:
+            engine._scheduler = self._scheduler
+        if symbol in self._paper_trade_overrides:
+            engine.paper_trade = self._paper_trade_overrides[symbol]
         return engine
 
     async def reload_engines(self) -> dict:
@@ -202,7 +259,14 @@ class BotManager:
 
         Serialized by _engines_lock so concurrent pubsub + direct reload calls
         cannot produce partial dict state visible to iterating scheduler jobs.
+
+        Newly added engines auto-start when any pre-existing engine was RUNNING,
+        so toggling a symbol on at /symbols starts trading without a separate
+        /api/bot/start call. Auto-start runs *inside* the lock to prevent a
+        concurrent reload from popping the engine before its start() completes.
         """
+        from app.bot.engine import BotState
+
         async with self._engines_lock:
             enabled = {s for s, p in SYMBOL_PROFILES.items() if p.get("is_enabled") is True and "canonical" not in p}
             if not enabled:
@@ -213,13 +277,18 @@ class BotManager:
             to_remove = current - enabled
             to_update = enabled & current
 
+            was_active = any(e.state in (BotState.RUNNING, BotState.PAUSED) for e in self.engines.values())
+
             stop_coros = [self.engines.pop(s).stop() for s in to_remove]
             if stop_coros:
                 await asyncio.gather(*stop_coros, return_exceptions=True)
 
+            new_engines: list[BotEngine] = []
             for symbol in to_add:
                 try:
-                    self.engines[symbol] = self._build_engine(symbol, SYMBOL_PROFILES.get(symbol, {}))
+                    engine = self._build_engine(symbol, SYMBOL_PROFILES.get(symbol, {}))
+                    self.engines[symbol] = engine
+                    new_engines.append(engine)
                 except Exception as e:
                     logger.error(f"BotManager: create {symbol} failed: {e}")
 
@@ -228,11 +297,24 @@ class BotManager:
                 if profile:
                     self.engines[symbol].apply_profile(profile)
 
+            started: list[str] = []
+            if was_active and new_engines:
+                start_results = await asyncio.gather(
+                    *(e.start() for e in new_engines),
+                    return_exceptions=True,
+                )
+                for engine, result in zip(new_engines, start_results, strict=True):
+                    if isinstance(result, Exception):
+                        logger.warning(f"BotManager: auto-start {engine.symbol} failed: {result}")
+                    else:
+                        started.append(engine.symbol)
+
             summary = {
                 "added": sorted(to_add),
                 "removed": sorted(to_remove),
                 "updated": sorted(to_update),
                 "active": sorted(self.engines.keys()),
+                "auto_started": sorted(started),
             }
 
         if self._scheduler is not None and (to_add or to_remove):

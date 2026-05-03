@@ -23,45 +23,45 @@ class TestCalculateLotSize:
         )
 
     def test_basic_lot_size(self):
-        lot = self.rm.calculate_lot_size(balance=10000, sl_pips=20)
+        lot = self.rm.calculate_lot_size(balance=10000, sl_distance=20)
         assert lot > 0
         assert lot <= self.rm.max_lot
 
     def test_zero_sl_returns_min_lot(self):
-        lot = self.rm.calculate_lot_size(balance=10000, sl_pips=0)
+        lot = self.rm.calculate_lot_size(balance=10000, sl_distance=0)
         assert lot == MIN_LOT
 
     def test_negative_sl_returns_min_lot(self):
-        lot = self.rm.calculate_lot_size(balance=10000, sl_pips=-5)
+        lot = self.rm.calculate_lot_size(balance=10000, sl_distance=-5)
         assert lot == MIN_LOT
 
     def test_lot_capped_at_max(self):
         rm = RiskManager(max_risk_per_trade=0.5, max_lot=0.5)
-        lot = rm.calculate_lot_size(balance=100000, sl_pips=1)
+        lot = rm.calculate_lot_size(balance=100000, sl_distance=1)
         assert lot <= 0.5
 
     def test_lot_floor_at_min(self):
-        lot = self.rm.calculate_lot_size(balance=10, sl_pips=100)
+        lot = self.rm.calculate_lot_size(balance=10, sl_distance=100)
         assert lot == MIN_LOT
 
     def test_high_volatility_reduces_lot(self):
-        lot_normal = self.rm.calculate_lot_size(balance=10000, sl_pips=20, atr_pct=None)
-        lot_high_vol = self.rm.calculate_lot_size(balance=10000, sl_pips=20, atr_pct=HIGH_VOL_THRESHOLD + 0.1)
+        lot_normal = self.rm.calculate_lot_size(balance=10000, sl_distance=20, atr_pct=None)
+        lot_high_vol = self.rm.calculate_lot_size(balance=10000, sl_distance=20, atr_pct=HIGH_VOL_THRESHOLD + 0.1)
         assert lot_high_vol <= lot_normal
 
     def test_low_volatility_increases_lot(self):
-        lot_normal = self.rm.calculate_lot_size(balance=10000, sl_pips=20, atr_pct=0.3)
-        lot_low_vol = self.rm.calculate_lot_size(balance=10000, sl_pips=20, atr_pct=LOW_VOL_THRESHOLD - 0.1)
+        lot_normal = self.rm.calculate_lot_size(balance=10000, sl_distance=20, atr_pct=0.3)
+        lot_low_vol = self.rm.calculate_lot_size(balance=10000, sl_distance=20, atr_pct=LOW_VOL_THRESHOLD - 0.1)
         assert lot_low_vol >= lot_normal
 
     def test_slippage_and_commission(self):
-        lot_default = self.rm.calculate_lot_size(balance=10000, sl_pips=20)
-        lot_high_slip = self.rm.calculate_lot_size(balance=10000, sl_pips=20, slippage_pips=10.0)
+        lot_default = self.rm.calculate_lot_size(balance=10000, sl_distance=20)
+        lot_high_slip = self.rm.calculate_lot_size(balance=10000, sl_distance=20, slippage_pips=10.0)
         assert lot_high_slip < lot_default
 
     def test_custom_pip_value(self):
-        lot = self.rm.calculate_lot_size(balance=10000, sl_pips=20, pip_value=10.0)
-        lot_default = self.rm.calculate_lot_size(balance=10000, sl_pips=20, pip_value=1.0)
+        lot = self.rm.calculate_lot_size(balance=10000, sl_distance=20, pip_value=10.0)
+        lot_default = self.rm.calculate_lot_size(balance=10000, sl_distance=20, pip_value=1.0)
         assert lot < lot_default  # higher pip_value → smaller lot
 
 
@@ -72,7 +72,7 @@ class TestCalculateKellySize:
     def test_kelly_basic(self):
         lot = self.rm.calculate_kelly_size(
             balance=10000,
-            sl_pips=20,
+            sl_distance=20,
             win_rate=0.6,
             avg_win=100,
             avg_loss=50,
@@ -83,31 +83,31 @@ class TestCalculateKellySize:
     def test_kelly_zero_loss_falls_back(self):
         lot = self.rm.calculate_kelly_size(
             balance=10000,
-            sl_pips=20,
+            sl_distance=20,
             win_rate=0.6,
             avg_win=100,
             avg_loss=0,
         )
         # Falls back to calculate_lot_size
-        expected = self.rm.calculate_lot_size(balance=10000, sl_pips=20)
+        expected = self.rm.calculate_lot_size(balance=10000, sl_distance=20)
         assert lot == expected
 
     def test_kelly_zero_win_rate_falls_back(self):
         lot = self.rm.calculate_kelly_size(
             balance=10000,
-            sl_pips=20,
+            sl_distance=20,
             win_rate=0,
             avg_win=100,
             avg_loss=50,
         )
-        expected = self.rm.calculate_lot_size(balance=10000, sl_pips=20)
+        expected = self.rm.calculate_lot_size(balance=10000, sl_distance=20)
         assert lot == expected
 
     def test_kelly_negative_kelly_uses_min(self):
         # Bad strategy: low win rate
         lot = self.rm.calculate_kelly_size(
             balance=10000,
-            sl_pips=20,
+            sl_distance=20,
             win_rate=0.2,
             avg_win=10,
             avg_loss=100,
@@ -118,7 +118,7 @@ class TestCalculateKellySize:
     def test_kelly_capped_at_max_risk(self):
         lot = self.rm.calculate_kelly_size(
             balance=10000,
-            sl_pips=20,
+            sl_distance=20,
             win_rate=0.9,
             avg_win=500,
             avg_loss=10,
@@ -129,7 +129,7 @@ class TestCalculateKellySize:
     def test_kelly_zero_sl(self):
         lot = self.rm.calculate_kelly_size(
             balance=10000,
-            sl_pips=0,
+            sl_distance=0,
             win_rate=0.6,
             avg_win=100,
             avg_loss=50,

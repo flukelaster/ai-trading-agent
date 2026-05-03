@@ -172,13 +172,17 @@ railway vars set -s backend "KEY=value"  # set env var
 
 ## Important Patterns
 
-- **Auth**: Using Bearer token auth (username/password). `AuthMiddleware` (WebAuthn) disabled in `main.py`. `require_auth` dependency checks `Authorization: Bearer <token>` header. Frontend stores token in localStorage. Tests bypass auth via `AUTH_PASSWORD_HASH=""` in conftest.py.
-- **DB session**: Shared session can get dirty — always `rollback()` before new operations in long-lived services
-- **SYMBOL_PROFILES**: Per-symbol config in config.py (timeframe, pip_value, SL/TP mults, ML defaults)
+- **Auth**: Using Bearer token auth (username/password). Login uses constant-time bcrypt regardless of username match (timing-oracle fix). `AuthMiddleware` (WebAuthn) disabled in `main.py`. `require_auth` dependency checks `Authorization: Bearer <token>` header. Frontend stores token in localStorage. Tests bypass auth via `AUTH_PASSWORD_HASH=""` in conftest.py.
+- **Router auth**: Use `app.api.router_factory.make_authed_router(prefix, tags)` for new routers — applies `Depends(require_auth)` at router level so endpoints can not silently ship unauthenticated.
+- **DB session**: Shared `BotEngine.db` is the legacy long-lived session. New code MUST use `app.db.session.transaction()` (commits + rolls back automatically) or `async_session()` directly. `_log_event` already opens its own session per call to avoid asyncpg "concurrent operations" errors when multiple scheduler jobs touch the engine simultaneously.
+- **Lot sizing**: `RiskManager.calculate_lot_size(balance, sl_distance, ...)` and `calculate_kelly_size(...)` take a **price-unit distance** (NOT pips). Formula uses `contract_size` directly — passing the wrong unit silently mis-sizes trades. Originally used `pip_value × 100`, only correct for GOLD; broken for OIL / BTC / USDJPY (10×–100× off).
+- **SYMBOL_PROFILES**: Per-symbol config in config.py (timeframe, pip_value, SL/TP mults, ML defaults). Use `AssetClass` enum (in `app.market.sessions`) instead of raw strings when comparing or constructing.
 - **Constants**: All magic numbers in `constants.py` — never hardcode
-- **Tests**: 444 tests across 27 files. SQLite in-memory for DB, fakeredis, mock MT5 connector. Auth disabled via `os.environ["AUTH_PASSWORD_HASH"] = ""` in conftest.py. SDK mocks use `type` attribute instead of `isinstance`.
+- **Tests**: 454+ tests across 27 files. SQLite in-memory for DB, fakeredis, mock MT5 connector. Auth disabled via `os.environ["AUTH_PASSWORD_HASH"] = ""` in conftest.py. SDK mocks use `type` attribute instead of `isinstance`. mcp-dependent tests need `claude-agent-sdk` package.
 - **Runner**: `RunnerManager` init in `main.py` lifespan. Uses `ProcessRunnerBackend` by default (Railway-compatible). Heartbeat monitor runs as APScheduler job. Job queue uses dual Redis+DB storage. Runner logs streamed via Redis pub/sub to WebSocket.
-- **Coverage**: CI threshold 25% (overall ~29%, critical paths ~89%)
+- **DB pool**: Default `db_pool_size=8`, `max_overflow=12` (Railway Hobby plan caps connections at 25). Bump in env on Pro plans.
+- **Daily reset**: Per-asset-class hour from `app.market.sessions._RULES` — forex/metal/energy reset at 22 UTC, index 22, stock 21, crypto 0. Scheduler registers one cron job per unique reset hour across active engines.
+- **Coverage**: CI threshold 30% (overall ~29%, critical paths ~89%)
 - **Telegram**: Notifications for trade signals, AI analysis, system alerts. Thai language alerts.
 
 ## Known Issues
@@ -192,6 +196,12 @@ railway vars set -s backend "KEY=value"  # set env var
 - Deploy: Railway uses Dockerfile CMD, NOT Procfile — always edit `backend/Dockerfile` line 33 for startup changes
 - Deploy: Alembic migration can hang on table lock during zero-downtime deploy (old instance holds locks) — mitigated with `timeout 30` in CMD + `lock_timeout = 5s` in alembic/env.py and lifespan
 - Alembic: Never reuse revision IDs — each migration file must have a unique revision and correct down_revision chain
+- Alembic: `s9t0u1v2w3x4` adds performance indexes (idempotent, fast). `t0u1v2w3x4y5` converts `JSON` columns to `JSONB` — runs `ALTER TYPE jsonb USING col::jsonb` per column, takes ACCESS EXCLUSIVE lock, **maintenance window required** for large tables.
+- Backups: APScheduler runs `scripts/backup_db.sh` daily at 02:30 UTC when `ENABLE_DB_BACKUPS=1` is set. No-op otherwise so dev environments stay clean.
+- Production env vars: `TRUSTED_HOSTS` (comma-separated, blocks Host header injection), `VAULT_SALT` (random per deployment), `ENABLE_DB_BACKUPS=1`, `INTERNAL_API_TOKEN` is minted on startup with 24h expiry.
+- Sentry: set `SENTRY_DSN`, optional `SENTRY_ENVIRONMENT` / `SENTRY_TRACES_SAMPLE_RATE`. SDK initialized at module import in `main.py:_init_sentry()` so import-time errors are captured. PII suppressed via `send_default_pii=False`.
+- Rate limit: token bucket per (identity, path). Identity = JWT subject when bearer token decodes, else trusted client IP. Auth endpoints always bucket by IP (user not yet identified). Configure via `rate_limit_per_minute` / `rate_limit_burst` env vars.
+- PgBouncer: set `db_pgbouncer_mode=true` when routing through transaction-mode pooling. Disables asyncpg statement cache (cache is per-connection, breaks under transaction-mode pool reuse). Recommended pool sizing in PgBouncer mode: `db_pool_size=2-3`, `db_max_overflow=5` — PgBouncer handles the real concurrency, the SQLAlchemy pool only owns server connections.
 
 ## User Preferences (from memory)
 

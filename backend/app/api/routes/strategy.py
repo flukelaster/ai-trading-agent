@@ -2,12 +2,13 @@
 Strategy API routes.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.routes.bot import _get_engine
+from app.auth import require_auth
 from app.strategy import STRATEGIES
 
-router = APIRouter(prefix="/api/strategy", tags=["strategy"])
+router = APIRouter(prefix="/api/strategy", tags=["strategy"], dependencies=[Depends(require_auth)])
 
 
 @router.get("/available")

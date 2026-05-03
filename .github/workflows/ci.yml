@@ -31,10 +31,13 @@ jobs:
 
       - name: Type check (mypy)
         run: mypy app/ --ignore-missing-imports
-        continue-on-error: true  # typing baseline debt — tighten once cleaned
+        # mypy still has untyped baseline debt; gate stays soft until the
+        # baseline is annotated. Track in TODO. Remove ``continue-on-error``
+        # once ``mypy app/`` returns clean to make typing breakage block merge.
+        continue-on-error: true
 
       - name: Run tests with coverage
-        run: pytest --cov=app --cov-report=term-missing --cov-fail-under=25
+        run: pytest --cov=app --cov-report=term-missing --cov-fail-under=30
 
   frontend:
     runs-on: ubuntu-latest

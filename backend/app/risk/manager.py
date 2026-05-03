@@ -70,6 +70,7 @@ class RiskManager:
         price_decimals: int = 2,
         sl_atr_mult: float = 1.5,
         tp_atr_mult: float = 2.0,
+        contract_size: float = 100.0,
     ):
         self.max_risk_per_trade = max_risk_per_trade
         self.max_daily_loss = max_daily_loss
@@ -81,7 +82,12 @@ class RiskManager:
         self.price_decimals = price_decimals
         self.sl_atr_mult = sl_atr_mult
         self.tp_atr_mult = tp_atr_mult
-        # Regime-aware risk
+        # Contract size is the per-lot multiplier MT5 reports for the symbol.
+        # P&L per lot per price unit = contract_size, so accurate lot sizing
+        # MUST go through it. Older code multiplied pip_value*100 and assumed
+        # that equalled contract_size — only true for GOLD, broken for other
+        # symbols (OIL ×10 undersize, BTC ×100 undersize, USDJPY ×10 oversize).
+        self.contract_size = contract_size
         self.current_regime = "normal"
         self.regime_lot_multiplier = 1.0
 
@@ -99,31 +105,35 @@ class RiskManager:
     def calculate_lot_size(
         self,
         balance: float,
-        sl_pips: float,
+        sl_distance: float,
         pip_value: float | None = None,
         atr_pct: float | None = None,
         slippage_pips: float = DEFAULT_SLIPPAGE_PIPS,
         commission_pct: float = DEFAULT_COMMISSION_PCT,
     ) -> float:
-        if sl_pips <= 0:
+        """Compute lot size from a stop-loss distance in **price units** (not pips).
+
+        Identity: P&L_per_lot = sl_distance × contract_size. Lot count therefore
+        equals risk_budget ÷ that quantity. The legacy ``pip_value × 100`` form
+        only matched contract_size for GOLD; this version is correct for any
+        broker symbol whose contract_size is set in SYMBOL_PROFILES.
+        """
+        if sl_distance <= 0:
             return MIN_LOT
         pv = pip_value if pip_value is not None else self.pip_value
 
-        # Account for slippage in effective SL distance
-        effective_sl = sl_pips + slippage_pips
+        # Convert slippage (in pips) to a price-unit cushion before adding.
+        effective_sl = sl_distance + slippage_pips * pv
 
-        # Risk budget minus estimated commission
         risk_budget = (balance * self.max_risk_per_trade) * (1 - commission_pct)
-        lot = risk_budget / (effective_sl * pv * 100)
+        lot = risk_budget / (effective_sl * self.contract_size)
 
-        # Volatility adjustment
         if atr_pct is not None:
             if atr_pct > HIGH_VOL_THRESHOLD:
                 lot *= HIGH_VOL_LOT_FACTOR
             elif atr_pct < LOW_VOL_THRESHOLD:
                 lot *= LOW_VOL_LOT_FACTOR
 
-        # Regime adjustment
         lot *= self.regime_lot_multiplier
 
         lot = round(min(lot, self.max_lot), 2)
@@ -132,30 +142,29 @@ class RiskManager:
     def calculate_kelly_size(
         self,
         balance: float,
-        sl_pips: float,
+        sl_distance: float,
         win_rate: float,
         avg_win: float,
         avg_loss: float,
         pip_value: float | None = None,
     ) -> float:
-        """Kelly Criterion position sizing (fractional Kelly = 0.25x for safety)."""
-        if avg_loss <= 0 or win_rate <= 0:
-            return self.calculate_lot_size(balance, sl_pips, pip_value)
+        """Kelly Criterion position sizing (fractional Kelly = 0.25x for safety).
 
-        # Kelly fraction: f* = (p * b - q) / b
-        # where p=win_rate, q=1-p, b=avg_win/avg_loss
+        ``sl_distance`` is a price-unit value matching ``calculate_lot_size``.
+        """
+        if avg_loss <= 0 or win_rate <= 0:
+            return self.calculate_lot_size(balance, sl_distance, pip_value)
+
         b = avg_win / avg_loss
         q = 1 - win_rate
         kelly = (win_rate * b - q) / b
 
-        # Fractional Kelly for safety
         kelly = max(kelly * KELLY_FRACTION, KELLY_MIN_RISK)
         kelly = min(kelly, self.max_risk_per_trade * KELLY_MAX_RISK_MULT)
 
-        pv = pip_value if pip_value is not None else self.pip_value
-        if sl_pips <= 0:
+        if sl_distance <= 0:
             return MIN_LOT
-        lot = (balance * kelly) / (sl_pips * pv * 100)
+        lot = (balance * kelly) / (sl_distance * self.contract_size)
         lot = round(min(lot, self.max_lot), 2)
         return max(lot, MIN_LOT)
 

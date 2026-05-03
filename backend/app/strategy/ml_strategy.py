@@ -27,16 +27,20 @@ from app.strategy.indicators import atr
 
 
 class MLStrategy(BaseStrategy):
+    # Throttle DB lookups when no model exists yet (e.g. fresh symbol pre-train).
+    # We re-poll every N candles instead of every tick so a newly-trained model
+    # gets picked up automatically without spamming the DB on each call.
+    _MODEL_RECHECK_EVERY = 20
+
     def __init__(self, model_path: str | None = None, confidence_threshold: float = 0.5, symbol: str = "GOLD"):
-        # Default model path is symbol-derived — no XAUUSD-specific fallback.
         self._model_path = model_path or f"models/{symbol.lower()}_signal.pkl"
         self._confidence_threshold = confidence_threshold
         self._symbol = symbol
         self._model = None
         self._feature_columns = FEATURE_COLUMNS
         self._model_loaded = False
+        self._missing_recheck_count = 0
 
-        # Prefer explicit model_path when provided; otherwise use symbol-derived path.
         load_path = self._model_path
         if Path(load_path).exists():
             try:
@@ -49,8 +53,19 @@ class MLStrategy(BaseStrategy):
                 logger.warning(f"Failed to load model from file: {e}")
 
     async def _ensure_model(self):
-        """Load model from DB if not already loaded. Filters by symbol."""
-        if self._model_loaded:
+        """Load model from DB if not already loaded. Filters by symbol.
+
+        When no model has been trained yet, this method previously set
+        ``_model_loaded=True`` and never re-checked, so a model trained later
+        (manual /retrain or weekly job) was ignored until the engine restarted.
+        We now keep ``_model_loaded=False`` and only re-check the DB every
+        ``_MODEL_RECHECK_EVERY`` candles so the lookup cost is bounded but the
+        strategy actually picks up newly-trained models in-flight.
+        """
+        if self._model is not None and self._model_loaded:
+            return
+        if not self._model_loaded and self._missing_recheck_count > 0:
+            self._missing_recheck_count -= 1
             return
 
         try:
@@ -87,15 +102,29 @@ class MLStrategy(BaseStrategy):
                     log = result.scalar_one_or_none()
 
                 if log and log.model_binary:
+                    from app.ml.integrity import verify_model_digest
+
+                    if not verify_model_digest(
+                        log.model_binary, log.model_digest, context=f"ml_strategy[{self._symbol}]"
+                    ):
+                        logger.error(
+                            f"ML model integrity check failed for {self._symbol} — leaving strategy without a model"
+                        )
+                        self._missing_recheck_count = self._MODEL_RECHECK_EVERY
+                        return
                     buf = io.BytesIO(log.model_binary)
                     data = joblib.load(buf)
                     self._model = data["model"]
                     self._feature_columns = data.get("features", FEATURE_COLUMNS)
                     self._model_loaded = True
+                    self._missing_recheck_count = 0
                     logger.info(f"ML model loaded from DB: {log.model_name} (symbol={self._symbol})")
                 else:
-                    logger.warning(f"No trained ML model found for {self._symbol} — Train a model on the ML page first")
-                    self._model_loaded = True  # no model exists, don't keep retrying
+                    logger.warning(
+                        f"No trained ML model found for {self._symbol} — re-checking in "
+                        f"{self._MODEL_RECHECK_EVERY} candles (train via /symbols/{{symbol}}/retrain)"
+                    )
+                    self._missing_recheck_count = self._MODEL_RECHECK_EVERY
         except Exception as e:
             logger.warning(f"Failed to load ML model from DB: {e} — will retry next candle")
 

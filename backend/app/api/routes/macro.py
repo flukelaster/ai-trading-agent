@@ -9,7 +9,7 @@ from app.auth import require_auth
 from app.config import settings
 from app.db.session import get_db
 
-router = APIRouter(prefix="/api/macro", tags=["macro"])
+router = APIRouter(prefix="/api/macro", tags=["macro"], dependencies=[Depends(require_auth)])
 
 _macro_service = None
 _event_calendar = None

@@ -13,18 +13,32 @@ Asset classes:
 
 from __future__ import annotations
 
+import enum
 from datetime import datetime, timedelta
 
+
+class AssetClass(str, enum.Enum):
+    """Supported asset classes. Subclasses ``str`` so existing string compares
+    keep working while gaining typo-safety at the producer side."""
+
+    FOREX = "forex"
+    METAL = "metal"
+    ENERGY = "energy"
+    INDEX = "index"
+    CRYPTO = "crypto"
+    STOCK = "stock"
+
+
 _RULES: dict[str, dict] = {
-    "forex": {"weekend": True, "daily_close": (22, 23), "reset_hour_utc": 22},
-    "metal": {"weekend": True, "daily_close": (22, 23), "reset_hour_utc": 22},
-    "energy": {"weekend": True, "daily_close": (22, 23), "reset_hour_utc": 22},
-    "index": {"weekend": True, "daily_close": (21, 22), "reset_hour_utc": 22},
-    "crypto": {"weekend": False, "daily_close": None, "reset_hour_utc": 0},
-    "stock": {"weekend": True, "daily_close": (21, 14), "reset_hour_utc": 21},
+    AssetClass.FOREX.value: {"weekend": True, "daily_close": (22, 23), "reset_hour_utc": 22},
+    AssetClass.METAL.value: {"weekend": True, "daily_close": (22, 23), "reset_hour_utc": 22},
+    AssetClass.ENERGY.value: {"weekend": True, "daily_close": (22, 23), "reset_hour_utc": 22},
+    AssetClass.INDEX.value: {"weekend": True, "daily_close": (21, 22), "reset_hour_utc": 22},
+    AssetClass.CRYPTO.value: {"weekend": False, "daily_close": None, "reset_hour_utc": 0},
+    AssetClass.STOCK.value: {"weekend": True, "daily_close": (21, 14), "reset_hour_utc": 21},
 }
 
-_DEFAULT_CLASS = "forex"
+_DEFAULT_CLASS = AssetClass.FOREX.value
 
 
 def _rules_for(asset_class: str | None) -> dict:
