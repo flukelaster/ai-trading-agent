@@ -196,9 +196,7 @@ async def model_status(symbol: str = Query("GOLD")):
     log = result.scalar_one_or_none()
 
     if not log:
-        result = await _db_session.execute(
-            select(MLModelLog).where(MLModelLog.is_active).options(blob_defer).limit(1)
-        )
+        result = await _db_session.execute(select(MLModelLog).where(MLModelLog.is_active).options(blob_defer).limit(1))
         log = result.scalar_one_or_none()
 
     if not log:

@@ -1044,9 +1044,7 @@ class BotEngine:
             try:
                 await self.db.rollback()
             except Exception as rb_err:
-                logger.error(
-                    f"Streak adjustment rollback failed [{self.symbol}] — db session is dirty: {rb_err!r}"
-                )
+                logger.error(f"Streak adjustment rollback failed [{self.symbol}] — db session is dirty: {rb_err!r}")
         return lot
 
     def _create_paper_order(self, order_type: str, lot: float, entry_price: float, sl_tp, comment: str) -> dict:

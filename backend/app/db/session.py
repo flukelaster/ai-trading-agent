@@ -81,9 +81,7 @@ async def get_secret_or_none(session: AsyncSession, key: str):
 
     from app.db.models import Secret
 
-    result = await session.execute(
-        select(Secret).where(Secret.key == key, Secret.is_deleted.is_(False))
-    )
+    result = await session.execute(select(Secret).where(Secret.key == key, Secret.is_deleted.is_(False)))
     return result.scalar_one_or_none()
 
 

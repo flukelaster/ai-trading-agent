@@ -804,9 +804,7 @@ class BotScheduler:
 
     async def _reconciliation_job(self):
         snapshot = self._engines_snapshot()
-        symbols = [
-            s for s, e in snapshot.items() if e.state.value in ("RUNNING", "PAUSED") and not e.paper_trade
-        ]
+        symbols = [s for s, e in snapshot.items() if e.state.value in ("RUNNING", "PAUSED") and not e.paper_trade]
         tasks = [snapshot[s].reconcile_positions() for s in symbols]
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
