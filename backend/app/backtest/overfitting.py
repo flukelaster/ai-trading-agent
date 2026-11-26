@@ -9,6 +9,7 @@ import numpy as np
 from loguru import logger
 
 from app.backtest.monte_carlo import MonteCarloResult
+from app.backtest.serialization import to_native
 from app.backtest.statistical_tests import PermutationTestResult
 from app.backtest.walk_forward import WalkForwardResult
 
@@ -40,17 +41,19 @@ class OverfittingScoreResult:
     skipped_tests: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {
-            "overfitting_pct": round(self.overfitting_pct, 1),
-            "grade": self.grade,
-            "components": {k: round(v, 1) for k, v in self.components.items()},
-            "weights_used": {k: round(v, 3) for k, v in self.weights_used.items()},
-            "walk_forward": self.walk_forward,
-            "permutation": self.permutation,
-            "monte_carlo": self.monte_carlo,
-            "partial": self.partial,
-            "skipped_tests": self.skipped_tests,
-        }
+        return to_native(
+            {
+                "overfitting_pct": round(self.overfitting_pct, 1),
+                "grade": self.grade,
+                "components": {k: round(v, 1) for k, v in self.components.items()},
+                "weights_used": {k: round(v, 3) for k, v in self.weights_used.items()},
+                "walk_forward": self.walk_forward,
+                "permutation": self.permutation,
+                "monte_carlo": self.monte_carlo,
+                "partial": self.partial,
+                "skipped_tests": self.skipped_tests,
+            }
+        )
 
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:

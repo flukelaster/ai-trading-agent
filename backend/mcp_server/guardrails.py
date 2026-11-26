@@ -245,12 +245,25 @@ class TradingGuardrails:
     # ─── State Tracking ─────────────────────────────────────────────────────
 
     async def record_trade(self, is_win: bool) -> None:
-        """Record a trade result for consecutive loss tracking."""
+        """Record an execution AND its outcome in one call.
+
+        Kept for backward compatibility. Live code paths should call
+        :meth:`record_order` when an order is opened and
+        :meth:`record_result` when the position is closed — the outcome is
+        not known at open time, and recording a placeholder "win" on every
+        open resets the consecutive-loss streak so the halt never fires.
+        """
+        await self.record_result(is_win)
+        await self.record_order()
+
+    async def record_result(self, is_win: bool) -> None:
+        """Record a closed trade's outcome for consecutive-loss tracking."""
         key = _daily_key("trade_results")
         await self.redis.rpush(key, "1" if is_win else "0")
         await self.redis.expire(key, 86400 * 2)  # 2 days TTL
 
-        # Update hourly counter
+    async def record_order(self) -> None:
+        """Record that an order was executed (rate limits + min spacing)."""
         hour_key = _hourly_key("trades")
         await self.redis.incr(hour_key)
         await self.redis.expire(hour_key, 3600)

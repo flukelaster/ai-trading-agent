@@ -93,7 +93,7 @@ class TestBrokerRolloutMode:
 
         mock_guardrails = AsyncMock(spec=TradingGuardrails)
         mock_guardrails.validate_order = AsyncMock(return_value=GuardrailResult(True))
-        mock_guardrails.get_rollout_mode.return_value = "shadow"
+        mock_guardrails.get_persisted_rollout_mode.return_value = "shadow"
         mock_guardrails.check_rollout_mode.return_value = GuardrailResult(False, "SHADOW MODE: order logged")
 
         broker._connector = mock_connector
@@ -120,7 +120,7 @@ class TestBrokerRolloutMode:
 
         mock_guardrails = AsyncMock(spec=TradingGuardrails)
         mock_guardrails.validate_order = AsyncMock(return_value=GuardrailResult(True))
-        mock_guardrails.get_rollout_mode.return_value = "paper"
+        mock_guardrails.get_persisted_rollout_mode.return_value = "paper"
         mock_guardrails.check_rollout_mode.return_value = GuardrailResult(False, "PAPER MODE")
 
         broker._connector = mock_connector
@@ -148,7 +148,7 @@ class TestBrokerRolloutMode:
 
         mock_guardrails = AsyncMock(spec=TradingGuardrails)
         mock_guardrails.validate_order = AsyncMock(return_value=GuardrailResult(True))
-        mock_guardrails.get_rollout_mode.return_value = "micro"
+        mock_guardrails.get_persisted_rollout_mode.return_value = "micro"
         mock_guardrails.check_rollout_mode.return_value = GuardrailResult(True, "MICRO MODE: lot capped")
         mock_guardrails.record_trade = AsyncMock()
 
@@ -178,7 +178,7 @@ class TestBrokerRolloutMode:
 
         mock_guardrails = AsyncMock(spec=TradingGuardrails)
         mock_guardrails.validate_order = AsyncMock(return_value=GuardrailResult(True))
-        mock_guardrails.get_rollout_mode.return_value = "live"
+        mock_guardrails.get_persisted_rollout_mode.return_value = "live"
         mock_guardrails.check_rollout_mode.return_value = GuardrailResult(True)
         mock_guardrails.record_trade = AsyncMock()
 
