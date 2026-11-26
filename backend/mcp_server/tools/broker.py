@@ -9,7 +9,6 @@ from loguru import logger
 
 from app.mt5.connector import MT5BridgeConnector
 from app.notifications.telegram import TelegramNotifier
-from app.risk.circuit_breaker import CircuitBreaker
 from mcp_server.guardrails import TradingGuardrails
 
 _connector: MT5BridgeConnector | None = None
@@ -25,6 +24,25 @@ def init_broker(redis: redis_lib.Redis) -> None:
     _guardrails = TradingGuardrails(redis)
     _notifier = TelegramNotifier()
     _redis = redis
+
+
+async def _account_daily_pnl(redis: redis_lib.Redis) -> float:
+    """Sum realized daily P&L across ALL symbols' circuit breakers.
+
+    The daily-loss guardrail is an account-level limit (% of balance), so it
+    must see losses from every symbol — not just the one being traded.
+    Otherwise N symbols could each lose up to the limit in the same day.
+    """
+    total = 0.0
+    async for key in redis.scan_iter(match="circuit:daily_pnl:*"):
+        val = await redis.get(key)
+        if val is None:
+            continue
+        try:
+            total += float(val.decode() if isinstance(val, bytes) else val)
+        except (TypeError, ValueError):
+            logger.warning(f"Ignoring non-numeric daily P&L at {key!r}: {val!r}")
+    return total
 
 
 def _require_init():
@@ -112,8 +130,7 @@ async def place_order(
     # mask realized losses and bypass the daily-loss limit. Fall back to the
     # account float only when Redis isn't wired up (e.g., unit tests).
     if _redis is not None:
-        cb = CircuitBreaker(_redis, symbol=symbol)
-        realized_daily_pnl = await cb.get_daily_pnl()
+        realized_daily_pnl = await _account_daily_pnl(_redis)
     else:
         realized_daily_pnl = account.get("profit", 0)
 
@@ -138,8 +155,10 @@ async def place_order(
     # ─── ROLLOUT MODE CHECK (Phase F) ────────────────────────────────────
     from mcp_server.guardrails import MICRO_MAX_LOT
 
-    _guardrails.check_rollout_mode(lot)
-    rollout_mode = _guardrails.get_rollout_mode()
+    # Redis-persisted mode wins over the env var so a UI downgrade
+    # (e.g. live → paper after an incident) takes effect immediately, even
+    # when the agent runs in a separate process from the API.
+    rollout_mode = await _guardrails.get_persisted_rollout_mode()
 
     if rollout_mode == "shadow":
         # Shadow: log everything but don't execute
@@ -193,7 +212,9 @@ async def place_order(
     logger.info(f"place_order result [{symbol}]: {order_result}")
 
     if order_result.get("success"):
-        await _guardrails.record_trade(is_win=True)  # Updated on close
+        # Outcome is unknown at open — only count the execution here.
+        # The win/loss result is recorded in close_position().
+        await _guardrails.record_order()
         data = order_result["data"]
         # Send Telegram notification
         if _notifier:
@@ -210,7 +231,7 @@ async def place_order(
                 logger.error(f"Telegram notify failed: {e}")
         # Log AI-initiated trade to event DB
         try:
-            from app.bot.manager import get_manager
+            from app.api.routes.bot import get_manager
             from app.db.models import BotEventType
 
             engine = get_manager().engines.get(symbol)
@@ -243,7 +264,7 @@ async def modify_position(ticket: int, sl: float | None = None, tp: float | None
       dragging SL to zero.
     """
     _require_init()
-    rollout_mode = _guardrails.get_rollout_mode()
+    rollout_mode = await _guardrails.get_persisted_rollout_mode()
     if rollout_mode in ("shadow", "paper"):
         logger.info(f"[{rollout_mode}] modify_position intercepted: ticket={ticket} sl={sl} tp={tp}")
         return {"modified": False, "rollout": rollout_mode, "ticket": ticket}
@@ -284,7 +305,7 @@ async def close_position(ticket: int) -> dict:
     AI agent cannot liquidate a real account while we're still dry-running.
     """
     _require_init()
-    rollout_mode = _guardrails.get_rollout_mode()
+    rollout_mode = await _guardrails.get_persisted_rollout_mode()
 
     # Get position info before closing for notification
     positions_res = await _connector.get_positions()
@@ -301,6 +322,12 @@ async def close_position(ticket: int) -> dict:
 
     result = await _connector.close_position(ticket)
     if result.get("success"):
+        # Feed the consecutive-loss halt with the real outcome.
+        if pos_info is not None:
+            try:
+                await _guardrails.record_result(is_win=float(pos_info.get("profit", 0) or 0) >= 0)
+            except Exception as e:
+                logger.error(f"Failed to record trade result for ticket={ticket}: {e}")
         # Send Telegram notification
         if _notifier and pos_info:
             try:
@@ -318,7 +345,7 @@ async def close_position(ticket: int) -> dict:
         # Log AI-initiated close to event DB
         if pos_info:
             try:
-                from app.bot.manager import get_manager
+                from app.api.routes.bot import get_manager
                 from app.db.models import BotEventType
 
                 sym = pos_info.get("symbol", "")

@@ -11,6 +11,7 @@ from loguru import logger
 
 from app.backtest.engine import BacktestEngine
 from app.backtest.optimizer import grid_search
+from app.backtest.serialization import to_native
 from app.risk.manager import RiskManager
 from app.strategy import get_strategy
 
@@ -49,7 +50,7 @@ class WalkForwardResult:
         if self.param_stability_score is not None:
             d["param_stability_score"] = round(self.param_stability_score, 4)
             d["param_stability_detail"] = {k: round(v, 4) for k, v in self.param_stability_detail.items()}
-        return d
+        return to_native(d)
 
 
 def bootstrap_ci(values: list[float], n_bootstrap: int = 1000, ci: float = 0.95) -> tuple[float, float]:
@@ -149,10 +150,10 @@ def walk_forward_test(
             min_trades=min_trades,
         )
 
-        if not opt_result.results:
+        if not opt_result.all_results:
             continue
 
-        best = opt_result.results[0]
+        best = opt_result.all_results[0]
         best_params = best["params"]
         is_sharpe = best.get("sharpe_ratio", 0)
         is_sharpes.append(is_sharpe)

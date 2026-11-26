@@ -136,10 +136,10 @@ class ProcessRunnerBackend(RunnerBackend):
         if not info:
             return []
 
-        logs = info.log_buffer
+        logs = list(info.log_buffer)  # deque doesn't support slicing
         if since:
             logs = [entry for entry in logs if entry.timestamp >= since]
-        return logs[-limit:]
+        return logs[-limit:] if limit > 0 else []
 
     async def get_metrics(self, runner_id: int) -> ResourceMetrics:
         info = self._processes.get(runner_id)
